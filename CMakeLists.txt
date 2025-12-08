@@ -69,3 +69,4 @@ IF (CMAKE_SYSTEM_NAME MATCHES "Linux")
 	)
 ENDIF()
 
+# Force re-configure

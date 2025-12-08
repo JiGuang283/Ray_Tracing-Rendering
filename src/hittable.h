@@ -48,8 +48,8 @@ class translate : public hittable {
     vec3 offset;
 };
 
-bool translate::hit(const ray &r, double t_min, double t_max,
-                    hit_record &rec) const {
+inline bool translate::hit(const ray &r, double t_min, double t_max,
+                           hit_record &rec) const {
     ray moved_r(r.origin() - offset, r.direction(), r.time());
     if (!ptr->hit(moved_r, t_min, t_max, rec)) {
         return false;
@@ -61,8 +61,8 @@ bool translate::hit(const ray &r, double t_min, double t_max,
     return true;
 }
 
-bool translate::bounding_box(double time0, double time1,
-                             aabb &output_box) const {
+inline bool translate::bounding_box(double time0, double time1,
+                                    aabb &output_box) const {
     if (!ptr->bounding_box(time0, time1, output_box)) {
         return false;
     }
@@ -93,7 +93,7 @@ class rotate_y : public hittable {
     aabb bbox;
 };
 
-rotate_y::rotate_y(shared_ptr<hittable> p, double angle) : ptr(p) {
+inline rotate_y::rotate_y(shared_ptr<hittable> p, double angle) : ptr(p) {
     auto radians = degrees_to_radians(angle);
     sin_theta = sin(radians);
     cos_theta = cos(radians);
@@ -124,8 +124,8 @@ rotate_y::rotate_y(shared_ptr<hittable> p, double angle) : ptr(p) {
     bbox = aabb(min, max);
 }
 
-bool rotate_y::hit(const ray &r, double t_min, double t_max,
-                   hit_record &rec) const {
+inline bool rotate_y::hit(const ray &r, double t_min, double t_max,
+                          hit_record &rec) const {
     auto origin = r.origin();
     auto direction = r.direction();
 
