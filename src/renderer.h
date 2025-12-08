@@ -32,29 +32,48 @@ class Renderer {
         int image_width = target_buffer.width();
         int image_height = target_buffer.height();
 
+        constexpr int TILE_SIZE = 16;
+
+        int tiles_x = (image_width + TILE_SIZE - 1) / TILE_SIZE;
+        int tiles_y = (image_height + TILE_SIZE - 1) / TILE_SIZE;
+        int total_tiles = tiles_x * tiles_y;
+
+        std::atomic<int> next_tile_index(0);
+
         const int num_threads = std::thread::hardware_concurrency();
         std::vector<std::thread> threads;
 
-        std::atomic<int> next_row(image_height - 1);
         auto render_worker = [&]() {
             while (true) {
-                int j = next_row.fetch_sub(1);
-                if (j < 0)
+                int tile_index = next_tile_index.fetch_add(1);
+                if (tile_index >= total_tiles) {
                     break;
-                if (!m_is_rendering)
+                }
+                if (!m_is_rendering) {
                     break;
+                }
 
-                for (int i = 0; i < image_width; i++) {
-                    color pixel_color(0, 0, 0);
-                    for (int s = 0; s < m_settings.samples_per_pixel; ++s) {
-                        auto u = (i + random_double()) / (image_width - 1);
-                        auto v = (j + random_double()) / (image_height - 1);
-                        ray r = cam->get_ray(u, v);
-                        pixel_color += ray_color(r, background, *world,
-                                                 m_settings.max_depth);
+                int tile_y = (tiles_y - 1) - tile_index / tiles_x;
+                int tile_x = tile_index % tiles_x;
+
+                int x_start = tile_x * TILE_SIZE;
+                int y_start = tile_y * TILE_SIZE;
+                int x_end = std::min(x_start + TILE_SIZE, image_width);
+                int y_end = std::min(y_start + TILE_SIZE, image_height);
+
+                for (int j = y_end - 1; j >= y_start; j--) {
+                    for (int i = x_start; i < x_end; i++) {
+                        color pixel_color(0, 0, 0);
+                        for (int s = 0; s < m_settings.samples_per_pixel; ++s) {
+                            auto u = (i + random_double()) / (image_width - 1);
+                            auto v = (j + random_double()) / (image_height - 1);
+                            ray r = cam->get_ray(u, v);
+                            pixel_color += ray_color(r, background, *world,
+                                                     m_settings.max_depth);
+                        }
+                        write_color_to_buffer(target_buffer, i, j, pixel_color,
+                                              m_settings.samples_per_pixel);
                     }
-                    write_color_to_buffer(target_buffer, i, j, pixel_color,
-                                          m_settings.samples_per_pixel);
                 }
             }
         };
