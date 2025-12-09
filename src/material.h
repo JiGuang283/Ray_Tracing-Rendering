@@ -2,9 +2,12 @@
 #define MATERIAL_H
 
 #include "hittable.h"
+#include "onb.h"
 #include "ray.h"
 #include "rtweekend.h"
 #include "texture.h"
+
+struct hit_record;
 
 class material {
   public:
@@ -13,8 +16,29 @@ class material {
         return color(0, 0, 0);
     }
 
+    virtual bool is_specular() const {
+        return false;
+    }
+
+    virtual color eval(const ray &r_in, const hit_record &rec,
+                       const ray &scattered) const {
+        return color(0, 0, 0);
+    }
+
+    virtual double pdf(const ray &r_in, const hit_record &rec,
+                       const ray &scattered) const {
+        return 0.0;
+    }
+
+    virtual bool scatter(const ray &r_in, const hit_record &rec, color &albedo,
+                         ray &scattered, double &pdf_val) const {
+        return false;
+    }
+
     virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered) const = 0;
+                         color &attenuation, ray &scattered) const {
+        return false;
+    }
 };
 
 class lambertian : public material {
