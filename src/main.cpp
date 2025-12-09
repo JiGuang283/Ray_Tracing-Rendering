@@ -27,6 +27,7 @@ THE SOFTWARE.*/
 #include <thread>
 
 #include "WindowsApp.h"
+#include "path_integrator.h"
 #include "render_buffer.h"
 #include "renderer.h"
 #include "scenes.h"
@@ -56,8 +57,11 @@ int main(int argc, char *args[]) {
     int height = static_cast<int>(width / config.aspect_ratio);
     auto render_buffer = make_shared<RenderBuffer>(width, height);
 
+    auto integrator = make_shared<PathIntegrator>();
+
     Renderer renderer;
     renderer.set_samples(config.samples_per_pixel);
+    renderer.set_integrator(integrator);
     renderer.set_max_depth(50);
 
     // Create window app handle

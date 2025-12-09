@@ -3,6 +3,7 @@
 
 #include "camera.h"
 #include "hittable.h"
+#include "integrator.h"
 #include "material.h"
 #include "render_buffer.h"
 #include "rtweekend.h"
@@ -17,10 +18,13 @@ class Renderer {
   public:
     struct Settings {
         int samples_per_pixel = 10;
-        int max_depth = 50;
     };
 
     Renderer() : m_is_rendering(false) {
+    }
+
+    void set_integrator(std::shared_ptr<Integrator> integrator) {
+        m_integrator = integrator;
     }
 
     void render(shared_ptr<hittable> world, shared_ptr<camera> cam,
@@ -68,8 +72,10 @@ class Renderer {
                             auto u = (i + random_double()) / (image_width - 1);
                             auto v = (j + random_double()) / (image_height - 1);
                             ray r = cam->get_ray(u, v);
-                            pixel_color += ray_color(r, background, *world,
-                                                     m_settings.max_depth);
+                            if (m_integrator) {
+                                pixel_color +=
+                                    m_integrator->Li(r, *world, background);
+                            }
                         }
                         write_color_to_buffer(target_buffer, i, j, pixel_color,
                                               m_settings.samples_per_pixel);
@@ -98,7 +104,9 @@ class Renderer {
         m_settings.samples_per_pixel = samples;
     }
     void set_max_depth(int depth) {
-        m_settings.max_depth = depth;
+        if (m_integrator) {
+            m_integrator->set_max_depth(depth);
+        }
     }
 
     void cancel() {
@@ -112,29 +120,7 @@ class Renderer {
     Settings m_settings;
     std::atomic<bool> m_is_rendering;
 
-    color ray_color(const ray &r, const color &background,
-                    const hittable &world, int depth) {
-        hit_record rec;
-
-        if (depth <= 0) {
-            return color(0, 0, 0);
-        }
-
-        if (!world.hit(r, 0.001, infinity, rec)) {
-            return background;
-        }
-
-        ray scattered;
-        color attenuation;
-        color emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.p);
-
-        if (!rec.mat_ptr->scatter(r, rec, attenuation, scattered)) {
-            return emitted;
-        }
-
-        return emitted +
-               attenuation * ray_color(scattered, background, world, depth - 1);
-    }
+    std::shared_ptr<Integrator> m_integrator;
 
     void write_color_to_buffer(RenderBuffer &buffer, int x, int y,
                                color pixel_color, int samples) {
