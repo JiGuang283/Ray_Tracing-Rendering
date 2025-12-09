@@ -13,7 +13,17 @@ project(CGAssignment4)
 # C++ 11 is required
 set(CMAKE_CXX_STANDARD 14)
 
+# Include directories
 include_directories(${PROJECT_SOURCE_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/src)
+include_directories(${PROJECT_SOURCE_DIR}/src/core)
+include_directories(${PROJECT_SOURCE_DIR}/src/geometry)
+include_directories(${PROJECT_SOURCE_DIR}/src/materials)
+include_directories(${PROJECT_SOURCE_DIR}/src/lighting)
+include_directories(${PROJECT_SOURCE_DIR}/src/renderer)
+include_directories(${PROJECT_SOURCE_DIR}/src/scene)
+include_directories(${PROJECT_SOURCE_DIR}/src/external)
+include_directories(${PROJECT_SOURCE_DIR}/src/app)
 
 ############################################################
 # Windows or Linux options
@@ -47,12 +57,14 @@ ENDIF()
 # Create an executable
 ############################################################
 
-file(GLOB_RECURSE HEADERS ./src/*.h)
+# Recursively find all header and source files in src and its subdirectories
+file(GLOB_RECURSE HEADERS ${PROJECT_SOURCE_DIR}/src/*.h)
+file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
+
 source_group("Header Files" FILES ${HEADERS})
-aux_source_directory(./src/ DIR_SRCS)
 
 # Add an executable with the above sources
-add_executable(${PROJECT_NAME} ${DIR_SRCS} ${HEADERS})
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 # link the target with the SDL2
 target_link_libraries( ${PROJECT_NAME} 
