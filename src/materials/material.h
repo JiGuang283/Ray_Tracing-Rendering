@@ -9,30 +9,46 @@
 
 struct hit_record;
 
+struct BSDFSample {
+    vec3 wi; // 采样生成的入射方向
+    color f; // BSDF 吞吐量, 存 f (BSDF值)，让积分器自己乘 cos 和除
+             // pdf(delta材质除外)。
+    double pdf;                   // 采样该方向的概率密度
+    bool is_specular;             // 是否是镜面反射（Delta分布）
+    bool is_transmission = false; // 区分透射
+};
+
 class material {
   public:
     virtual ~material() = default;
+
+    // 原emitted函数（保留旧接口）
     virtual color emitted(double u, double v, const point3 &p) const {
         return color(0, 0, 0);
     }
 
+    // 新 emitted 接口
+    virtual color emitted(const hit_record &rec, const vec3 &wo) const {
+        return color(0, 0, 0);
+    }
+    // 判断材质是否含有完美镜面（Delta 分布）成分
     virtual bool is_specular() const {
         return false;
     }
-
-    virtual color eval(const ray &r_in, const hit_record &rec,
-                       const ray &scattered) const {
+    // 采样 BSDF 生成入射方向 (Importance Sampling)
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled) const {
+        return false;
+    }
+    // 给定两个方向，计算反射比率（BSDF值）
+    virtual color eval(const hit_record &rec, const vec3 &wo,
+                       const vec3 &wi) const {
         return color(0, 0, 0);
     }
-
-    virtual double pdf(const ray &r_in, const hit_record &rec,
-                       const ray &scattered) const {
+    // 计算pdf
+    virtual double pdf(const hit_record &rec, const vec3 &wo,
+                       const vec3 &wi) const {
         return 0.0;
-    }
-
-    virtual bool scatter(const ray &r_in, const hit_record &rec, color &albedo,
-                         ray &scattered, double &pdf_val) const {
-        return false;
     }
 
     // 保留旧接口

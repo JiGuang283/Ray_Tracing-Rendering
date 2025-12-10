@@ -9,7 +9,7 @@ class PointLight : public Light {
         : m_position(pos), m_intensity(intensity) {
     }
 
-    virtual LightSample sample(const point3 &p) const override {
+    virtual LightSample sample(const point3 &p, const vec2 &u) const override {
         LightSample ls;
 
         vec3 direction = m_position - p;
@@ -19,8 +19,17 @@ class PointLight : public Light {
         ls.wi = direction / ls.dist;
         ls.Li = m_intensity / dist_squared;
         ls.pdf = 1.0;
+        ls.is_delta = true;
 
         return ls;
+    }
+
+    virtual bool is_delta() const override {
+        return true;
+    }
+
+    virtual color power() const override {
+        return 4.0 * pi * m_intensity;
     }
 
   private:
