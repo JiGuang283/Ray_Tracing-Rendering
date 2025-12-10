@@ -285,6 +285,38 @@ shared_ptr<hittable> final_scene() {
     return make_shared<bvh_node>(objects, 0, 1);
 }
 
+shared_ptr<hittable> pbr_test_scene() {
+    hittable_list world;
+
+    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1),
+                                                color(0.9, 0.9, 0.9));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+                                  make_shared<lambertian>(checker)));
+
+    // Gold
+    auto gold_albedo = make_shared<solid_color>(color(1.0, 0.71, 0.29));
+    auto gold_rough = make_shared<solid_color>(0.2, 0.2, 0.2);
+    auto gold_metal = make_shared<solid_color>(1.0, 1.0, 1.0);
+    world.add(make_shared<sphere>(point3(-2, 1, 0), 1.0,
+                                  make_shared<PBRMaterial>(gold_albedo, gold_rough, gold_metal)));
+
+    // Copper
+    auto copper_albedo = make_shared<solid_color>(color(0.95, 0.64, 0.54));
+    auto copper_rough = make_shared<solid_color>(0.5, 0.5, 0.5);
+    auto copper_metal = make_shared<solid_color>(1.0, 1.0, 1.0);
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0,
+                                  make_shared<PBRMaterial>(copper_albedo, copper_rough, copper_metal)));
+
+    // Plastic
+    auto plastic_albedo = make_shared<solid_color>(color(0.2, 0.2, 1.0));
+    auto plastic_rough = make_shared<solid_color>(0.1, 0.1, 0.1);
+    auto plastic_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+    world.add(make_shared<sphere>(point3(2, 1, 0), 1.0,
+                                  make_shared<PBRMaterial>(plastic_albedo, plastic_rough, plastic_metal)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -369,6 +401,21 @@ SceneConfig select_scene(int scene_id) {
         break;
 
     case 10:
+        config.world = two_perlin_spheres();
+        config.background = color(0.70, 0.80, 1.00);
+        config.lookfrom = point3(13, 2, 3);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 20.0;
+        break;
+
+    case 11:
+        config.world = pbr_test_scene();
+        config.background = color(0.70, 0.80, 1.00);
+        config.lookfrom = point3(13, 2, 3);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 20.0;
+        break;
+
     default:
         config.world = two_perlin_spheres();
         config.background = color(0.70, 0.80, 1.00);

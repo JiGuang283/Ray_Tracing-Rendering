@@ -34,5 +34,6 @@ shared_ptr<hittable> simple_light();
 shared_ptr<hittable> cornell_box();
 shared_ptr<hittable> cornell_smoke();
 shared_ptr<hittable> final_scene();
+shared_ptr<hittable> pbr_test_scene();
 
 #endif
