@@ -24,6 +24,9 @@ include_directories(${PROJECT_SOURCE_DIR}/src/renderer)
 include_directories(${PROJECT_SOURCE_DIR}/src/scene)
 include_directories(${PROJECT_SOURCE_DIR}/src/external)
 include_directories(${PROJECT_SOURCE_DIR}/src/app)
+include_directories(${PROJECT_SOURCE_DIR}/libs)
+include_directories(${PROJECT_SOURCE_DIR}/libs/imgui)
+include_directories(${PROJECT_SOURCE_DIR}/libs/imgui/backends)
 
 ############################################################
 # Windows or Linux options
@@ -60,11 +63,32 @@ ENDIF()
 # Recursively find all header and source files in src and its subdirectories
 file(GLOB_RECURSE HEADERS ${PROJECT_SOURCE_DIR}/src/*.h)
 file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
-
+file(GLOB IMGUI_SOURCES
+		${PROJECT_SOURCE_DIR}/libs/imgui/*.cpp
+		${PROJECT_SOURCE_DIR}/libs/imgui/backends/*.cpp
+)
 source_group("Header Files" FILES ${HEADERS})
 
 # Add an executable with the above sources
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+# CMakeLists.txt
+
+# ... (前面的内容保持不变)
+
+# Recursively find all header and source files in src and its subdirectories
+file(GLOB_RECURSE HEADERS ${PROJECT_SOURCE_DIR}/src/*.h)
+file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
+
+# 新增：找到 ImGui 的源文件
+file(GLOB IMGUI_SOURCES
+		${PROJECT_SOURCE_DIR}/libs/imgui/*.cpp
+		${PROJECT_SOURCE_DIR}/libs/imgui/backends/*.cpp
+)
+
+source_group("Header Files" FILES ${HEADERS})
+
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES})
+
+target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS})
 
 # link the target with the SDL2
 target_link_libraries( ${PROJECT_NAME} 
