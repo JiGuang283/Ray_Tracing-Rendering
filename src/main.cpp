@@ -26,72 +26,20 @@ THE SOFTWARE.*/
 #include <memory>
 #include <thread>
 
-#include "WindowsApp.h"
-#include "path_integrator.h"
-#include "render_buffer.h"
-#include "renderer.h"
-#include "scenes.h"
+#include "../libs/imgui/imgui.h"
+#include "Application.h"
 
-namespace RenderConfig {
-constexpr int kMaxDepth = 50;
-constexpr double kTMin = 0.001;
-constexpr double kShutterOpen = 0.0;
-constexpr double kShutterClose = 1.0;
-} // namespace RenderConfig
 
 int main(int argc, char *args[]) {
-
-    int scene_id = 10;
+    int scene_id = 0;
     if (argc > 1) {
         scene_id = std::atoi(args[1]);
     }
-
-    SceneConfig config = select_scene(scene_id);
-
-    auto cam = make_shared<camera>(
-        config.lookfrom, config.lookat, config.vup, config.vfov,
-        config.aspect_ratio, config.aperture, config.focus_dist,
-        RenderConfig::kShutterOpen, RenderConfig::kShutterClose);
-
-    int width = config.image_width;
-    int height = static_cast<int>(width / config.aspect_ratio);
-    auto render_buffer = make_shared<RenderBuffer>(width, height);
-
-    auto integrator = make_shared<PathIntegrator>();
-
-    Renderer renderer;
-    renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(integrator);
-    renderer.set_max_depth(50);
-
-    // Create window app handle
-    WindowsApp::ptr winApp =
-        WindowsApp::getInstance(width, height, "CGAssignment4: Ray Tracing");
-    if (winApp == nullptr) {
-        std::cerr << "Error: failed to create a window handler" << std::endl;
+    Application app(scene_id);
+    if (!app.init()) {
         return -1;
     }
-
-    std::thread renderingThread([&renderer, world = config.world, cam,
-                                 render_buffer, bg = config.background]() {
-        renderer.render(world, cam, bg, *render_buffer);
-    });
-
-    // Window app loop
-    while (!winApp->shouldWindowClose()) {
-        // Process event
-        winApp->processEvent();
-
-        // Display to the screen
-        winApp->updateScreenSurface(render_buffer->get_data());
-        std::this_thread::sleep_for(std::chrono::milliseconds(33));
-    }
-
-    renderer.cancel();
-
-    if (renderingThread.joinable()) {
-        renderingThread.join();
-    }
+    app.run();
 
     return 0;
 }
