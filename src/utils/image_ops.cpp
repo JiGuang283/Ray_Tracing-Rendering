@@ -8,11 +8,6 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-template <typename T>
-inline T clamp_compat(const T& v, const T& lo, const T& hi) {
-    return (v < lo) ? lo : (v > hi) ? hi : v;
-}
-
 namespace ImageOps {
 
     vec3 ACESFilm(vec3 x) {

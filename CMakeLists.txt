@@ -13,6 +13,33 @@ project(CGAssignment4)
 # C++ 11 is required
 set(CMAKE_CXX_STANDARD 14)
 
+# SIMD / 架构优化开关
+option(ENABLE_AVX2 "Enable AVX2 optimizations" ON)
+option(ENABLE_MARCH_NATIVE "Enable -march=native (host-dependent)" OFF)
+
+# 检测并添加编译选项
+if(ENABLE_AVX2)
+	if(MSVC)
+		add_compile_options(/arch:AVX2)
+	else()
+		include(CheckCXXCompilerFlag)
+		check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_MAVX2)
+		if(COMPILER_SUPPORTS_MAVX2)
+			add_compile_options(-mavx2)
+		else()
+			message(WARNING "AVX2 not supported by compiler; skipping -mavx2")
+		endif()
+	endif()
+endif()
+
+if(ENABLE_MARCH_NATIVE)
+	if(MSVC)
+		message(WARNING "-march=native not applicable on MSVC; use /arch:AVX2 or /arch:AVX512* instead.")
+	else()
+		add_compile_options(-march=native)
+	endif()
+endif()
+
 # Include directories
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_SOURCE_DIR}/src)

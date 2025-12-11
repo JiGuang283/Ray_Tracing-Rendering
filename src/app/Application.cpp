@@ -11,6 +11,7 @@
 #include "camera.h"
 #include "imgui.h"
 #include "scenes.h"
+#include "simd_rgba.h"
 
 namespace RenderConfig {
     constexpr int kMaxDepth = 50;
@@ -211,16 +212,7 @@ void Application::update_display_from_buffer() {
     const auto &pixels = render_buffer_->get_data();
     float inv_gamma = 1.0f / ui_.gamma;
 
-    // 预计算 Gamma LUT（0..1 区间映射到 0..255），256 档足够 LDR 显示
-    static thread_local std::array<unsigned char, 256> gamma_lut;
-    static thread_local float last_inv_gamma = -1.0f;
-    if (std::fabs(last_inv_gamma - inv_gamma) > 1e-6f) {
-        for (int i = 0; i < 256; ++i) {
-            float v = i / 255.0f;
-            gamma_lut[i] = static_cast<unsigned char>(255.999f * std::pow(v, inv_gamma));
-        }
-        last_inv_gamma = inv_gamma;
-    }
+    // tone map helper
     auto tone_map = [&](vec3 c) {
         switch (ui_.tone_mapping_type) {
         case 1: // Reinhard
@@ -232,21 +224,49 @@ void Application::update_display_from_buffer() {
         }
     };
 
-    #pragma omp parallel for collapse(2)
     for (int j = 0; j < height_; ++j) {
-        for (int i = 0; i < width_; ++i) {
+        int i = 0;
+        for (; i + 7 < width_; i += 8) {
+            float r[8], g[8], b[8];
+            // 标量做 tone mapping + gamma + clamp 到 [0,1]
+            for (int k = 0; k < 8; ++k) {
+                vec3 c = pixels[height_ - 1 - j][i + k];
+                c = tone_map(c);
+                float rr = std::max(0.0f, std::min(1.0f, float(c.x())));
+                float gg = std::max(0.0f, std::min(1.0f, float(c.y())));
+                float bb = std::max(0.0f, std::min(1.0f, float(c.z())));
+                // Gamma 修正
+                r[k] = std::pow(rr, inv_gamma);
+                g[k] = std::pow(gg, inv_gamma);
+                b[k] = std::pow(bb, inv_gamma);
+            }
+
+            uint8_t* dst = &image_data_[ (j * width_ + i) * 4 ];
+            #if defined(__AVX2__)
+                store_rgba8_avx2(r, g, b, dst);
+            #elif defined(__SSE2__)
+                store_rgba8_sse2(r, g, b, dst);
+            #else
+                store_rgba8_scalar(r, g, b, dst);
+            #endif
+        }
+
+        // 尾部不足 8 像素，走标量
+        for (; i < width_; ++i) {
             vec3 c = pixels[height_ - 1 - j][i];
             c = tone_map(c);
+            float r1 = std::max(0.0f, std::min(1.0f, float(c.x())));
+            float g1 = std::max(0.0f, std::min(1.0f, float(c.y())));
+            float b1 = std::max(0.0f, std::min(1.0f, float(c.z())));
 
-            // clamp 到 [0,1]
-            float r = std::fmax(0.0f, std::fmin(1.0f, static_cast<float>(c.x())));
-            float g = std::fmax(0.0f, std::fmin(1.0f, static_cast<float>(c.y())));
-            float b = std::fmax(0.0f, std::fmin(1.0f, static_cast<float>(c.z())));
+            r1 = std::pow(r1, inv_gamma);
+            g1 = std::pow(g1, inv_gamma);
+            b1 = std::pow(b1, inv_gamma);
 
             int idx = (j * width_ + i) * 4;
-            image_data_[idx + 0] = gamma_lut[static_cast<int>(r * 255.0f + 0.5f)];
-            image_data_[idx + 1] = gamma_lut[static_cast<int>(g * 255.0f + 0.5f)];
-            image_data_[idx + 2] = gamma_lut[static_cast<int>(b * 255.0f + 0.5f)];
+            image_data_[idx + 0] = static_cast<unsigned char>(r1 * 255.0f);
+            image_data_[idx + 1] = static_cast<unsigned char>(g1 * 255.0f);
+            image_data_[idx + 2] = static_cast<unsigned char>(b1 * 255.0f);
             image_data_[idx + 3] = 255;
         }
     }
@@ -254,7 +274,6 @@ void Application::update_display_from_buffer() {
     if (ui_.enable_post_process) {
         apply_post_processing();
     }
-
     win_app_->updateTexture(image_data_.data());
 }
 

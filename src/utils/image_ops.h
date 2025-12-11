@@ -6,6 +6,11 @@
 #include <vector>
 #include "vec3.h" // 假设 vec3 定义在此处或其包含的头文件中
 
+template <typename T>
+T clamp_compat(const T& v, const T& lo, const T& hi) {
+    return (v < lo) ? lo : (v > hi) ? hi : v;
+}
+
 namespace ImageOps {
     // 色调映射算法
     vec3 ACESFilm(vec3 x);
