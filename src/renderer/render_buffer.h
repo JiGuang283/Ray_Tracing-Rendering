@@ -27,21 +27,7 @@ class RenderBuffer {
         return m_height;
     }
 
-    void clear() {
-        for (auto& row : m_pixels) {
-            std::fill(row.begin(), row.end(), color(0, 0, 0));
-        }
-    }
-
-    int get_width() const {
-        return m_width;
-    }
-
-    int get_height() {
-        return m_height;
-    }
-
-private:
+  private:
     int m_width;
     int m_height;
     std::vector<std::vector<color>> m_pixels;
