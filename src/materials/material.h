@@ -11,40 +11,46 @@
 struct hit_record;
 
 struct BSDFSample {
-    vec3 wi;              // Sampled incident direction
-    color f;              // BSDF value
-    double pdf;           // PDF of sampled direction
-    bool is_specular;     // Is it specular reflection (Delta distribution)
-    bool is_transmission = false; // Distinguish transmission
+    vec3 wi; // 采样生成的入射方向
+    color f; // BSDF 吞吐量, 存 f (BSDF值)，让积分器自己乘 cos 和除
+             // pdf(delta材质除外)。
+    double pdf;                   // 采样该方向的概率密度
+    bool is_specular;             // 是否是镜面反射（Delta分布）
+    bool is_transmission = false; // 区分透射
 };
 
 class material {
   public:
     virtual ~material() = default;
 
-    // Old emitted function (keep old interface)
+    // 原emitted函数（保留旧接口）
     virtual color emitted(double u, double v, const point3 &p) const {
         return color(0, 0, 0);
     }
 
-    // New emitted interface
+    // 新 emitted 接口
     virtual color emitted(const hit_record &rec, const vec3 &wo) const {
         return color(0, 0, 0);
     }
 
+    // 判断材质是否含有完美镜面（Delta 分布）成分
     virtual bool is_specular() const {
         return false;
     }
 
-    virtual bool sample(const hit_record &rec, const vec3 &wo, BSDFSample &sampled) const {
+    // 采样 BSDF 生成入射方向 (Importance Sampling)
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled) const {
         return false;
     }
 
+    // 给定两个方向，计算反射比率（BSDF值）
     virtual color eval(const hit_record &rec, const vec3 &wo,
                        const vec3 &wi) const {
         return color(0, 0, 0);
     }
 
+    // 计算pdf
     virtual double pdf(const hit_record &rec, const vec3 &wo,
                        const vec3 &wi) const {
         return 0.0;
@@ -56,6 +62,7 @@ class material {
         return false;
     }
 
+    // 保留旧接口
     virtual bool scatter(const ray &r_in, const hit_record &rec,
                          color &attenuation, ray &scattered) const {
         return false;
@@ -69,7 +76,8 @@ class lambertian : public material {
     lambertian(shared_ptr<texture> a) : albedo(a) {
     }
 
-    virtual bool sample(const hit_record &rec, const vec3 &wo, BSDFSample &sampled) const override {
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled) const override {
         vec3 scatter_direction = rec.normal + random_unit_vector();
         if (scatter_direction.near_zero()) {
             scatter_direction = rec.normal;
@@ -112,12 +120,13 @@ class metal : public material {
     metal(const color &a, double f) : albedo(a), fuzz(f < 1 ? f : 1) {
     }
 
-    virtual bool sample(const hit_record &rec, const vec3 &wo, BSDFSample &sampled) const override {
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled) const override {
         vec3 reflected = reflect(unit_vector(-wo), rec.normal);
         sampled.wi = unit_vector(reflected + fuzz * random_in_unit_sphere());
         sampled.f = albedo;
-        sampled.pdf = 1.0; 
-        sampled.is_specular = true; 
+        sampled.pdf = 1.0;
+        sampled.is_specular = true;
         return (dot(sampled.wi, rec.normal) > 0);
     }
 
@@ -140,7 +149,8 @@ class dielectric : public material {
     dielectric(double index_of_refraction) : ir(index_of_refraction) {
     }
 
-    virtual bool sample(const hit_record &rec, const vec3 &wo, BSDFSample &sampled) const override {
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled) const override {
         sampled.f = color(1.0, 1.0, 1.0);
         sampled.is_specular = true;
         sampled.pdf = 1.0;
@@ -152,7 +162,8 @@ class dielectric : public material {
 
         bool cannot_refract = refraction_ratio * sin_theta > 1.0;
 
-        if (cannot_refract || reflectance(cos_theta, refraction_ratio) > random_double()) {
+        if (cannot_refract ||
+            reflectance(cos_theta, refraction_ratio) > random_double()) {
             sampled.wi = reflect(unit_direction, rec.normal);
             sampled.is_transmission = false;
         } else {
@@ -171,7 +182,8 @@ class dielectric : public material {
         double sin_theta = sqrt(1.0 - cos_theta * cos_theta);
         bool cannot_refract = refraction_ratio * sin_theta > 1.0;
         vec3 direction;
-        if (cannot_refract || reflectance(cos_theta, refraction_ratio) > random_double()) {
+        if (cannot_refract ||
+            reflectance(cos_theta, refraction_ratio) > random_double()) {
             direction = reflect(unit_direction, rec.normal);
         } else {
             direction = refract(unit_direction, rec.normal, refraction_ratio);
@@ -198,18 +210,20 @@ class diffuse_light : public material {
     diffuse_light(color c) : emit(make_shared<solid_color>(c)) {
     }
 
-    virtual bool sample(const hit_record &rec, const vec3 &wo, BSDFSample &sampled) const override {
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled) const override {
         return false;
     }
 
     virtual color emitted(double u, double v, const point3 &p) const override {
         return emit->value(u, v, p);
     }
-    
-    virtual color emitted(const hit_record &rec, const vec3 &wo) const override {
+
+    virtual color emitted(const hit_record &rec,
+                          const vec3 &wo) const override {
         if (rec.front_face)
             return emit->value(rec.u, rec.v, rec.p);
-        return color(0,0,0);
+        return color(0, 0, 0);
     }
 
     virtual bool scatter(const ray &r_in, const hit_record &rec,
@@ -228,7 +242,8 @@ class PBRMaterial : public material {
         : albedo(a), roughness(r), metallic(m), normal_map(n) {
     }
 
-    virtual bool sample(const hit_record &rec, const vec3 &wo, BSDFSample &sampled) const override {
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled) const override {
         vec3 N = rec.normal;
         if (normal_map) {
             onb uvw;
@@ -249,30 +264,33 @@ class PBRMaterial : public material {
             double r2 = random_double();
             double a = rough * rough;
             double phi = 2.0 * pi * r1;
-            
-            double cos_theta = sqrt((1.0 - r2) / (1.0 + (a*a - 1.0) * r2));
-            double sin_theta = sqrt(1.0 - cos_theta*cos_theta);
-            
+
+            double cos_theta = sqrt((1.0 - r2) / (1.0 + (a * a - 1.0) * r2));
+            double sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+
             vec3 H_local(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
             vec3 H = uvw.local(H_local);
             vec3 L = reflect(-wo, H);
-            
-            if (dot(N, L) <= 0) return false;
+
+            if (dot(N, L) <= 0)
+                return false;
             sampled.wi = L;
         } else {
             // Sample Diffuse (Cosine)
             onb uvw;
             uvw.build_from_w(N);
             vec3 L = uvw.local(random_cosine_direction());
-            if (dot(N, L) <= 0) L = N; // Should not happen with cosine sample but safety
+            if (dot(N, L) <= 0)
+                L = N; // Should not happen with cosine sample but safety
             sampled.wi = unit_vector(L);
         }
 
         sampled.is_specular = false;
         sampled.pdf = pdf(rec, wo, sampled.wi);
         sampled.f = eval(rec, wo, sampled.wi);
-        
-        if (sampled.pdf < 1e-6) return false;
+
+        if (sampled.pdf < 1e-6)
+            return false;
         return true;
     }
 
@@ -285,22 +303,23 @@ class PBRMaterial : public material {
             vec3 local_n = normal_map->value_normal(rec.u, rec.v, rec.p);
             N = unit_vector(uvw.local(local_n));
         }
-        
-        if (dot(N, wi) <= 0) return 0;
+
+        if (dot(N, wi) <= 0)
+            return 0;
 
         double rough = roughness->value_roughness(rec.u, rec.v, rec.p);
         rough = clamp(rough, 0.01, 1.0);
-        
+
         // Diffuse PDF
         double pdf_diff = dot(N, wi) / pi;
-        
+
         // Specular PDF
         vec3 H = unit_vector(wo + wi);
         double D = DistributionGGX(N, H, rough);
         double NdotH = std::max(dot(N, H), 0.0);
         double HdotV = std::max(dot(H, wo), 0.0);
         double pdf_spec = (D * NdotH) / (4.0 * HdotV + 0.0001);
-        
+
         return 0.5 * pdf_diff + 0.5 * pdf_spec;
     }
 
@@ -316,7 +335,8 @@ class PBRMaterial : public material {
 
         double NdotL = dot(N, wi);
         double NdotV = dot(N, wo);
-        if (NdotL <= 0 || NdotV <= 0) return color(0,0,0);
+        if (NdotL <= 0 || NdotV <= 0)
+            return color(0, 0, 0);
 
         double rough = roughness->value_roughness(rec.u, rec.v, rec.p);
         double metal = metallic->value_metallic(rec.u, rec.v, rec.p);
@@ -324,30 +344,30 @@ class PBRMaterial : public material {
         rough = clamp(rough, 0.01, 1.0);
 
         vec3 H = unit_vector(wo + wi);
-        
+
         // Fresnel
         vec3 F0 = vec3(0.04, 0.04, 0.04);
         vec3 metal_vec(metal, metal, metal);
         F0 = (vec3(1.0, 1.0, 1.0) - metal_vec) * F0 + metal_vec * base_color;
         vec3 F = fresnelSchlick(std::max(dot(H, wo), 0.0), F0);
-        
+
         // NDF
         double D = DistributionGGX(N, H, rough);
-        
+
         // Geometry
         double G = GeometrySmith(N, wo, wi, rough);
-        
+
         // Specular BRDF
         vec3 numerator = D * G * F;
         double denominator = 4.0 * NdotV * NdotL + 0.0001;
         vec3 specular = numerator / denominator;
-        
+
         // Diffuse BRDF
         vec3 kS = F;
         vec3 kD = vec3(1.0, 1.0, 1.0) - kS;
         kD *= (1.0 - metal);
         vec3 diffuse = kD * base_color / pi;
-        
+
         return diffuse + specular;
     }
 

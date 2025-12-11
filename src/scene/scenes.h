@@ -10,7 +10,7 @@ using std::shared_ptr;
 
 struct SceneConfig {
     shared_ptr<hittable> world;
-    std::vector<shared_ptr<Light>> lights;
+    std::vector<shared_ptr<Light>> lights; // 新增光源列表，用于重要性采样
     color background{0, 0, 0};
     point3 lookfrom{13, 2, 3};
     point3 lookat{0, 0, 0};
