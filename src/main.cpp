@@ -28,6 +28,7 @@ THE SOFTWARE.*/
 
 #include "WindowsApp.h"
 #include "direct_light_integrator.h"
+#include "mis_path_integrator.h"
 #include "path_integrator.h"
 #include "pbr_path_integrator.h"
 #include "render_buffer.h"
@@ -64,10 +65,11 @@ int main(int argc, char *args[]) {
     auto rrIntegrator = make_shared<RRPathInterator>();
     auto pbrIntegrator = make_shared<PBRPathIntegrator>();
     auto dirlightIntegrator = make_shared<DirectLightIntegrator>();
+    auto misIntegrator = make_shared<MISPathIntegrator>();
 
     Renderer renderer;
     renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(dirlightIntegrator);
+    renderer.set_integrator(misIntegrator);
     renderer.set_max_depth(50);
 
     // Create window app handle
