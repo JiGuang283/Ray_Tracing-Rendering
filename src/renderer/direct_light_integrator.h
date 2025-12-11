@@ -73,8 +73,8 @@ class DirectLightIntegrator : public Integrator {
             if (depth >= m_rr_start_depth) {
                 double p_survive =
                     std::max({throughput.x(), throughput.y(), throughput.z()});
-                p_survive=clamp(p_survive, 0.05, 0.95);
-                if(random_double()>p_survive){
+                p_survive = clamp(p_survive, 0.05, 0.95);
+                if (random_double() > p_survive) {
                     break;
                 }
                 throughput /= p_survive;
@@ -119,6 +119,15 @@ class DirectLightIntegrator : public Integrator {
                 }
             }
         }
+        // Clamp high energy samples to reduce fireflies
+        double max_radiance = 10.0;
+        if (L_direct.x() > max_radiance)
+            L_direct = L_direct * (max_radiance / L_direct.x());
+        if (L_direct.y() > max_radiance)
+            L_direct = L_direct * (max_radiance / L_direct.y());
+        if (L_direct.z() > max_radiance)
+            L_direct = L_direct * (max_radiance / L_direct.z());
+
         return L_direct;
     }
 

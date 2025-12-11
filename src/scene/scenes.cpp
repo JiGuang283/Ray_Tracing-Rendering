@@ -513,6 +513,34 @@ shared_ptr<hittable> pbr_reference_scene() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> point_light_scene() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Diffuse Sphere
+    auto lambert = make_shared<lambertian>(color(0.8, 0.2, 0.2));
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, lambert));
+
+    // PBR Metal Sphere
+    auto albedo = make_shared<solid_color>(0.9, 0.9, 0.9);
+    auto roughness = make_shared<solid_color>(0.05, 0.05, 0.05); // Smooth
+    auto metallic = make_shared<solid_color>(1.0, 1.0, 1.0);
+    auto metal_mat = make_shared<PBRMaterial>(albedo, roughness, metallic);
+    world.add(make_shared<sphere>(point3(-3, 1, 0), 1.0, metal_mat));
+
+    // PBR Dielectric-like Sphere
+    auto d_albedo = make_shared<solid_color>(0.2, 0.2, 0.8);
+    auto d_roughness = make_shared<solid_color>(0.1, 0.1, 0.1);
+    auto d_metallic = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto plastic_mat =
+        make_shared<PBRMaterial>(d_albedo, d_roughness, d_metallic);
+    world.add(make_shared<sphere>(point3(3, 1, 0), 1.0, plastic_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -639,6 +667,19 @@ SceneConfig select_scene(int scene_id) {
         config.lookfrom = point3(0, 15, 25);
         config.lookat = point3(0, 0, 0);
         config.vfov = 30.0;
+        break;
+
+    case 15:
+        config.world = point_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 100;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 5, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<PointLight>(point3(0, 6, 2), color(50, 50, 50)));
         break;
 
     case 10:
