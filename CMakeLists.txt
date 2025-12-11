@@ -23,8 +23,6 @@ include_directories(${PROJECT_SOURCE_DIR}/src/lighting)
 include_directories(${PROJECT_SOURCE_DIR}/src/renderer)
 include_directories(${PROJECT_SOURCE_DIR}/src/scene)
 include_directories(${PROJECT_SOURCE_DIR}/src/external)
-include_directories(${PROJECT_SOURCE_DIR}/src/external/imgui)
-include_directories(${PROJECT_SOURCE_DIR}/src/external/imgui/backends)
 include_directories(${PROJECT_SOURCE_DIR}/src/app)
 
 ############################################################
@@ -63,16 +61,10 @@ ENDIF()
 file(GLOB_RECURSE HEADERS ${PROJECT_SOURCE_DIR}/src/*.h)
 file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
-file(GLOB IMGUI_SOURCES
-		src/external/imgui/*.cpp
-		src/external/imgui/backends/*.cpp
-)
-
 source_group("Header Files" FILES ${HEADERS})
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES})
-
-target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS})
+# Add an executable with the above sources
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 # link the target with the SDL2
 target_link_libraries( ${PROJECT_NAME} 

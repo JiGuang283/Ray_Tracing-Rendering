@@ -11,57 +11,68 @@
 #include "vec3.h"
 
 class WindowsApp final {
+  private:
+    WindowsApp() = default;
 
-    public:
-        using ptr = std::shared_ptr<WindowsApp>;
+    WindowsApp(WindowsApp &) = delete;
+    WindowsApp &operator=(const WindowsApp &) = delete;
+    bool setup(int width, int height, std::string title);
 
-        WindowsApp(WindowsApp &) = delete;
-        WindowsApp &operator=(const WindowsApp &) = delete;
+  public:
+    typedef std::shared_ptr<WindowsApp> ptr;
 
-        ~WindowsApp();
+    ~WindowsApp();
 
-        // Event
-        void processEvent();
-        bool shouldWindowClose() const {
-            return m_quit;
-        }
+    // Event
+    void processEvent();
+    bool shouldWindowClose() const {
+        return m_quit;
+    }
+    int getMouseMotionDeltaX() const {
+        return m_mouse_delta_x;
+    }
+    int getMouseMotionDeltaY() const {
+        return m_mouse_delta_y;
+    }
+    int getMouseWheelDelta() const {
+        return m_wheel_delta;
+    }
+    bool getIsMouseLeftButtonPressed() const {
+        return m_mouse_left_button_pressed;
+    }
 
-        void beginRender();
-        void endRender() const;
+    void updateScreenSurface(const std::vector<std::vector<color>> &canvas);
 
-        void setRenderSize(int width, int height);
+    static WindowsApp::ptr getInstance();
+    static WindowsApp::ptr getInstance(int width, int height,
+                                       const std::string title = "winApp");
 
-        //  更新 GPU 纹理
-        void updateTexture(const unsigned char *data) const;
+  private:
+    // Mouse tracking
+    int m_last_mouse_x, m_last_mouse_y;
+    int m_mouse_delta_x, m_mouse_delta_y;
+    bool m_mouse_left_button_pressed = false;
+    int m_last_wheel_pos;
+    int m_wheel_delta;
 
-        // 获取 SDL 纹理指针
-        SDL_Texture* getTexture() const { return m_texture; }
+    // Screen size
+    int m_screen_width;
+    int m_screen_height;
 
-        static WindowsApp::ptr getInstance(int width, int height, const std::string &title);
+    bool m_quit = false;
 
-    private:
+    // Window title
+    std::string m_window_title;
 
-        WindowsApp() = default;
-        bool setup(int width, int height, std::string title);
-        void cleanup() const;
-        void recreateTexture(int width, int height);
+    // Event handler
+    SDL_Event m_events;
 
-    private:
+    // Window handler
+    SDL_Window *m_window_handle = nullptr;
+    SDL_Surface *m_screen_surface = nullptr;
 
-        // Screen size
-        int m_screen_width = 0;
-        int m_screen_height = 0;
-        bool m_quit = false;
-
-        // Window handler
-        SDL_Window *m_window_handle = nullptr;
-        SDL_Renderer *m_renderer = nullptr;
-        SDL_Event m_events;
-
-        SDL_Texture *m_texture = nullptr; // 用于显示光线追踪图像的 SDL 纹理
-
-        // Singleton pattern
-        static WindowsApp::ptr m_instance;
+    // Singleton pattern
+    static WindowsApp::ptr m_instance;
 };
 
 #endif
