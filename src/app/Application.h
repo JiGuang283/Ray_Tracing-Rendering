@@ -29,7 +29,7 @@ struct UIState {
     float focus_dist = 10.0f; // 对焦距离
     bool restart_render = true; // 是否重新渲染
     std::atomic<bool> is_rendering = {false}; // 是否正在渲染
-    bool is_paused = false; // 是否暂停
+    std::atomic<bool> is_paused    = {false};  // 是否暂停
     float last_fps = 0.0f; // 上一帧的帧率
     float last_ms = 0.0f; // 上一帧的毫秒数
     int image_width = 400; // 图片宽度
@@ -87,6 +87,8 @@ private:
     std::thread render_thread_; // 渲染线程
     std::vector<unsigned char> image_data_; // 图片数据
     int width_ = 0, height_ = 0; // 窗口宽高
+
+    std::atomic<bool> join_pending_ = {false};
 
     std::deque<std::string> logs_; // 日志队列
     std::mutex log_mutex_; // 日志锁

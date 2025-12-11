@@ -61,6 +61,12 @@ void Application::run() {
     while (!win_app_->shouldWindowClose()) { // Render loop
         win_app_->processEvent();
 
+        if (join_pending_ && !renderer_.is_rendering()) {
+            if (render_thread_.joinable()) render_thread_.join();
+            join_pending_ = false;
+            ui_.is_rendering = false;
+        }
+
         if (ui_.restart_render && !ui_.is_rendering && !ui_.is_paused) {
             start_render(false);
             ui_.restart_render = false;
@@ -96,29 +102,23 @@ void Application::log(const std::string& msg) {
 }
 
 void Application::stop_render() {
-    if (render_thread_.joinable()) {
+    if (ui_.is_rendering) {
         renderer_.cancel();
-        render_thread_.join();
+        join_pending_ = true;          // 标记待 join
     }
     ui_.is_rendering = false;
     ui_.is_paused = false;
-
     ui_.need_display_update = true;
-
     log("Render stopped by user.");
 }
 
 void Application::pause_render() {
     if (ui_.is_rendering) {
         renderer_.cancel();
-        if (render_thread_.joinable()) {
-            render_thread_.join();
-        }
+        join_pending_ = true;          // 标记待 join
         ui_.is_rendering = false;
         ui_.is_paused = true;
-
         ui_.need_display_update = true;
-
         log("Render paused.");
     }
 }
@@ -126,8 +126,11 @@ void Application::pause_render() {
 void Application::start_render(bool resume) {
     if (render_thread_.joinable()) {
         renderer_.cancel();
-        render_thread_.join();
+        render_thread_.join(); // 这里是主动重启，立即 join 以确保干净状态
     }
+    join_pending_ = false;
+    ui_.is_rendering = true;
+    ui_.is_paused = false;
 
     if (resume) {
         if (!render_buffer_ || render_buffer_->get_width() != ui_.image_width) {
