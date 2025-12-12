@@ -20,6 +20,35 @@ namespace RenderConfig {
     constexpr double kShutterClose = 1.0; // 默认 shutter 关闭时间
 } // namespace RenderConfig
 
+namespace AppConstants {
+    constexpr int kMaxLogs = 100;
+    constexpr double kTextureUpdateInterval = 1.0 / 30.0;
+    constexpr double kPerformanceReportInterval = 1.0;
+    constexpr int kMaxFrameHistory = 60;
+    constexpr int kMinImageWidth = 64;
+    constexpr int kLogHistoryMaxCount = 100;
+    constexpr int kDefaultLutSize = 4096;
+
+    const char* kSceneNames[] = {
+        "random_scene", "example_light_scene", "two_spheres", "pbr_test_scene",
+        "two_perlin_spheres", "Earth", "Simple Light", "Cornell Box",
+        "Cornell Smoke", "Final Scene", "pbr_test_scene", "pbr_spheres_grid",
+        "pbr_materials_gallery", "pbr_reference_scene", "point_light_scene", "mis_demo"
+    };
+    const char* kIntegratorNames[] = {
+        "Path Integrator", "RR Path Integrator", "PBR Path Integrator", "MIS Path Integrator"
+    };
+    const char* kToneMapTypes[] = {
+        "None (Clamp)", "Reinhard", "ACES (Filmic)"
+    };
+    const char* kPostProcessTypes[] = {
+        "Simple Denoise (Blur)", "Sharpen", "Grayscale", "Invert Colors", "Median (Despeckle)"
+    };
+    const char* kSaveFormats[] = {
+        "PPM (Raw)", "PNG (Lossless)", "BMP (Bitmap)", "JPG (Compressed)"
+    };
+}
+
 
 Application::Application(int initial_scene_id) {
     ui_.scene_id = initial_scene_id;
@@ -128,7 +157,7 @@ void Application::run() {
 void Application::log(const std::string& msg) {
     std::lock_guard<std::mutex> lock(log_mutex_);
     logs_.push_back(msg);
-    if (logs_.size() > 100) logs_.pop_front();
+    if (logs_.size() > AppConstants::kLogHistoryMaxCount) logs_.pop_front();
 }
 
 void Application::stop_render() {
@@ -241,6 +270,17 @@ void Application::save_image() const {
     ImageOps::save_image_to_disk(image_data_, width_, height_, ui_.save_format_idx);
 }
 
+vec3 Application::apply_tone_mapping(const vec3& color) const {
+    switch (ui_.tone_mapping_type) {
+    case 1: // Reinhard
+        return color / (color + vec3(1.0, 1.0, 1.0));
+    case 2: // ACES
+        return ImageOps::ACESFilm(color);
+    default:
+        return color; // NONE
+    }
+}
+
 void Application::update_display_from_buffer() {
     if (!render_buffer_ || render_buffer_->get_width() != width_ || render_buffer_->get_height() != height_) {
         return;
@@ -255,19 +295,7 @@ void Application::update_display_from_buffer() {
         return static_cast<size_t>(y) * width_ + x;
     };
 
-    // tone map helper
-    auto tone_map = [&](vec3 c) {
-        switch (ui_.tone_mapping_type) {
-        case 1: // Reinhard
-            return c / (c + vec3(1.0, 1.0, 1.0));
-        case 2: // ACES
-            return ImageOps::ACESFilm(c);
-        default:
-            return c; // NONE
-        }
-    };
-
-    int nthreads = std::max(1u, std::thread::hardware_concurrency());
+    int nthreads = std::max(1u, std::thread::hardware_concurrency() - 1);  //  最大核心数-1防止与ui线程竞争导致Ui卡顿
     int rows_per_task = (height_ + nthreads - 1) / nthreads;
 
     auto process_rows = [&](int y0, int y1) {
@@ -289,7 +317,7 @@ void Application::update_display_from_buffer() {
 
                         // gamma LUT gather：idx = x * (lut_size-1)
                         const int lut_size = static_cast<int>(ImageOps::gamma_lut_size());
-                        const __m256 scale = _mm256_set1_ps(float(lut_size - 1));
+                        const __m256 scale = _mm256_set1_ps(static_cast<float>(lut_size - 1));
                         __m256 fr = _mm256_mul_ps(vr, scale);
                         __m256 fg = _mm256_mul_ps(vg, scale);
                         __m256 fb = _mm256_mul_ps(vb, scale);
@@ -319,7 +347,7 @@ void Application::update_display_from_buffer() {
                 for (int k = 0; k < 8; ++k) {
                     size_t idx = idx0 + k;
                     vec3 c(rbuf[idx], gbuf[idx], bbuf[idx]);
-                    c = tone_map(c);
+                    c = apply_tone_mapping(c);
                     r[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.x()), 0.0f, 1.0f));
                     g[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.y()), 0.0f, 1.0f));
                     b[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.z()), 0.0f, 1.0f));
@@ -447,17 +475,10 @@ void Application::render_ui() {
 
     ImGui::Separator();
 
-    const char *scene_names[] = {
-        "random_scene", "example_light_scene",
-        "two_spheres", "pbr_test_scene", "two_perlin_spheres", "Earth",
-        "Simple Light", "Cornell Box", "Cornell Smoke",
-        "Final Scene", "pbr_test_scene", "pbr_spheres_grid", "pbr_materials_gallery",
-        "pbr_reference_scene", "point_light_scene", "mis_demo"
-    };
     ImGui::Text("1. Select Scene");
 
     int old_scene = ui_.scene_id;
-    if (ImGui::Combo("##Scene", &ui_.scene_id, scene_names, IM_ARRAYSIZE(scene_names))) {
+    if (ImGui::Combo("##Scene", &ui_.scene_id, AppConstants::kSceneNames, IM_ARRAYSIZE(AppConstants::kSceneNames))) {
         if (ui_.scene_id != old_scene) {
             SceneConfig cfg = select_scene(ui_.scene_id);
             ui_.vfov = cfg.vfov;
@@ -478,7 +499,9 @@ void Application::render_ui() {
     ImGui::Text("3. Resolution Settings");
 
     ImGui::InputInt("Width (px)", &ui_.image_width, 10, 100);
-    if (ui_.image_width < 64) ui_.image_width = 64;
+    if (ui_.image_width < AppConstants::kMinImageWidth){
+        ui_.image_width = AppConstants::kMinImageWidth; // 使用常量
+    }
 
     ImGui::Text("Aspect Ratio:"); ImGui::SameLine();
     ImGui::PushItemWidth(50); ImGui::InputInt("##W", &ui_.aspect_w, 0, 0); ImGui::PopItemWidth();
@@ -499,21 +522,19 @@ void Application::render_ui() {
     if (ui_.samples_per_pixel < 1) ui_.samples_per_pixel = 1;
     ImGui::TextDisabled("(Higher SPP = Less Noise, More Time)");
 
-    const char* integrator_names[] = { "Path Integrator", "RR Path Integrator", "PBR Path Integrator", "MIS Path Integrator" };
-    ImGui::Combo("Integrator", &ui_.integrator_idx, integrator_names, IM_ARRAYSIZE(integrator_names));
-
+    ImGui::Combo("Integrator", &ui_.integrator_idx, AppConstants::kIntegratorNames, IM_ARRAYSIZE(AppConstants::kIntegratorNames));
     ImGui::Separator();
     ImGui::Text("5. Post Processing");
 
     // Tone Mapping Control
-    const char* tm_types[] = { "None (Clamp)", "Reinhard", "ACES (Filmic)" };
-    if (ImGui::Combo("Tone Mapping", &ui_.tone_mapping_type, tm_types, IM_ARRAYSIZE(tm_types))) {
+    if (ImGui::Combo("Tone Mapping", &ui_.tone_mapping_type, AppConstants::kToneMapTypes, IM_ARRAYSIZE(AppConstants::kToneMapTypes))) {
         ui_.need_display_update = true;
     }
 
     if (ImGui::SliderFloat("Gamma", &ui_.gamma, 0.1f, 5.0f)) {
         ui_.need_display_update = true;
-        ImageOps::build_gamma_lut(ui_.gamma, 4096); // 新增：重建 LUT
+        // 使用常量
+        ImageOps::build_gamma_lut(ui_.gamma, AppConstants::kDefaultLutSize);
     }
 
     if (ImGui::Checkbox("Enable Filters", &ui_.enable_post_process)) {
@@ -521,8 +542,7 @@ void Application::render_ui() {
     }
 
     if (ui_.enable_post_process) {
-        const char* pp_types[] = { "Simple Denoise (Blur)", "Sharpen", "Grayscale", "Invert Colors", "Median (Despeckle)" };
-        if (ImGui::Combo("Filter Type", &ui_.post_process_type, pp_types, IM_ARRAYSIZE(pp_types))) {
+        if (ImGui::Combo("Filter Type", &ui_.post_process_type, AppConstants::kPostProcessTypes, IM_ARRAYSIZE(AppConstants::kPostProcessTypes))) {
             ui_.need_display_update = true;
         }
     }
@@ -553,9 +573,7 @@ void Application::render_ui() {
 
     ImGui::Separator();
 
-    const char* formats[] = { "PPM (Raw)", "PNG (Lossless)", "BMP (Bitmap)", "JPG (Compressed)" };
-    ImGui::Combo("Format", &ui_.save_format_idx, formats, IM_ARRAYSIZE(formats));
-
+    ImGui::Combo("Format", &ui_.save_format_idx, AppConstants::kSaveFormats, IM_ARRAYSIZE(AppConstants::kSaveFormats));
     if (ImGui::Button("Save Image", ImVec2(-1.0f, 30.0f))) {
         save_image();
     }
