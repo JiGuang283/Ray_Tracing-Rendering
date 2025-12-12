@@ -166,4 +166,12 @@ namespace ImageOps {
         float t = fidx - idx;
         return gamma_lut_[idx] * (1.0f - t) + gamma_lut_[idx + 1] * t;
     }
+
+    const float* gamma_lut_data() {
+        return gamma_lut_.empty() ? nullptr : gamma_lut_.data();
+    }
+
+    int gamma_lut_size() {
+        return static_cast<int>(gamma_lut_.size());
+    }
 }

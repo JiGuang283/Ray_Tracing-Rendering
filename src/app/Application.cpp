@@ -247,7 +247,13 @@ void Application::update_display_from_buffer() {
     }
     win_app_->markCpuStart(); // CPU 阶段开始
 
-    const auto &pixels = render_buffer_->get_data();
+    const auto &rbuf = render_buffer_->r();
+    const auto &gbuf = render_buffer_->g();
+    const auto &bbuf = render_buffer_->b();
+
+    auto idx_pix = [&](int x, int y) {
+        return static_cast<size_t>(y) * width_ + x;
+    };
 
     // tone map helper
     auto tone_map = [&](vec3 c) {
@@ -268,16 +274,55 @@ void Application::update_display_from_buffer() {
         for (int j = y0; j < y1; ++j) {
             int i = 0;
             for (; i + 7 < width_; i += 8) {
+                size_t idx0 = idx_pix(i, height_ - 1 - j); // 翻转
+                if (ui_.tone_mapping_type == 0) {
+                    #if defined(__AVX2__)
+                        __m256 vr = _mm256_load_ps(&rbuf[idx0]);
+                        __m256 vg = _mm256_load_ps(&gbuf[idx0]);
+                        __m256 vb = _mm256_load_ps(&bbuf[idx0]);
+
+                        __m256 v0 = _mm256_set1_ps(0.0f);
+                        __m256 v1 = _mm256_set1_ps(1.0f);
+                        vr = _mm256_min_ps(v1, _mm256_max_ps(v0, vr));
+                        vg = _mm256_min_ps(v1, _mm256_max_ps(v0, vg));
+                        vb = _mm256_min_ps(v1, _mm256_max_ps(v0, vb));
+
+                        // gamma LUT gather：idx = x * (lut_size-1)
+                        const int lut_size = static_cast<int>(ImageOps::gamma_lut_size());
+                        const __m256 scale = _mm256_set1_ps(float(lut_size - 1));
+                        __m256 fr = _mm256_mul_ps(vr, scale);
+                        __m256 fg = _mm256_mul_ps(vg, scale);
+                        __m256 fb = _mm256_mul_ps(vb, scale);
+
+                        __m256i ir = _mm256_cvtps_epi32(fr);
+                        __m256i ig = _mm256_cvtps_epi32(fg);
+                        __m256i ib = _mm256_cvtps_epi32(fb);
+
+                        const float* lutp = ImageOps::gamma_lut_data();
+                        vr = _mm256_i32gather_ps(lutp, ir, 4);
+                        vg = _mm256_i32gather_ps(lutp, ig, 4);
+                        vb = _mm256_i32gather_ps(lutp, ib, 4);
+
+                        // 写出 8 像素
+                        alignas(32) float r[8], g[8], b[8];
+                        _mm256_store_ps(r, vr);
+                        _mm256_store_ps(g, vg);
+                        _mm256_store_ps(b, vb);
+                        uint8_t* dst = &image_data_[(j * width_ + i) * 4];
+                        store_rgba8_avx2(r, g, b, dst);
+                        continue;
+                    #endif
+                }
+
+                // 原标量路径（含 tone_map / LUT 插值）
                 float r[8], g[8], b[8];
                 for (int k = 0; k < 8; ++k) {
-                    vec3 c = pixels[height_ - 1 - j][i + k];
+                    size_t idx = idx0 + k;
+                    vec3 c(rbuf[idx], gbuf[idx], bbuf[idx]);
                     c = tone_map(c);
-                    float rr = clamp_compat(static_cast<float>(c.x()), 0.0f, 1.0f);
-                    float gg = clamp_compat(static_cast<float>(c.y()), 0.0f, 1.0f);
-                    float bb = clamp_compat(static_cast<float>(c.z()), 0.0f, 1.0f);
-                    r[k] = ImageOps::gamma_lookup(rr);
-                    g[k] = ImageOps::gamma_lookup(gg);
-                    b[k] = ImageOps::gamma_lookup(bb);
+                    r[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.x()), 0.0f, 1.0f));
+                    g[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.y()), 0.0f, 1.0f));
+                    b[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.z()), 0.0f, 1.0f));
                 }
                 uint8_t* dst = &image_data_[(j * width_ + i) * 4];
                 #if defined(__AVX2__)
@@ -287,18 +332,6 @@ void Application::update_display_from_buffer() {
                 #else
                     store_rgba8_scalar(r, g, b, dst);
                 #endif
-            }
-            for (; i < width_; ++i) {
-                vec3 c = pixels[height_ - 1 - j][i];
-                c = tone_map(c);
-                float r1 = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.x()), 0.0f, 1.0f));
-                float g1 = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.y()), 0.0f, 1.0f));
-                float b1 = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.z()), 0.0f, 1.0f));
-                int idx = (j * width_ + i) * 4;
-                image_data_[idx + 0] = static_cast<unsigned char>(r1 * 255.0f);
-                image_data_[idx + 1] = static_cast<unsigned char>(g1 * 255.0f);
-                image_data_[idx + 2] = static_cast<unsigned char>(b1 * 255.0f);
-                image_data_[idx + 3] = 255;
             }
         }
     };

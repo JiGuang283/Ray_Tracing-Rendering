@@ -29,6 +29,9 @@ namespace ImageOps {
     void build_gamma_lut(float gamma, int lut_size = 4096);
 
     float gamma_lookup(float x);
+
+    const float* gamma_lut_data();
+    int gamma_lut_size();
 }
 
 

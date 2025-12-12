@@ -10,12 +10,19 @@ set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 
 project(CGAssignment4)
 
-# C++ 11 is required
+# C++ 14 is required
 set(CMAKE_CXX_STANDARD 14)
 
 # SIMD / 架构优化开关
 option(ENABLE_AVX2 "Enable AVX2 optimizations" ON)
 option(ENABLE_MARCH_NATIVE "Enable -march=native (host-dependent)" OFF)
+
+# 基础优化
+if (MSVC)
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /fp:fast")
+else()
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -ffast-math")
+endif()
 
 # 检测并添加编译选项
 if(ENABLE_AVX2)
