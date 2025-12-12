@@ -6,109 +6,118 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "WindowsApp.h"
+#include "RenderManager.h"
+#include "ImageProcessor.h"
+#include "PerformanceMonitor.h"
 #include "path_integrator.h"
 #include "pbr_path_integrator.h"
 #include "rr_path_integrator.h"
 #include "mis_path_integrator.h"
-#include "renderer.h"
-#include "render_buffer.h"
-
+#include "image_ops.h"
 
 // UI 状态
 struct UIState {
+    // 渲染配置
+    int scene_id = 0;
+    int samples_per_pixel = 100;
+    int max_depth = 50;
+    int integrator_idx = 0;
 
-    // --- 渲染配置 ---
-    int scene_id = 0;                  // 场景ID
-    int samples_per_pixel = 100;       // 采样数 (SPP)
-    int max_depth = 50;                // 最大光线弹射深度
-    int integrator_idx = 0;            // 0: Path, 1: RR, 2: PBR 3: MIS
+    // 相机参数
+    float vfov = 20.0f;
+    float aperture = 0.0f;
+    float focus_dist = 10.0f;
 
-    // --- 摄像机/场景参数 (可重载的场景默认值) ---
-    float vfov = 20.0f;                // 垂直视场角
-    float aperture = 0.0f;             // 光圈大小 (景深)
-    float focus_dist = 10.0f;          // 对焦距离
-
-    // --- 渲染状态与控制 ---
-    std::atomic<bool> is_rendering = {false}; // 是否正在渲染
-    std::atomic<bool> is_paused    = {false};  // 是否暂停
-    bool restart_render = true;                // 是否重新渲染
-
-    // --- 分辨率与输出 ---
-    int image_width = 400;             // 图片宽度
+    // 分辨率
+    int image_width = 400;
     int aspect_w = 16;
     int aspect_h = 9;
-    int save_format_idx = 1;           // 0: PPM, 1: PNG, 2: BMP, 3: JPG
 
-    // --- 计时/性能 ---
-    double render_start_time = 0.0;    // 渲染开始时间
-    float last_fps = 0.0f;             // 上一帧的帧率
-    float last_ms = 0.0f;              // 上一帧的毫秒数
-    float log_height = 150.0f;         // 日志区域高度
-
-    // --- 图像后处理 ---
-    bool need_display_update = true;   // 指示显示是否需要更新 (用于Gamma/ToneMap/PostProcess调整)
-    bool enable_post_process = false;
-    int post_process_type = 0;         // 0: Blur, 1: Sharpen, ...
-    int tone_mapping_type = 0;         // 0: None, 1: Reinhard, 2: ACES
+    // 图像处理
+    int tone_mapping_type = 0;
     float gamma = 2.0f;
+    bool enable_post_process = false;
+    int post_process_type = 0;
 
-    // --- 积分器共享指针 ---
-    std::shared_ptr<Integrator> integrator = std::make_shared<PathIntegrator>();
-    std::shared_ptr<Integrator> rrIntegrator = std::make_shared<RRPathInterator>();
-    std::shared_ptr<Integrator> pbrIntegrator = std::make_shared<PBRPathIntegrator>();
-    std::shared_ptr<Integrator> misIntegrator = std::make_shared<MISPathIntegrator>();
+    // 状态标志
+    bool restart_render = false;
+    bool need_display_update = true;
 
+    // 计时
+    double render_start_time = 0.0;
+    float last_fps = 0.0f;
+    float last_ms = 0.0f;
+    float log_height = 150.0f;
+
+    // 保存
+    int save_format_idx = 1;
+
+    // 获取当前积分器
+    std::shared_ptr<Integrator> get_current_integrator() const {
+        switch (integrator_idx) {
+            case 1: return std::make_shared<RRPathInterator>();
+            case 2: return std::make_shared<PBRPathIntegrator>();
+            case 3: return std::make_shared<MISPathIntegrator>();
+            default: return std::make_shared<PathIntegrator>();
+        }
+    }
 };
 
 class Application {
 
     public:
-        Application(int initial_scene_id);
-        ~Application();
+        explicit Application(int initial_scene_id = 0);
+        ~Application() = default;
 
         bool init();
         void run();
 
     private:
+        // UI 相关
+        void render_ui();
+        void render_control_panel();
+        void render_log_panel();
 
-        void start_render(bool resume = false); // 启动渲染 (支持继续)
-        void stop_render(); // 停止渲染
-        void pause_render(); // 暂停渲染
+        // 事件处理
+        void handle_events();
+        void handle_render_completion(bool success);
 
-        void save_image() const;   // 保存图片
-        void update_display_from_buffer(); // 从缓冲区更新显示
-        void apply_post_processing(); // 应用后处理
+        // 渲染控制
+        void start_render();
+        void pause_render();
+        void resume_render();
+        void stop_render();
 
-        vec3 apply_tone_mapping(const vec3& color) const;
+        // 显示更新
+        void update_display();
+        bool should_update_display() const;
 
-        void render_ui(); // 渲染UI
-        void log(const std::string& msg); // 记录日志
+        // 工具函数
+        void save_image();
+        void log(const std::string& msg);
+        RenderConfig create_render_config();
 
-    private:
+        // 核心组件
+        WindowsApp::ptr window_;
+        RenderManager render_manager_;
+        ImageProcessor image_processor_;
+        PerformanceMonitor perf_monitor_;
 
-        // --- 状态/配置 ---
-        UIState ui_;                             // UI状态
+        // 状态
+        UIState ui_state_;
+        std::vector<unsigned char> image_data_;
+        int width_ = 0;
+        int height_ = 0;
 
-        // --- 核心组件 ---
-        WindowsApp::ptr win_app_;                // 窗口句柄
-        Renderer renderer_;                      // 渲染器 (执行渲染任务)
-        std::shared_ptr<RenderBuffer> render_buffer_; // 渲染缓冲区
+        // 日志
+        std::deque<std::string> logs_;
+        mutable std::mutex log_mutex_;
 
-        // --- 渲染线程控制 ---
-        std::thread render_thread_;              // 渲染线程
-        std::atomic<bool> join_pending_ = {false}; // 线程是否等待 join
-
-        // --- 图像数据 ---
-        std::vector<unsigned char> image_data_;  // 最终的 RGBA8 位图片数据
-        int width_ = 0, height_ = 0;             // 当前渲染的宽高
-
-        // --- 日志系统 ---
-        std::deque<std::string> logs_;           // 日志队列
-        std::mutex log_mutex_;                   // 日志锁
+        // 计时
+        double last_texture_update_ = 0.0;
 };
 
-#endif //APPLICATION_H
+#endif // APPLICATION_H
