@@ -36,11 +36,22 @@ namespace ImageOps {
                 filename += ".ppm";
                 std::ofstream ofs(filename);
                 ofs << "P3\n" << width << " " << height << "\n255\n";
+                // 缓存 buffer 输出以减少 I/O 次数
+                std::string buffer;
+                buffer.reserve(width * height * 12);
+                char temp[16];
                 for (int i = 0; i < width * height; ++i) {
-                    ofs << static_cast<int>(image_data[i * 4 + 0]) << " "
-                        << static_cast<int>(image_data[i * 4 + 1]) << " "
-                        << static_cast<int>(image_data[i * 4 + 2]) << "\n";
+                    int len = sprintf(temp, "%d %d %d\n",
+                                            image_data[i * 4 + 0],
+                                            image_data[i * 4 + 1],
+                                            image_data[i * 4 + 2]);
+                    buffer.append(temp, len);
+                    if (buffer.size() > 65536) { // 分块写入
+                        ofs << buffer;
+                        buffer.clear();
+                    }
                 }
+                ofs << buffer;
                 ofs.close();
                 break;
             }
@@ -64,82 +75,159 @@ namespace ImageOps {
     }
 
     void apply_post_processing(std::vector<unsigned char>& image_data, int width, int height, int type) {
-        if (image_data.empty()) return;
+        if (image_data.empty()) {
+            return;
+        }
 
-        auto get_idx = [&](int x, int y) {
+        const int stride = width * 4;
+        const int total_pixels = width * height;
+
+        //仅用于处理边界情况 (Slow Path)
+        auto get_idx_safe = [&](int x, int y) {
             x = std::max(0, std::min(x, width - 1));
             y = std::max(0, std::min(y, height - 1));
             return (y * width + x) * 4;
         };
 
         if (type == 0 || type == 1) { // Blur 或 Sharpen
-            std::vector<unsigned char> temp_data = image_data;
-            const int blur_kernel[3][3]   = { {1,1,1},{1,1,1},{1,1,1} };
-            const int sharp_kernel[3][3]  = { {0,-1,0},{-1,5,-1},{0,-1,0} };
-            const int (*kernel)[3] = (type == 0) ? blur_kernel : sharp_kernel;
-            const int weight_sum = (type == 0) ? 9 : 1;
+            // 只有卷积操作需要拷贝副本
+            std::vector<unsigned char> source = image_data;
+            const unsigned char* src_ptr = source.data();
+            unsigned char* dst_ptr = image_data.data();
 
-            #pragma omp parallel for collapse(2)
+            const int blur_kernel[9] = {1,1,1, 1,1,1, 1,1,1};
+            const int sharp_kernel[9] = {0,-1,0, -1,5,-1, 0,-1,0};
+            const int* kernel = (type == 0) ? blur_kernel : sharp_kernel;
+
+            // 预计算除法的倒数，转为乘法
+            const float weight_inv = (type == 0) ? (1.0f / 9.0f) : 1.0f;
+
+            // 卷积偏移量表 (3x3)
+            const int offsets[9] = {
+                -stride - 4, -stride, -stride + 4,
+                -4,           0,       4,
+                stride - 4,  stride,  stride + 4
+            };
+
+            #pragma omp parallel for schedule(static)
             for (int y = 0; y < height; ++y) {
+                // 指向当前行起始
+                unsigned char* row_dst = dst_ptr + y * stride;
+                const unsigned char* row_src = src_ptr + y * stride;
+
                 for (int x = 0; x < width; ++x) {
                     int r = 0, g = 0, b = 0;
-                    for (int ky = -1; ky <= 1; ++ky) {
-                        for (int kx = -1; kx <= 1; ++kx) {
-                            int idx = get_idx(x + kx, y + ky);
-                            int w = kernel[ky + 1][kx + 1];
-                            r += temp_data[idx + 0] * w;
-                            g += temp_data[idx + 1] * w;
-                            b += temp_data[idx + 2] * w;
+
+                    // 快速路径：图像中心区域（不涉及边界检查）
+                    if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+                        const unsigned char* p = row_src + x * 4;
+                        // 手动展开循环或利用编译器向量化
+                        for (int k = 0; k < 9; ++k) {
+                            const int w = kernel[k];
+                            // 只有当权重不为0时才计算 (Sharpen中有0)
+                            if (w != 0) {
+                                const unsigned char* neighbor = p + offsets[k];
+                                r += neighbor[0] * w;
+                                g += neighbor[1] * w;
+                                b += neighbor[2] * w;
+                            }
+                        }
+                    }else {
+                        // 慢速路径：图像边缘
+                        int k = 0;
+                        for (int ky = -1; ky <= 1; ++ky) {
+                            for (int kx = -1; kx <= 1; ++kx) {
+                                int idx = get_idx_safe(x + kx, y + ky);
+                                int w = kernel[k++];
+                                if (w != 0) {
+                                    r += source[idx + 0] * w;
+                                    g += source[idx + 1] * w;
+                                    b += source[idx + 2] * w;
+                                }
+                            }
                         }
                     }
-                    int cur = (y * width + x) * 4;
-                    image_data[cur + 0] = static_cast<unsigned char>(clamp_compat(r / weight_sum, 0, 255));
-                    image_data[cur + 1] = static_cast<unsigned char>(clamp_compat(g / weight_sum, 0, 255));
-                    image_data[cur + 2] = static_cast<unsigned char>(clamp_compat(b / weight_sum, 0, 255));
+                    // 写入结果
+                    int dst_idx = x * 4;
+                    // 使用浮点乘法代替整数除法
+                    row_dst[dst_idx + 0] = static_cast<unsigned char>(clamp_compat(r * weight_inv, 0.0f, 255.0f));
+                    row_dst[dst_idx + 1] = static_cast<unsigned char>(clamp_compat(g * weight_inv, 0.0f, 255.0f));
+                    row_dst[dst_idx + 2] = static_cast<unsigned char>(clamp_compat(b * weight_inv, 0.0f, 255.0f));
+                    // Alpha 通道保持不变 (假设是 source 的 alpha)
+                    row_dst[dst_idx + 3] = row_src[x * 4 + 3];
                 }
             }
         } else if (type == 2) { // Grayscale
             #pragma omp parallel for
-            for (int i = 0; i < width * height; ++i) {
+            for (int i = 0; i < total_pixels; ++i) {
                 int idx = i * 4;
-                unsigned char gray = static_cast<unsigned char>(
-                    0.299f * image_data[idx] + 0.587f * image_data[idx + 1] + 0.114f * image_data[idx + 2]);
+                float gray_f = 0.299f * image_data[idx] + 0.587f * image_data[idx + 1] + 0.114f * image_data[idx + 2];
+                unsigned char gray = static_cast<unsigned char>(gray_f);
                 image_data[idx + 0] = gray;
                 image_data[idx + 1] = gray;
                 image_data[idx + 2] = gray;
             }
         } else if (type == 3) { // Invert
-            #pragma omp parallel for
-            for (int i = 0; i < width * height; ++i) {
+            #pragma omp parallel for schedule(static)
+            for (int i = 0; i < total_pixels; ++i) {
                 int idx = i * 4;
                 image_data[idx + 0] = 255 - image_data[idx + 0];
                 image_data[idx + 1] = 255 - image_data[idx + 1];
                 image_data[idx + 2] = 255 - image_data[idx + 2];
             }
         } else if (type == 4) { // Median
-            std::vector<unsigned char> temp_data = image_data;
-            #pragma omp parallel for collapse(2)
+            std::vector<unsigned char> source = image_data;
+            const unsigned char* src_ptr = source.data();
+            unsigned char* dst_ptr = image_data.data();
+
+            const int offsets[9] = {
+                -stride - 4, -stride, -stride + 4,
+                -4,           0,       4,
+                stride - 4,  stride,  stride + 4
+            };
+
+            #pragma omp parallel for schedule(static)
             for (int y = 0; y < height; ++y) {
+                // 预分配数组在循环外(线程局部)，但在 parallel 内部定义即可
+                unsigned char rs[9], gs[9], bs[9];
+
+                unsigned char* row_dst = dst_ptr + y * stride;
+                const unsigned char* row_src = src_ptr + y * stride;
                 for (int x = 0; x < width; ++x) {
-                    unsigned char rs[9], gs[9], bs[9];
-                    int t = 0;
-                    for (int ky = -1; ky <= 1; ++ky) {
-                        for (int kx = -1; kx <= 1; ++kx) {
-                            int idx = get_idx(x + kx, y + ky);
-                            rs[t] = temp_data[idx + 0];
-                            gs[t] = temp_data[idx + 1];
-                            bs[t] = temp_data[idx + 2];
-                            ++t;
+                    //快速路径
+                    if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+                        const unsigned char* p = row_src + x * 4;
+                        for(int k=0; k<9; ++k) {
+                            const unsigned char* neighbor = p + offsets[k];
+                            rs[k] = neighbor[0];
+                            gs[k] = neighbor[1];
+                            bs[k] = neighbor[2];
+                        }
+                    }else {
+                        // Slow Path
+                        int t = 0;
+                        for (int ky = -1; ky <= 1; ++ky) {
+                            for (int kx = -1; kx <= 1; ++kx) {
+                                int idx = get_idx_safe(x + kx, y + ky);
+                                rs[t] = source[idx + 0];
+                                gs[t] = source[idx + 1];
+                                bs[t] = source[idx + 2];
+                                ++t;
+                            }
                         }
                     }
-                    std::sort(rs, rs + 9);
-                    std::sort(gs, gs + 9);
-                    std::sort(bs, bs + 9);
+                    // 使用 nth_element 代替 sort
+                    // 我们只需要第 5 个元素 (index 4) 处于正确位置，不需要全排序
+                    // 这将复杂度从 O(N log N) 降低到 O(N)
+                    std::nth_element(rs, rs + 4, rs + 9);
+                    std::nth_element(gs, gs + 4, gs + 9);
+                    std::nth_element(bs, bs + 4, bs + 9);
 
-                    int cur = (y * width + x) * 4;
-                    image_data[cur + 0] = rs[4];
-                    image_data[cur + 1] = gs[4];
-                    image_data[cur + 2] = bs[4];
+                    int dst_idx = x * 4;
+                    row_dst[dst_idx + 0] = rs[4];
+                    row_dst[dst_idx + 1] = gs[4];
+                    row_dst[dst_idx + 2] = bs[4];
+                    row_dst[dst_idx + 3] = row_src[x * 4 + 3];
                 }
             }
         }
@@ -147,9 +235,13 @@ namespace ImageOps {
 
     void build_gamma_lut(float gamma, int lut_size) {
         const float safe_gamma = std::max(gamma, 1e-6f);
-        gamma_lut_.resize(lut_size + 1);
+        if (gamma_lut_.size() != (size_t)(lut_size + 1)) {
+            gamma_lut_.resize(lut_size + 1);
+        }
         gamma_lut_inv_size_ = 1.0f / lut_size;
         float inv_gamma = 1.0f / safe_gamma;
+
+        #pragma omp parallel for schedule(static)
         for (int i = 0; i <= lut_size; ++i) {
             float x = static_cast<float>(i) * gamma_lut_inv_size_;
             gamma_lut_[i] = std::pow(x, inv_gamma);
@@ -157,13 +249,17 @@ namespace ImageOps {
     }
 
     float gamma_lookup(float x) {
-        if (gamma_lut_.empty()) return clamp_compat(x, 0.0f, 1.0f);
-        x = clamp_compat(x, 0.0f, 1.0f);
+
+        if (gamma_lut_.empty()) {
+            return clamp_compat(x, 0.0f, 1.0f);
+        }
+        x = (x < 0.0f) ? 0.0f : ((x > 1.0f) ? 1.0f : x);
         const int n = static_cast<int>(gamma_lut_.size());
         float fidx = x * (n - 1);
         int idx = static_cast<int>(fidx);
-        if (idx >= n - 1) return gamma_lut_.back();
+        // 只有极少数浮点误差可能导致越界，保留一个简单的 fast check
         float t = fidx - idx;
+        // 直接访问
         return gamma_lut_[idx] * (1.0f - t) + gamma_lut_[idx + 1] * t;
     }
 
