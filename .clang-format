@@ -1,0 +1,27 @@
+---
+Language:        Cpp
+# 1. 继承基础风格
+BasedOnStyle:    LLVM
+
+# 2. 覆盖缩进设置 (JSON中的 IndentWidth: 4)
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+
+# 3. 括号换行设置 (JSON中的 BraceWrapping)
+# 这里的 False/Never 意味着大括号不换行 (K&R风格)
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction:   false
+  AfterClass:      false
+  AfterControlStatement: Never
+  AfterNamespace:  false
+  BeforeElse:      false
+
+# 4. 短函数处理 (JSON中的 AllowShortFunctionsOnASingleLine: None)
+# 禁止 int f() { return 0; } 写在一行，必须换行
+AllowShortFunctionsOnASingleLine: None
+
+# 5. 补充设置 (LLVM 默认是指针靠右，符合你的习惯，这里显式写出来更安全)
+PointerAlignment: Right
+---
