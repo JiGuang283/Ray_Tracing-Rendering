@@ -159,6 +159,34 @@ void Application::update_display() {
 
     window_->markCpuStart();
 
+    // 1. 获取当前 UI 设置的配置
+    ImageProcessConfig active_config = image_processor_.get_config();
+
+    // 2. 检查当前渲染状态
+    bool is_rendering = render_manager_.is_rendering();
+
+    // 3. 智能覆盖配置：
+    // 如果正在渲染中 (Rendering)，强制关闭后处理 (Filter)，无论 UI 是否勾选。
+    // 只有在 空闲 (Idle) 或 暂停 (Paused) 状态下，才允许应用 Filter。
+    if (is_rendering) {
+        if (active_config.enable_post_process) {
+            // 临时关闭后处理，保证渲染性能
+            active_config.enable_post_process = false;
+            // 更新 ImageProcessor 使用这个临时配置
+            image_processor_.update_config(active_config);
+        }
+    } else {
+        // 如果不在渲染（已完成或暂停），确保配置与 UI 状态一致
+        // 这里需要重新从 ui_state_ 读取，防止之前被覆盖
+        ImageProcessConfig ui_cfg;
+        ui_cfg.gamma = ui_state_.gamma;
+        ui_cfg.tone_mapping_type = ui_state_.tone_mapping_type;
+        ui_cfg.enable_post_process = ui_state_.enable_post_process; // UI 勾选状态
+        ui_cfg.post_process_type = ui_state_.post_process_type;
+
+        image_processor_.update_config(ui_cfg);
+    }
+
     image_processor_.process(*buffer, image_data_, width_, height_);
 
     window_->markCpuEnd();
