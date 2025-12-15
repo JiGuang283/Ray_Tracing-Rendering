@@ -109,6 +109,19 @@ mesh::load_from_obj(const std::string &filename, shared_ptr<material> mat,
                             attrib.normals[n_base + 2]);
             };
 
+            auto fetch_texcoord = [&](const tinyobj::index_t &idx, bool &valid) {
+                if (idx.texcoord_index < 0 ||
+                    attrib.texcoords.size() <=
+                        static_cast<size_t>(2 * idx.texcoord_index + 1)) {
+                    valid = false;
+                    return vec2(0, 0);
+                }
+                valid = true;
+                size_t t_base = static_cast<size_t>(2 * idx.texcoord_index);
+                return vec2(attrib.texcoords[t_base + 0],
+                            attrib.texcoords[t_base + 1]);
+            };
+
             point3 p0 = fetch_vertex(idx0);
             point3 p1 = fetch_vertex(idx1);
             point3 p2 = fetch_vertex(idx2);
@@ -117,13 +130,21 @@ mesh::load_from_obj(const std::string &filename, shared_ptr<material> mat,
             vec3 n1 = fetch_normal(idx1);
             vec3 n2 = fetch_normal(idx2);
 
+            bool uv0_valid = false, uv1_valid = false, uv2_valid = false;
+            vec2 uv0 = fetch_texcoord(idx0, uv0_valid);
+            vec2 uv1 = fetch_texcoord(idx1, uv1_valid);
+            vec2 uv2 = fetch_texcoord(idx2, uv2_valid);
+
+            bool has_uvs = uv0_valid && uv1_valid && uv2_valid;
+
             if (n0.length_squared() > 0 && n1.length_squared() > 0 &&
                 n2.length_squared() > 0) {
-                faces.push_back(
-                    make_shared<triangle>(p0, p1, p2, unit_vector(n0),
-                                          unit_vector(n1), unit_vector(n2), mat));
+                faces.push_back(make_shared<triangle>(p0, p1, p2, unit_vector(n0),
+                                                      unit_vector(n1), unit_vector(n2),
+                                                      mat, uv0, uv1, uv2, has_uvs));
             } else {
-                faces.push_back(make_shared<triangle>(p0, p1, p2, mat));
+                faces.push_back(
+                    make_shared<triangle>(p0, p1, p2, mat, uv0, uv1, uv2, has_uvs));
             }
         }
     }
