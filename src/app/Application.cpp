@@ -15,13 +15,19 @@ namespace {
 
     const char* kSceneNames[] = {
         "random_scene", "example_light_scene", "two_spheres", "pbr_test_scene",
-        "two_perlin_spheres", "Earth", "Simple Light", "Cornell Box",
-        "Cornell Smoke", "Final Scene", "pbr_test_scene", "pbr_spheres_grid",
-        "pbr_materials_gallery", "pbr_reference_scene", "point_light_scene", "mis_demo"
+        "two_perlin_spheres", "earth", "simple_light", "cornell_box",
+        "cornell_smoke", "final_scene", "pbr_test_scene", "pbr_spheres_grid",
+        "pbr_materials_gallery", "pbr_reference_scene", "point_light_scene",
+        "directional_light_scene", "spot_light_scene", "environment_light_scene",
+        "quad_light_scene","cornell_box_nee", "final_scene_nee", "mis_demo",
+        "mis_comparison_scene", "hdr_demo_scene", "materials_showcase",
+        "cornell_box_extended", "interior_lighting_scene", "jewelry_display",
+        "glass_caustics_scene"
     };
 
     const char* kIntegratorNames[] = {
-        "Path Integrator", "RR Path Integrator", "PBR Path Integrator", "MIS Path Integrator"
+        "Path Integrator", "RR Path Integrator", "PBR Path Integrator",
+        "MIS Path Integrator", "Direct Light Integrator"
     };
 
     const char* kToneMapTypes[] = {
@@ -29,11 +35,13 @@ namespace {
     };
 
     const char* kPostProcessTypes[] = {
-        "Simple Denoise (Blur)", "Sharpen", "Grayscale", "Invert Colors", "Median (Despeckle)"
+        "Simple Denoise (Blur)", "Sharpen",
+        "Grayscale", "Invert Colors", "Median (Despeckle)"
     };
 
     const char* kSaveFormats[] = {
-        "PPM (Raw)", "PNG (Lossless)", "BMP (Bitmap)", "JPG (Compressed)"
+        "PPM (Raw)", "PNG (Lossless)",
+        "BMP (Bitmap)", "JPG (Compressed)"
     };
 }
 
