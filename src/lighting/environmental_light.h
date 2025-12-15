@@ -22,6 +22,11 @@ class EnvironmentLight : public Light {
             hdr_data = std::vector<float>(data, data + width * height * 3);
             stbi_image_free(data);
         }
+
+        // Check if it's a light probe (square aspect ratio)
+        if (width > 0 && height > 0 && width == height) {
+            is_light_probe = true;
+        }
     }
 
     virtual LightSample sample(const point3 &p, const vec2 &u) const override {
@@ -42,26 +47,66 @@ class EnvironmentLight : public Light {
             return color(1, 1, 1);
 
         vec3 unit_dir = unit_vector(r.direction());
+        double u, v;
 
-        // u = phi / 2pi, v = theta / pi
-        auto theta = acos(-unit_dir.y());
-        auto phi = atan2(-unit_dir.z(), unit_dir.x()) + pi;
+        if (is_light_probe) {
+            // Angular Map (Light Probe) Mapping
+            // Assuming probe looks down -Z axis (Forward)
+            // Center of image corresponds to -Z direction
+            // Edge of circle corresponds to +Z direction
+            double d =
+                sqrt(unit_dir.x() * unit_dir.x() + unit_dir.y() * unit_dir.y());
+            double r_coord =
+                (d > 0) ? (1.0 / pi) * acos(unit_dir.z()) / d : 0.0;
 
-        double u = phi / (2 * pi);
-        double v = theta / pi;
+            u = (unit_dir.x() * r_coord + 1.0) * 0.5;
+            v = (unit_dir.y() * r_coord + 1.0) * 0.5;
 
-        int i = static_cast<int>(u * width);
-        int j = static_cast<int>(v * height);
+            // Flip v to match image coordinate system (Top-Left origin)
+            v = 1.0 - v;
+        } else {
+            // Equirectangular Mapping
+            // u = phi / 2pi, v = theta / pi
+            // Fix: Use acos(y) instead of acos(-y) to map +Y (Up) to v=0 (Top)
+            auto theta = acos(unit_dir.y());
+            auto phi = atan2(-unit_dir.z(), unit_dir.x()) + pi;
 
-        // Clamp
-        if (i >= width)
-            i = width - 1;
-        if (j >= height)
-            j = height - 1;
+            u = phi / (2 * pi);
+            v = theta / pi;
+        }
+
+        // Bilinear Interpolation
+        double u_img = u * width - 0.5;
+        double v_img = v * height - 0.5;
+
+        int i0 = static_cast<int>(floor(u_img));
+        int j0 = static_cast<int>(floor(v_img));
+
+        double du = u_img - i0;
+        double dv = v_img - j0;
+
+        color c00 = get_pixel(i0, j0);
+        color c10 = get_pixel(i0 + 1, j0);
+        color c01 = get_pixel(i0, j0 + 1);
+        color c11 = get_pixel(i0 + 1, j0 + 1);
+
+        color c0 = c00 * (1 - du) + c10 * du;
+        color c1 = c01 * (1 - du) + c11 * du;
+
+        return c0 * (1 - dv) + c1 * dv;
+    }
+
+    color get_pixel(int i, int j) const {
+        // Wrap u
         if (i < 0)
-            i = 0;
+            i += width;
+        if (i >= width)
+            i -= width;
+        // Clamp v
         if (j < 0)
             j = 0;
+        if (j >= height)
+            j = height - 1;
 
         int index = 3 * (j * width + i);
         return color(hdr_data[index], hdr_data[index + 1], hdr_data[index + 2]);
@@ -83,6 +128,7 @@ class EnvironmentLight : public Light {
   private:
     std::vector<float> hdr_data;
     int width, height;
+    bool is_light_probe = false;
 };
 
 #endif

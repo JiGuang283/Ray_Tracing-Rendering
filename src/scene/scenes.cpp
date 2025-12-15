@@ -625,6 +625,32 @@ shared_ptr<hittable> mis_comparison_scene() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> hdr_demo_scene() {
+    hittable_list world;
+
+    // 悬空球体展示
+    // 1. 完美镜面 (Chrome)
+    auto chrome = make_shared<metal>(color(0.9, 0.9, 0.9), 0.0);
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, chrome));
+
+    // 2. 粗糙金属 (Rough Gold)
+    auto rough_gold = make_shared<PBRMaterial>(
+        make_shared<solid_color>(1.0, 0.71, 0.29), // Gold
+        make_shared<solid_color>(0.2, 0.2, 0.2),   // Roughness
+        make_shared<solid_color>(1.0, 1.0, 1.0));  // Metallic
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, rough_gold));
+
+    // 3. 玻璃 (Glass)
+    auto glass = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, glass));
+
+    // 4. 漫反射 (Matte White)
+    // auto matte = make_shared<lambertian>(color(0.8, 0.8, 0.8));
+    // world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, matte)); // 地面
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 shared_ptr<hittable> directional_light_scene() {
     hittable_list objects;
 
@@ -1082,6 +1108,70 @@ SceneConfig select_scene(int scene_id) {
         config.lights.push_back(
             make_shared<QuadLight>(point3(6, 4, 2), vec3(0, 0.5, 0),
                                    vec3(0, 0, 0.5), color(50, 50, 50)));
+        break;
+
+    case 24: // brown_photostudio_02_4k.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 25: // cedar_bridge_sunset_2_4k.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("cedar_bridge_sunset_2_4k.hdr"));
+        break;
+
+    case 26: // rnl_probe.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(make_shared<EnvironmentLight>("rnl_probe.hdr"));
+        break;
+
+    case 27: // stpeters_probe.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("stpeters_probe.hdr"));
+        break;
+
+    case 28: // uffizi_probe.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("uffizi_probe.hdr"));
         break;
 
     case 10:
