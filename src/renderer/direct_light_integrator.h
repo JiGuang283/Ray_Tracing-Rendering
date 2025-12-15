@@ -33,7 +33,17 @@ class DirectLightIntegrator : public Integrator {
         for (int depth = 0; depth < m_max_depth; ++depth) {
             hit_record rec;
             if (!scene.hit(current_ray, 0.001, infinity, rec)) {
-                L += throughput * background;
+                // Check if there is an environment light in the lights list
+                bool found_env = false;
+                for (const auto &light : lights) {
+                    if (light->is_infinite()) {
+                        L += throughput * light->Le(current_ray);
+                        found_env = true;
+                    }
+                }
+                if (!found_env) {
+                    L += throughput * background;
+                }
                 break;
             }
 

@@ -3,10 +3,13 @@
 #include "box.h"
 #include "bvh.h"
 #include "constant_medium.h"
+#include "directional_light.h"
+#include "environmental_light.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "moving_sphere.h"
 #include "sphere.h"
+#include "spot_light.h"
 
 shared_ptr<hittable> random_scene() {
     hittable_list world;
@@ -547,20 +550,19 @@ shared_ptr<hittable> mis_demo() {
     auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
     world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
 
-    // Smooth Metal (Roughness 0.05) - BSDF sampling dominates for specular reflection
-    auto smooth_metal = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.9, 0.9, 0.9),
-        make_shared<solid_color>(0.05, 0.05, 0.05),
-        make_shared<solid_color>(1.0, 1.0, 1.0)
-    );
+    // Smooth Metal (Roughness 0.05) - BSDF sampling dominates for specular
+    // reflection
+    auto smooth_metal =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.9, 0.9),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, smooth_metal));
 
     // Rough Metal (Roughness 0.5) - NEE dominates
-    auto rough_metal = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.9, 0.9, 0.9),
-        make_shared<solid_color>(0.5, 0.5, 0.5),
-        make_shared<solid_color>(1.0, 1.0, 1.0)
-    );
+    auto rough_metal =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.9, 0.9),
+                                 make_shared<solid_color>(0.5, 0.5, 0.5),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, rough_metal));
 
     // Diffuse - NEE dominates
@@ -572,6 +574,81 @@ shared_ptr<hittable> mis_demo() {
     world.add(make_shared<sphere>(point3(0, 1, -3), 1.0, light_mat));
 
     return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> directional_light_scene() {
+    hittable_list objects;
+
+    // Ground
+    auto ground_material = make_shared<lambertian>(color(0.8, 0.8, 0.8));
+    objects.add(
+        make_shared<sphere>(point3(0, -1000, 0), 1000, ground_material));
+
+    // Identical boxes to demonstrate parallel shadows
+    auto mat_red = make_shared<lambertian>(color(0.8, 0.1, 0.1));
+    auto mat_green = make_shared<lambertian>(color(0.1, 0.8, 0.1));
+    auto mat_blue = make_shared<lambertian>(color(0.1, 0.1, 0.8));
+
+    // Three tall boxes
+    objects.add(
+        make_shared<box>(point3(-4, 0, -2), point3(-3, 3, -1), mat_red));
+    objects.add(
+        make_shared<box>(point3(-0.5, 0, -2), point3(0.5, 3, -1), mat_green));
+    objects.add(make_shared<box>(point3(3, 0, -2), point3(4, 3, -1), mat_blue));
+
+    // Ray Tracing features: Mirror and Glass
+    auto material_metal = make_shared<metal>(color(0.8, 0.8, 0.8), 0.0);
+    objects.add(make_shared<sphere>(point3(-2, 1, 2), 1.0, material_metal));
+
+    auto material_glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(2, 1, 2), 1.0, material_glass));
+
+    // Floating sphere to show shadow on ground clearly
+    auto material_diffuse = make_shared<lambertian>(color(0.8, 0.5, 0.2));
+    objects.add(make_shared<sphere>(point3(0, 5, 0), 1.0, material_diffuse));
+
+    return make_shared<bvh_node>(objects, 0, 1);
+}
+
+shared_ptr<hittable> spot_light_scene() {
+    hittable_list objects;
+
+    auto ground = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    objects.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground));
+
+    auto white = make_shared<lambertian>(color(0.9, 0.9, 0.9));
+    objects.add(make_shared<sphere>(point3(0, 1, 0), 1, white));
+
+    auto red = make_shared<lambertian>(color(0.8, 0.1, 0.1));
+    objects.add(make_shared<box>(point3(-2, 0, -1), point3(-1, 2, 0), red));
+
+    auto blue = make_shared<lambertian>(color(0.1, 0.1, 0.8));
+    objects.add(make_shared<box>(point3(1, 0, -1), point3(2, 2, 0), blue));
+
+    return make_shared<bvh_node>(objects, 0, 1);
+}
+
+shared_ptr<hittable> environment_light_scene() {
+    hittable_list objects;
+
+    // Metal sphere to show reflection
+    auto material_metal = make_shared<metal>(color(0.8, 0.8, 0.8), 0.0);
+    objects.add(make_shared<sphere>(point3(-2, 1, 0), 1.0, material_metal));
+
+    // Glass sphere to show refraction
+    auto material_glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material_glass));
+
+    // Diffuse sphere to show lighting
+    auto material_diffuse = make_shared<lambertian>(color(0.8, 0.5, 0.2));
+    objects.add(make_shared<sphere>(point3(2, 1, 0), 1.0, material_diffuse));
+
+    // Ground
+    auto ground_material = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    objects.add(
+        make_shared<sphere>(point3(0, -1000, 0), 1000, ground_material));
+
+    return make_shared<bvh_node>(objects, 0, 1);
 }
 
 SceneConfig select_scene(int scene_id) {
@@ -729,6 +806,41 @@ SceneConfig select_scene(int scene_id) {
             make_shared<PointLight>(point3(5, 10, 5), color(100, 100, 100)));
         break;
 
+    case 17:
+        config.world = directional_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 100;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 6, 12);
+        config.lookat = point3(0, 2, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<DirectionalLight>(vec3(-1, -1, -0.5), color(3, 3, 3)));
+        break;
+    case 18:
+        config.world = spot_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 100;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 5, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(make_shared<SpotLight>(
+            point3(0, 8, 4), vec3(0, -1, -0.5), 20.0, color(2000, 2000, 2000)));
+        break;
+    case 19:
+        config.world = environment_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 100;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 2, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(make_shared<EnvironmentLight>("sky.hdr"));
+        break;
     case 10:
     default:
         config.world = two_perlin_spheres();

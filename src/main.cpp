@@ -69,7 +69,7 @@ int main(int argc, char *args[]) {
 
     Renderer renderer;
     renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(misIntegrator);
+    renderer.set_integrator(dirlightIntegrator);
     renderer.set_max_depth(50);
 
     // Create window app handle
