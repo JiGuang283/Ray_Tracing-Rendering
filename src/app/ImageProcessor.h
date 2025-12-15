@@ -31,7 +31,7 @@ public:
 private:
     vec3 apply_tone_mapping(const vec3& color) const;
     void apply_gamma_correction(std::vector<unsigned char>& data, int w, int h);
-    void apply_post_processing(std::vector<unsigned char>& data, int w, int h);
+    void apply_post_processing(std::vector<unsigned char>& data, int w, int h)const;
 
     void process_rows_simd(
         const RenderBuffer& buffer,

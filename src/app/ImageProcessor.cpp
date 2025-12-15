@@ -205,6 +205,6 @@ void ImageProcessor::apply_post_processing(
     std::vector<unsigned char>& data,
     int w,
     int h
-) {
+)const {
     ImageOps::apply_post_processing(data, w, h, config_.post_process_type);
 }
