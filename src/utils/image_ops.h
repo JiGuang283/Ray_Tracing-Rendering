@@ -32,6 +32,9 @@ namespace ImageOps {
 
     const float* gamma_lut_data();
     int gamma_lut_size();
+
+    void build_gaussian_weights(std::vector<float>& spatial_weights, std::vector<float>& range_weights, int radius, float sigma_s, float sigma_r);
+    void apply_bilateral_filter(std::vector<unsigned char>& image_data, int width, int height);
 }
 
 

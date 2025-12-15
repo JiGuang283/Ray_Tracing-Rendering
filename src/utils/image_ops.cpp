@@ -256,6 +256,9 @@ namespace ImageOps {
                     row_dst[dst_idx + 3] = row_src[x * 4 + 3];
                 }
             }
+        } else if (type == 5) {
+            // 双边滤波
+            apply_bilateral_filter(image_data, width, height);
         }
     }
 
@@ -295,5 +298,100 @@ namespace ImageOps {
 
     int gamma_lut_size() {
         return static_cast<int>(gamma_lut_.size());
+    }
+
+    // 预计算高斯权重表，提升性能
+    void build_gaussian_weights(std::vector<float>& spatial_weights, std::vector<float>& range_weights,
+                                int radius, float sigma_s, float sigma_r) {
+        // 1. 空间权重 (Spatial)
+        int kernel_size = 2 * radius + 1;
+        spatial_weights.resize(kernel_size * kernel_size);
+        float coeff_s = -1.0f / (2.0f * sigma_s * sigma_s);
+
+        for (int y = -radius; y <= radius; ++y) {
+            for (int x = -radius; x <= radius; ++x) {
+                float r2 = static_cast<float>(x*x + y*y);
+                spatial_weights[(y + radius) * kernel_size + (x + radius)] = std::exp(r2 * coeff_s);
+            }
+        }
+
+        // 2. 颜色差异权重 (Range) - 针对 0-255 的差值
+        range_weights.resize(256);
+        float coeff_r = -1.0f / (2.0f * sigma_r * sigma_r);
+        for (int i = 0; i < 256; ++i) {
+            range_weights[i] = std::exp(static_cast<float>(i*i) * coeff_r);
+        }
+    }
+
+    void apply_bilateral_filter(std::vector<unsigned char>& image_data, int width, int height) {
+        // === 参数调整区 ===
+        const int radius = 2;         // 核心半径 (2 = 5x5 窗口, 3 = 7x7 窗口)
+        const float sigma_s = 2.0f;   // 空间模糊强度 (越大越糊)
+        const float sigma_r = 30.0f;  // 颜色容差 (越大越容易把边缘抹掉，越小保留边缘越好但降噪弱)
+
+        std::vector<unsigned char> source = image_data; // 拷贝副本用于读取
+        const int stride = width * 4;
+        const int kernel_width = 2 * radius + 1;
+
+        // 预计算权重表
+        std::vector<float> w_spatial;
+        std::vector<float> w_range;
+        build_gaussian_weights(w_spatial, w_range, radius, sigma_s, sigma_r);
+
+        #pragma omp parallel for schedule(dynamic)
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                float sum_r = 0, sum_g = 0, sum_b = 0;
+                float total_weight = 0.0f;
+
+                // 中心像素颜色
+                int center_idx = (y * width + x) * 4;
+                unsigned char c_r = source[center_idx + 0];
+                unsigned char c_g = source[center_idx + 1];
+                unsigned char c_b = source[center_idx + 2];
+
+                // 遍历邻域
+                for (int ky = -radius; ky <= radius; ++ky) {
+                    int ny = y + ky;
+                    // 边界检查 (Clamp edge)
+                    if (ny < 0) ny = 0;
+                    else if (ny >= height) ny = height - 1;
+
+                    for (int kx = -radius; kx <= radius; ++kx) {
+                        int nx = x + kx;
+                        if (nx < 0) nx = 0;
+                        else if (nx >= width) nx = width - 1;
+
+                        // 获取邻居像素
+                        int neighbor_idx = (ny * width + nx) * 4;
+                        unsigned char n_r = source[neighbor_idx + 0];
+                        unsigned char n_g = source[neighbor_idx + 1];
+                        unsigned char n_b = source[neighbor_idx + 2];
+
+                        // 1. 空间权重 (查表)
+                        float ws = w_spatial[(ky + radius) * kernel_width + (kx + radius)];
+
+                        // 2. 颜色权重 (计算曼哈顿距离或欧氏距离，这里简化用最大通道差查表)
+                        // 使用亮度差或者 RGB 距离都可以，这里为了简单使用 L1 距离的平均
+                        int diff = (std::abs(c_r - n_r) + std::abs(c_g - n_g) + std::abs(c_b - n_b)) / 3;
+                        float wr = w_range[diff];
+
+                        float weight = ws * wr;
+
+                        sum_r += n_r * weight;
+                        sum_g += n_g * weight;
+                        sum_b += n_b * weight;
+                        total_weight += weight;
+                    }
+                }
+
+                // 归一化并写入
+                int dst_idx = (y * width + x) * 4;
+                image_data[dst_idx + 0] = static_cast<unsigned char>(sum_r / total_weight);
+                image_data[dst_idx + 1] = static_cast<unsigned char>(sum_g / total_weight);
+                image_data[dst_idx + 2] = static_cast<unsigned char>(sum_b / total_weight);
+                image_data[dst_idx + 3] = source[center_idx + 3]; // Alpha
+            }
+        }
     }
 }

@@ -36,7 +36,8 @@ namespace {
 
     const char* kPostProcessTypes[] = {
         "Simple Denoise (Blur)", "Sharpen",
-        "Grayscale", "Invert Colors", "Median (Despeckle)"
+        "Grayscale", "Invert Colors",
+        "Median (Despeckle)", "Bilateral Filter"
     };
 
     const char* kSaveFormats[] = {
