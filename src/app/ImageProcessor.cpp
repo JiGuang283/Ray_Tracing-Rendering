@@ -119,11 +119,6 @@ void ImageProcessor::process_rows_simd(
                 vg = _mm256_i32gather_ps(lutp, ig, 4);
                 vb = _mm256_i32gather_ps(lutp, ib, 4);
 
-                // 存储
-                vr = _mm256_sqrt_ps(vr);
-                vg = _mm256_sqrt_ps(vg);
-                vb = _mm256_sqrt_ps(vb);
-
                 // 5. 直接存储 (无内存往返)
                 uint8_t* dst = &output[(j * width + i) * 4];
                 store_rgba8_avx2(vr, vg, vb, dst);
@@ -131,7 +126,6 @@ void ImageProcessor::process_rows_simd(
                 // --- SSE2 路径
                 // 每次处理 8 个像素，SSE2 寄存器一次只能存 4 个 float
                 // 所以我们需要循环 2 次 (k=0, k=4)
-
                 for (int k = 0; k < 8; k += 4) {
                     __m128 vr = _mm_loadu_ps(&rbuf[idx0 + k]);
                     __m128 vg = _mm_loadu_ps(&gbuf[idx0 + k]);
@@ -141,27 +135,26 @@ void ImageProcessor::process_rows_simd(
                         vr = tone_map_reinhard_sse2(vr);
                         vg = tone_map_reinhard_sse2(vg);
                         vb = tone_map_reinhard_sse2(vb);
-                    }elif (config_.tone_mapping_type == 2) {
+                    }else if (config_.tone_mapping_type == 2) {
                         vr = tone_map_aces_sse2(vr);
                         vg = tone_map_aces_sse2(vg);
                         vb = tone_map_aces_sse2(vb);
                     }
-}
+                    // Clamp
+                    __m128 v0 = _mm_set1_ps(0.0f);
+                    __m128 v1 = _mm_set1_ps(1.0f);
+                    vr = _mm_min_ps(v1, _mm_max_ps(v0, vr));
+                    vg = _mm_min_ps(v1, _mm_max_ps(v0, vg));
+                    vb = _mm_min_ps(v1, _mm_max_ps(v0, vb));
+
+                    // Gamma 2.0 (Sqrt)
+                    vr = _mm_sqrt_ps(vr);
+                    vg = _mm_sqrt_ps(vg);
+                    vb = _mm_sqrt_ps(vb);
+
+                    uint8_t* dst = &output[(j * width + i) * 4];
+                    store_rgba8_sse2(vr, vg, vb, dst);
                 }
-                // Clamp
-                __m128 v0 = _mm_set1_ps(0.0f);
-                __m128 v1 = _mm_set1_ps(1.0f);
-                vr = _mm_min_ps(v1, _mm_max_ps(v0, vr));
-                vg = _mm_min_ps(v1, _mm_max_ps(v0, vg));
-                vb = _mm_min_ps(v1, _mm_max_ps(v0, vb));
-
-                // Gamma 2.0 (Sqrt)
-                vr = _mm_sqrt_ps(vr);
-                vg = _mm_sqrt_ps(vg);
-                vb = _mm_sqrt_ps(vb);
-
-                uint8_t* dst = &output[(j * width + i) * 4];
-                store_rgba8_sse2(r, g, b, dst);
             #else
                 float r[8], g[8], b[8];
                 for (int k = 0; k < 8; ++k) {

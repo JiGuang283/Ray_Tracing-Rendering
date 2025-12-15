@@ -13,6 +13,7 @@
 #include <memory>
 #include <thread>
 #include <vector>
+#include <cmath>
 
 class Renderer {
   public:
@@ -156,18 +157,21 @@ class Renderer {
 
     void write_color_to_buffer(RenderBuffer &buffer, int x, int y,
                                color pixel_color, int samples) {
-        auto r = pixel_color.x();
-        auto g = pixel_color.y();
-        auto b = pixel_color.z();
 
         auto scale = 1.0 / samples;
-        r = sqrt(scale * r);
-        g = sqrt(scale * g);
-        b = sqrt(scale * b);
+        auto r = pixel_color.x() * scale;
+        auto g = pixel_color.y() * scale;
+        auto b = pixel_color.z() * scale;
 
-        buffer.set_pixel(
-            x, y,
-            color(clamp(r, 0.0, 1.0), clamp(g, 0.0, 1.0), clamp(b, 0.0, 1.0)));
+        if (std::isnan(r)) r = 0.0;
+        if (std::isnan(g)) g = 0.0;
+        if (std::isnan(b)) b = 0.0;
+
+        r = std::max(0.0, r);
+        g = std::max(0.0, g);
+        b = std::max(0.0, b);
+
+        buffer.set_pixel(x, y, color(r, g, b));
     }
 };
 
