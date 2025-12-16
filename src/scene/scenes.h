@@ -60,5 +60,10 @@ shared_ptr<hittable> jewelry_display_simplified();
 shared_ptr<hittable> glass_caustics_scene();
 shared_ptr<hittable> pbr_texture_demo();
 shared_ptr<hittable> pbr_floating_spheres_env();
+shared_ptr<hittable> multi_light_demo();
+
+// Fun Demos
+shared_ptr<hittable> cmy_shadows_demo();
+shared_ptr<hittable> infinity_mirror_demo();
 
 #endif
