@@ -625,6 +625,37 @@ shared_ptr<hittable> mis_comparison_scene() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> soft_shadow_demo() {
+    hittable_list world;
+
+    // 1. 地面 (接收阴影)
+    auto ground_mat = make_shared<lambertian>(color(0.8, 0.8, 0.8));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // 2. 悬浮球体 (产生明显的软阴影)
+    // 离地面越高，光源越大，半影区(Penumbra)越明显
+    auto red_mat = make_shared<lambertian>(color(0.8, 0.2, 0.2));
+    world.add(make_shared<sphere>(point3(0, 2, 0), 1.0, red_mat));
+
+    // 3. 贴近地面的立方体 (阴影较硬)
+    auto blue_mat = make_shared<lambertian>(color(0.2, 0.2, 0.8));
+    world.add(make_shared<box>(point3(-4, 0, -1), point3(-2, 2, 1), blue_mat));
+
+    // 4. 金属球 (反射面光源形状)
+    auto metal_mat = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
+    world.add(make_shared<sphere>(point3(3.5, 1, 0), 1.0, metal_mat));
+
+    // 5. 可见的面光源几何体 (用于直接观察)
+    // 光源参数: Center(0, 8, 0), Size 4x4
+    // Corner Q = (-2, 8, -2), u = (4, 0, 0), v = (0, 0, 4)
+    auto light_emit = make_shared<diffuse_light>(color(10, 10, 10));
+    // 注意：xz_rect 默认法线向上(0,1,0)，我们需要它向下照，所以用 flip_face
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-2, 2, -2, 2, 8, light_emit)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 shared_ptr<hittable> hdr_demo_scene() {
     hittable_list world;
 
@@ -1094,6 +1125,70 @@ shared_ptr<hittable> jewelry_display() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+// Scene 4 Simplified: Jewelry Display Simplified - 珠宝展示台（简化版）
+// 去掉前方的珍珠，并将钻石从金色小球放下来单独展示
+shared_ptr<hittable> jewelry_display_simplified() {
+    hittable_list world;
+
+    // 展示台底座
+    auto pedestal_mat = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.02, 0.02, 0.02), // 近乎黑色
+        make_shared<solid_color>(0.1, 0.1, 0.1),    // 低粗糙度，有光泽
+        make_shared<solid_color>(0.0, 0.0, 0.0));
+    // 圆形底座用多个同心圆球模拟
+    world.add(make_shared<sphere>(point3(0, -100, 0), 100.3, pedestal_mat));
+
+    // 中心：钻石（用玻璃球模拟，折射率高一点）
+    auto diamond = make_shared<dielectric>(2.4); // 钻石折射率约2.4
+    world.add(make_shared<sphere>(point3(0, 1.2, 0), 1.0, diamond));
+    // 内部空心增加闪烁效果
+    world.add(make_shared<sphere>(point3(0, 1.2, 0), -0.6, diamond));
+
+    // 左侧：金戒指（用金色球模拟）
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.1, 0.1, 0.1),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-2.5, 0.6, 0), 0.6, gold));
+
+    // 戒指上的小钻石 -> 移到地面单独展示
+    // 放在金戒指前面一点，地面上 (y=0.5, radius=0.2) - 调整高度以避免陷入底座
+    world.add(make_shared<sphere>(point3(-2.5, 0.5, 1.5), 0.2, diamond));
+
+    // 右侧：银项链球
+    auto silver =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.97, 0.96, 0.91),
+                                 make_shared<solid_color>(0.15, 0.15, 0.15),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(2.5, 0.5, 0), 0.5, silver));
+
+    // 后排装饰球
+    // 玫瑰金
+    auto rose_gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.92, 0.72, 0.65),
+                                 make_shared<solid_color>(0.2, 0.2, 0.2),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-1.5, 0.4, -2), 0.4, rose_gold));
+
+    // 铂金
+    auto platinum =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.89, 0.87),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(0, 0.35, -2.2), 0.35, platinum));
+
+    // 铜
+    auto copper =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.955, 0.638, 0.538),
+                                 make_shared<solid_color>(0.25, 0.25, 0.25),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(1.5, 0.4, -2), 0.4, copper));
+
+    // 前排小珍珠 -> 已移除
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 // Scene 5: Glass Caustics Scene - 玻璃焦散场景
 // 展示：玻璃折射、caustics效果、软阴影
 shared_ptr<hittable> glass_caustics_scene() {
@@ -1438,7 +1533,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = point_light_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 100;
+        config.samples_per_pixel = 1000;
         config.background = color(0.0, 0.0, 0.0);
         config.lookfrom = point3(0, 5, 10);
         config.lookat = point3(0, 1, 0);
@@ -1465,7 +1560,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = directional_light_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 100;
+        config.samples_per_pixel = 400;
         config.background = color(0.0, 0.0, 0.0);
         config.lookfrom = point3(0, 6, 12);
         config.lookat = point3(0, 2, 0);
@@ -1500,7 +1595,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = quad_light_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 100;
+        config.samples_per_pixel = 1000;
         config.background = color(0.0, 0.0, 0.0);
         config.lookfrom = point3(0, 4, 15);
         config.lookat = point3(0, 3, 0);
@@ -1766,6 +1861,36 @@ SceneConfig select_scene(int scene_id) {
         config.lights.push_back(
             make_shared<QuadLight>(point3(17, 10, 17), vec3(6, 0, 0),
                                    vec3(0, 0, 6), color(15, 15, 15)));
+        break;
+
+    case 38: // Soft Shadow Demo (Quad Light)
+        config.world = soft_shadow_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 6, 12);
+        config.lookat = point3(0, 2, 0);
+        config.vfov = 40.0;
+
+        // Add QuadLight for NEE
+        // Center(0, 8, 0), Size 4x4 -> Q(-2, 8, -2), u(4, 0, 0), v(0, 0, 4)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-2, 8, -2), vec3(4, 0, 0),
+                                   vec3(0, 0, 4), color(10, 10, 10)));
+        break;
+
+    case 39: // Jewelry Display Simplified - 珠宝展示台（简化版）
+        config.world = jewelry_display_simplified();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1200;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 8);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
         break;
 
     case 10:
