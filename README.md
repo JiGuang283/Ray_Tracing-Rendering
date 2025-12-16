@@ -73,12 +73,20 @@ if (depth >= m_rr_start_depth) {
 在标准的 cornell_box 场景中进行测试。
 
 ![原积分器](images/scene07_integrator0_1765799984.png)
-###### 无轮盘赌终止
+###### 无轮盘赌终止，渲染时间29.2s
 
 ![轮盘赌](images/scene07_integrator1_1765799945.png)
-###### 使用轮盘赌终止
+###### 使用轮盘赌终止，渲染时间11.2s
 
-可以看到两者图片从视觉上基本没有差别
+在教程的最终场景测试（samples_per_pixel = 500）
+
+![alt text](images/scene09_integrator0_1765878166.png)
+###### 无轮盘赌终止，渲染时间164.8s
+
+![alt text](images/scene09_integrator1_1765878259.png)
+###### 使用轮盘赌终止，渲染时间68.7s
+
+可以看到两者图片从视觉上基本没有差别,但渲染时间减少一半以上。
 
 ### 2.2 实现pbr材质（BSDF采样）
 

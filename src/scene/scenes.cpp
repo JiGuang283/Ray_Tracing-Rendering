@@ -1477,7 +1477,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = final_scene();
         config.aspect_ratio = 1.0;
         config.image_width = 800;
-        config.samples_per_pixel = 10000;
+        config.samples_per_pixel = 500; //原10000
         config.background = color(0, 0, 0);
         config.lookfrom = point3(478, 278, -600);
         config.lookat = point3(278, 278, 0);
