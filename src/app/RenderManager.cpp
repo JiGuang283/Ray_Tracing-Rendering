@@ -57,7 +57,7 @@ void RenderManager::render_loop(const RenderConfig& config) {
     bool success = false;
 
     try {
-        renderer_.render(config.world, config.cam, config.background, *render_buffer_);
+        renderer_.render(config.world, config.cam, config.background, *render_buffer_, config.lights);
         success = !renderer_.is_cancelled();
     } catch (const std::exception& e) {
         // 记录错误但不崩溃
