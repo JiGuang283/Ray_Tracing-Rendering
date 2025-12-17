@@ -98,7 +98,12 @@ class triangle : public hittable {
             shading_normal = unit_vector(w * n0 + bary_u * n1 + bary_v * n2);
         }
 
-        rec.set_face_normal(r, shading_normal);
+        // 1) 先用几何法线决定 front_face（稳定，不会在三角形内乱跳）
+        rec.front_face = dot(r.direction(), face_normal) < 0;
+
+        // 2) shading_normal 仍然用插值法线（你原来的逻辑是对的），但朝向要跟 front_face 一致
+        rec.normal = rec.front_face ? shading_normal : -shading_normal;
+
         return true;
     }
 

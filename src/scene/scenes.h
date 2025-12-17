@@ -25,7 +25,9 @@ struct SceneConfig {
 
 SceneConfig select_scene(int scene_id);
 // === Triangle intersection validation scenes ===
+shared_ptr<hittable> pyramid_pointlight_compare_scene();
 shared_ptr<hittable> triangle_vertex_normal_validation_scene();
+shared_ptr<hittable> triangle_normal_interp_compare_scene();
 shared_ptr<hittable> triangle_hit_validation_scene();
 shared_ptr<hittable> triangle_occlusion_validation_scene();
 shared_ptr<hittable> random_scene();
