@@ -8,6 +8,7 @@
 
 #include "bvh.h"
 #include "hittable.h"
+#include "hittable_list.h"
 #include "material.h"
 #include "tiny_obj_loader.h"
 #include "triangle.h"
@@ -17,16 +18,25 @@ class mesh : public hittable {
     mesh() = default;
 
     mesh(std::vector<shared_ptr<hittable>> faces, double time0 = 0.0,
-         double time1 = 1.0)
-        : triangles(std::move(faces)),
-          accelerator(make_shared<bvh_node>(triangles, 0, triangles.size(),
-                                             time0, time1)) {
+         double time1 = 1.0, bool build_bvh = true)
+        : triangles(std::move(faces)) {
+        if (build_bvh) {
+            accelerator = make_shared<bvh_node>(triangles, 0, triangles.size(),
+                                                time0, time1);
+        } else {
+            auto list = make_shared<hittable_list>();
+            for (auto &tri : triangles) {
+                list->add(tri);
+            }
+            accelerator = list;
+        }
     }
 
     static shared_ptr<mesh>
     load_from_obj(const std::string &filename, shared_ptr<material> mat,
                   const vec3 &translation = vec3(0, 0, 0),
-                  const vec3 &scale = vec3(1, 1, 1));
+                  const vec3 &scale = vec3(1, 1, 1),
+                  bool build_bvh = true, bool use_vertex_normals = true);
 
     bool hit(const ray &r, double t_min, double t_max,
              hit_record &rec) const override {
@@ -48,7 +58,8 @@ class mesh : public hittable {
 
 inline shared_ptr<mesh>
 mesh::load_from_obj(const std::string &filename, shared_ptr<material> mat,
-                    const vec3 &translation, const vec3 &scale) {
+                    const vec3 &translation, const vec3 &scale,
+                    bool build_bvh, bool use_vertex_normals) {
     tinyobj::ObjReaderConfig reader_config;
     reader_config.triangulate = true;
 
@@ -137,7 +148,8 @@ mesh::load_from_obj(const std::string &filename, shared_ptr<material> mat,
 
             bool has_uvs = uv0_valid && uv1_valid && uv2_valid;
 
-            if (n0.length_squared() > 0 && n1.length_squared() > 0 &&
+            if (use_vertex_normals && n0.length_squared() > 0 &&
+                n1.length_squared() > 0 &&
                 n2.length_squared() > 0) {
                 faces.push_back(make_shared<triangle>(p0, p1, p2, unit_vector(n0),
                                                       unit_vector(n1), unit_vector(n2),
@@ -155,7 +167,7 @@ mesh::load_from_obj(const std::string &filename, shared_ptr<material> mat,
         return nullptr;
     }
 
-    return make_shared<mesh>(faces, 0.0, 1.0);
+    return make_shared<mesh>(faces, 0.0, 1.0, build_bvh);
 }
 
 #endif

@@ -602,6 +602,58 @@ shared_ptr<hittable> mesh_demo_scene() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+struct ModelFeatureSettings {
+    bool build_bvh = true;
+    bool apply_transform = true;
+    bool use_vertex_normals = true;
+    bool disable_mesh = false;
+    bool duplicate_mesh = true;
+};
+
+shared_ptr<hittable>
+model_feature_validation_scene(const ModelFeatureSettings &settings) {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    auto area_light = make_shared<diffuse_light>(color(6, 6, 6));
+    world.add(make_shared<xz_rect>(-6, 6, -6, 6, 6, area_light));
+
+    auto matte = make_shared<lambertian>(color(0.75, 0.45, 0.35));
+
+    if (!settings.disable_mesh) {
+        vec3 translation = settings.apply_transform ? vec3(-2.5, 0.0, 0.0)
+                                                    : vec3(0.0, 0.0, 0.0);
+        vec3 scale = settings.apply_transform ? vec3(1.5, 1.5, 1.5)
+                                              : vec3(1.0, 1.0, 1.0);
+
+        auto main_mesh = mesh::load_from_obj("assets/sample_mesh.obj", matte,
+                                             translation, scale, settings.build_bvh,
+                                             settings.use_vertex_normals);
+
+        if (main_mesh) {
+            world.add(main_mesh);
+
+            if (settings.duplicate_mesh) {
+                world.add(make_shared<translate>(main_mesh, vec3(3.5, 0.0, 0.0)));
+            }
+        }
+    } else {
+        world.add(make_shared<sphere>(point3(-2.0, 1.0, 0.0), 1.0, matte));
+        world.add(make_shared<sphere>(point3(1.5, 1.0, 0.0), 1.0, matte));
+    }
+
+    auto mirror = make_shared<metal>(color(0.8, 0.85, 0.9), 0.05);
+    world.add(make_shared<sphere>(point3(-4.0, 1.25, -2.0), 1.0, mirror));
+
+    if (settings.build_bvh) {
+        return make_shared<bvh_node>(world, 0, 1);
+    }
+
+    return make_shared<hittable_list>(world);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -767,6 +819,76 @@ SceneConfig select_scene(int scene_id) {
         config.lookat = point3(0, 1, 0);
         config.vfov = 30.0;
         break;
+
+    case 18: {
+        ModelFeatureSettings settings{}; // All features enabled
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    case 19: {
+        ModelFeatureSettings settings{};
+        settings.build_bvh = false; // Disable BVH to compare traversal paths
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    case 20: {
+        ModelFeatureSettings settings{};
+        settings.apply_transform = false; // Render without translate/scale
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    case 21: {
+        ModelFeatureSettings settings{};
+        settings.use_vertex_normals = false; // Flat shading for comparison
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    case 22: {
+        ModelFeatureSettings settings{};
+        settings.disable_mesh = true;   // Replace mesh to validate loader path
+        settings.duplicate_mesh = false;
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
 
     case 10:
     default:
