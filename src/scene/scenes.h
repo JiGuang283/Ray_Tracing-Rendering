@@ -24,7 +24,10 @@ struct SceneConfig {
 };
 
 SceneConfig select_scene(int scene_id);
-
+// === Triangle intersection validation scenes ===
+shared_ptr<hittable> triangle_vertex_normal_validation_scene();
+shared_ptr<hittable> triangle_hit_validation_scene();
+shared_ptr<hittable> triangle_occlusion_validation_scene();
 shared_ptr<hittable> random_scene();
 shared_ptr<hittable> example_light_scene();
 shared_ptr<hittable> two_spheres();
@@ -42,5 +45,15 @@ shared_ptr<hittable> pbr_reference_scene();
 shared_ptr<hittable> point_light_scene();
 shared_ptr<hittable> mis_demo();
 shared_ptr<hittable> mesh_demo_scene();
+
+// === Mesh-focused verification scenes (added for testing) ===
+shared_ptr<hittable> mesh_normals_compare_scene();
+shared_ptr<hittable> mesh_transform_gallery_scene();
+shared_ptr<hittable> mesh_bvh_compare_scene();
+
+// === NEW: Mesh BVH stress scene (large instancing, togglable BVH) ===
+shared_ptr<hittable> mesh_bvh_stress_scene(bool build_world_bvh,
+                                           bool build_mesh_bvh,
+                                           int grid_n = 15);
 
 #endif

@@ -8,6 +8,103 @@
 #include "mesh.h"
 #include "moving_sphere.h"
 #include "sphere.h"
+#include "triangle.h"
+shared_ptr<hittable> triangle_vertex_normal_validation_scene() {
+    hittable_list world;
+
+    // Ground
+    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // A big soft area light above (keeps scene stable)
+    auto top_light = make_shared<diffuse_light>(color(6, 6, 6));
+    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, top_light));
+
+    // A SIDE light that is large enough and (very likely) visible to the camera,
+    // making the vertex-normal gradient much easier to observe.
+    // xy_rect(x0,x1, y0,y1, k=z, material)
+    auto side_light = make_shared<diffuse_light>(color(25, 25, 25));
+    world.add(make_shared<xy_rect>(
+    2.2,  5.0,    // x 往右移出视野
+    2.0,  4.5,    // y 往上移
+    +2.0,
+    side_light
+));
+
+
+
+
+    // Triangle with explicit vertex normals (each vertex normal points differently)
+    auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25));
+
+    point3 v0(-1.5, 0.8, 0.0);
+    point3 v1( 1.5, 0.8, 0.0);
+    point3 v2( 0.0, 2.8, 0.0);
+
+    // Deliberately different normals to create a visible gradient across the triangle.
+    // (We keep them roughly "upwards" so the surface still faces the camera reasonably.)
+    vec3 n0 = unit_vector(vec3(-0.3, 1.0,  0.2));
+    vec3 n1 = unit_vector(vec3( 0.9, 1.0, -0.1));
+    vec3 n2 = unit_vector(vec3( 0.0, 1.0,  1.0));
+
+    // Use the constructor that enables vertex-normal interpolation.
+    world.add(make_shared<triangle>(v0, v1, v2,
+                                   n0, n1, n2,
+                                   tri_mat,
+                                   vec2(0, 0), vec2(0, 0), vec2(0, 0),
+                                   false));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+
+
+shared_ptr<hittable> triangle_hit_validation_scene() {
+    hittable_list world;
+
+    // Ground (optional, helps perception)
+    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Area light above
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, light_mat));
+
+    // One single triangle in front of the camera
+    auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25)); // reddish
+    point3 v0(-1.5, 0.8, 0.0);
+    point3 v1( 1.5, 0.8, 0.0);
+    point3 v2( 0.0, 2.8, 0.0);
+
+    world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
+
+    // Wrap with BVH for consistency (not required, but fine)
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> triangle_occlusion_validation_scene() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, light_mat));
+
+    // Triangle (placed slightly farther)
+    auto tri_mat = make_shared<lambertian>(color(0.25, 0.35, 0.85)); // bluish
+    point3 v0(-1.8, 0.7, -1.0);
+    point3 v1( 1.8, 0.7, -1.0);
+    point3 v2( 0.0, 3.0, -1.0);
+    world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
+
+    // Occluder sphere (closer to camera, should block part of triangle)
+    auto occ_mat = make_shared<lambertian>(color(0.85, 0.65, 0.20)); // yellowish
+    world.add(make_shared<sphere>(point3(-0.3, 1.6, -0.3), 0.9, occ_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 
 shared_ptr<hittable> random_scene() {
     hittable_list world;
@@ -654,6 +751,66 @@ model_feature_validation_scene(const ModelFeatureSettings &settings) {
     return make_shared<hittable_list>(world);
 }
 
+// === NEW: Mesh BVH stress scene ===
+// build_world_bvh: 是否对整个 world 建 BVH（物体级加速）
+// build_mesh_bvh:  是否对 mesh 内部三角形建 BVH（三角形级加速）
+// grid_n:          网格边长（总实例数约 grid_n^2）
+shared_ptr<hittable> mesh_bvh_stress_scene(bool build_world_bvh,
+                                           bool build_mesh_bvh,
+                                           int grid_n) {
+    hittable_list world;
+
+    // Ground
+    auto ground_mat = make_shared<lambertian>(color(0.55, 0.55, 0.55));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Large area light above (simple + stable)
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    world.add(make_shared<xz_rect>(-40, 40, -40, 40, 30, light_mat));
+
+    // Base mesh (loaded once, then instanced via translate)
+    auto mesh_mat = make_shared<lambertian>(color(0.75, 0.45, 0.35));
+    auto base_mesh = mesh::load_from_obj("assets/sample_mesh.obj",
+                                         mesh_mat,
+                                         vec3(0.0, 0.0, 0.0),
+                                         vec3(1.0, 1.0, 1.0),
+                                         build_mesh_bvh,
+                                         true);
+
+    // If mesh missing, fall back to many spheres so the test still runs.
+    const double spacing = 2.2;
+    const double start = -0.5 * (grid_n - 1) * spacing;
+
+    if (base_mesh) {
+        for (int i = 0; i < grid_n; ++i) {
+            for (int j = 0; j < grid_n; ++j) {
+                double x = start + i * spacing;
+                double z = start + j * spacing;
+                // Slightly lift it so it doesn't z-fight with ground
+                world.add(make_shared<translate>(base_mesh, vec3(x, 0.01, z)));
+            }
+        }
+    } else {
+        auto fallback = make_shared<lambertian>(color(0.4, 0.6, 0.8));
+        for (int i = 0; i < grid_n; ++i) {
+            for (int j = 0; j < grid_n; ++j) {
+                double x = start + i * spacing;
+                double z = start + j * spacing;
+                world.add(make_shared<sphere>(point3(x, 0.5, z), 0.5, fallback));
+            }
+        }
+    }
+
+    // One glossy reference sphere (helps visually locate)
+    auto mirror = make_shared<metal>(color(0.85, 0.9, 0.95), 0.02);
+    world.add(make_shared<sphere>(point3(start - 3.0, 1.0, start - 3.0), 1.0, mirror));
+
+    if (build_world_bvh) {
+        return make_shared<bvh_node>(world, 0, 1);
+    }
+    return make_shared<hittable_list>(world);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -825,7 +982,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = model_feature_validation_scene(settings);
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 200;
+        config.samples_per_pixel = 10000;
         config.background = color(0.65, 0.75, 0.9);
         config.lookfrom = point3(8, 4, 12);
         config.lookat = point3(0, 1.5, 0);
@@ -890,6 +1047,55 @@ SceneConfig select_scene(int scene_id) {
         break;
     }
 
+    // ===== NEW stress-test cases =====
+    case 23: { // World BVH ON, Mesh BVH ON
+        config.world = mesh_bvh_stress_scene(true, true, 15);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 5000;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(30, 18, 30);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        break;
+    }
+
+    case 24: { // World BVH OFF, Mesh BVH ON
+        config.world = mesh_bvh_stress_scene(false, true, 15);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(30, 18, 30);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        break;
+    }
+
+    case 25: { // World BVH ON, Mesh BVH OFF
+        config.world = mesh_bvh_stress_scene(true, false, 15);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(30, 18, 30);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        break;
+    }
+
+    case 26: { // World BVH OFF, Mesh BVH OFF (worst-case)
+        config.world = mesh_bvh_stress_scene(false, false, 15);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(30, 18, 30);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        break;
+    }
+
     case 10:
     default:
         config.world = two_perlin_spheres();
@@ -898,7 +1104,56 @@ SceneConfig select_scene(int scene_id) {
         config.lookat = point3(0, 0, 0);
         config.vfov = 20.0;
         break;
+
+    case 27: {
+        config.world = triangle_hit_validation_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+
+        // Camera: look at triangle
+        config.lookfrom = point3(0.0, 2.0, 6.5);
+        config.lookat   = point3(0.0, 1.8, 0.0);
+        config.vfov = 30.0;
+        config.aperture = 0.0;
+        break;
     }
+
+    case 28: {
+        config.world = triangle_occlusion_validation_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+
+        config.lookfrom = point3(0.0, 2.0, 6.5);
+        config.lookat   = point3(0.0, 1.8, -0.8);
+        config.vfov = 30.0;
+        config.aperture = 0.0;
+        break;
+    }
+
+    case 29: {
+    config.world = triangle_vertex_normal_validation_scene();
+    config.aspect_ratio = 16.0 / 9.0;
+    config.image_width = 800;
+    config.samples_per_pixel = 1000; // 稍微高一点，梯度更干净
+    config.background = color(0.65, 0.75, 0.9);
+
+    point3 tri_center(0.0, 1.47, 0.0);
+
+    // if light emits toward -Z, reverse direction is +Z,
+    // so camera should sit at Z negative and look toward +Z
+    config.lookfrom = tri_center + vec3(-1.0, 0.0, -1.0) * 4.5;  // (0, 1.47, -6.5)
+    config.lookat   = tri_center;
+
+    config.aperture = 0.0;
+    break;
+    }
+
+    } 
 
     return config;
 }
+
