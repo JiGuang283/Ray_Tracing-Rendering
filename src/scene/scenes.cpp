@@ -808,38 +808,163 @@ shared_ptr<hittable> mis_demo() {
 shared_ptr<hittable> mesh_demo_scene() {
     hittable_list world;
 
+    // Ground
     auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
     world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
 
-    // materials
-    auto matte = make_shared<lambertian>(color(0.8, 0.3, 0.3));                 // red-ish
-    auto metal_mat = make_shared<metal>(color(0.8, 0.85, 0.9), 0.05);           // metal-ish
+    // Bunny material
+    auto bunny_mat = make_shared<lambertian>(color(0.8, 0.3, 0.3));
 
-    // ---- Key fix: increase spacing between instances (avoid overlap) ----
-    const vec3 scale(1.5, 1.5, 1.5);
-    const vec3 left_pos(-5.0, 0.0, 0.0);
-    const vec3 mid_pos( 0.0, 0.0, 0.0);
-    const vec3 right_pos(5.0, 0.0, 0.0);
+    // Bunny transform (scale up a lot; bunny is tiny in original units)
+    // 用 uniform scale，避免法线/光照因为非均匀缩放变怪
+    const vec3 bunny_scale(20.0, 20.0, 20.0);
 
-    // Left: matte mesh
-    auto left_mesh = mesh::load_from_obj("assets/sample_mesh.obj", matte,
-                                         left_pos, scale);
-    if (left_mesh) {
-        world.add(left_mesh);
+    // 放在地面上：y 方向稍微抬一点点，避免穿地（不同 bunny 文件底部可能略不同）
+    const vec3 bunny_pos(0.0, -0.3, 0.0);
+
+    // Load bunny (build BVH inside mesh; try to use vertex normals if present)
+    auto bunny = mesh::load_from_obj("assets/stanford bunny.obj",
+                                     bunny_mat,
+                                     bunny_pos,
+                                     bunny_scale,
+                                     true,   // build_bvh
+                                     true);  // use_vertex_normals
+    if (bunny) {
+        world.add(bunny);
     }
 
-    // Middle: metal mesh
-    auto mid_mesh = mesh::load_from_obj("assets/sample_mesh.obj", metal_mat,
-                                        mid_pos, scale);
-    if (mid_mesh) {
-        world.add(mid_mesh);
-
-        // Right: instanced copy via translate
-        world.add(make_shared<translate>(mid_mesh, right_pos - mid_pos));
-    }
-
+    // World BVH
     return make_shared<bvh_node>(world, 0, 1);
 }
+
+shared_ptr<hittable> mesh_monkey_scene() {
+    hittable_list world;
+
+    // Ground
+    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Bunny material
+    auto bunny_mat = make_shared<lambertian>(color(0.8, 0.3, 0.3));
+
+    // Bunny transform (scale up a lot; bunny is tiny in original units)
+    // 用 uniform scale，避免法线/光照因为非均匀缩放变怪
+    const vec3 bunny_scale(1.0, 1.0, 1.0);
+
+    // 放在地面上：y 方向稍微抬一点点，避免穿地（不同 bunny 文件底部可能略不同）
+    const vec3 bunny_pos(0.0, 1.5, 0.0);
+
+    // Load bunny (build BVH inside mesh; try to use vertex normals if present)
+    auto bunny = mesh::load_from_obj("assets/Suzanne.obj",
+                                     bunny_mat,
+                                     bunny_pos,
+                                     bunny_scale,
+                                     true,   // build_bvh
+                                     true);  // use_vertex_normals
+    if (bunny) {
+        world.add(bunny);
+    }
+
+    // World BVH
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+
+shared_ptr<hittable> cornell_box_suzanne_fixed() {
+    hittable_list objects;
+
+    auto red   = make_shared<lambertian>(color(.65, .05, .05));
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    auto green = make_shared<lambertian>(color(.12, .45, .15));
+
+    // --- Cornell box walls ---
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green));
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));
+
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));    // floor
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white));  // ceiling
+    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white));  // back
+
+    // ✅ 灯：保持你现在“正确的矩形灯 + flip_face”的做法，亮度用更温和的 18
+    auto light = make_shared<diffuse_light>(color(3, 3, 3));
+    auto rect_light = make_shared<xz_rect>(113, 443, 127, 432, 554, light);
+    objects.add(make_shared<flip_face>(rect_light));  // 灯面朝下，对盒内发光
+
+    // ----------------------------
+    // Suzanne（猴头）：更鲜艳的颜色
+    // ----------------------------
+    // 亮蓝色（你想要黄色也行，比如 color(0.95,0.9,0.15)）
+    auto monkey_mat = make_shared<lambertian>(color(0.20, 0.55, 0.95));
+    const vec3 monkey_scale(90, 90, 90);
+
+    auto monkey_raw = mesh::load_from_obj(
+        "assets/Suzanne.obj",
+        monkey_mat,
+        vec3(0, 0, 0),      // 不 baked translation
+        monkey_scale,
+        true,
+        true
+    );
+
+    if (monkey_raw) {
+        aabb bb;
+        if (monkey_raw->bounding_box(0, 1, bb)) {
+            double lift = -bb.min().y();                 // 抬到地面
+
+            // 猴子转过来：绕 Y 轴转 180 度
+            auto monkey_rot = make_shared<rotate_y>(monkey_raw, 180);
+
+            // 稍微偏右一点，给兔子让位置
+            vec3 monkey_pos(390, lift, 360);
+            objects.add(make_shared<translate>(monkey_rot, monkey_pos));
+        } else {
+            auto monkey_rot = make_shared<rotate_y>(monkey_raw, 180);
+            objects.add(make_shared<translate>(monkey_rot, vec3(160, 80, 220)));
+        }
+    } else {
+        std::cerr << "failed to load Suzanne.obj\n";
+    }
+
+    // ----------------------------
+    // Stanford Bunny：同样 bbox 自动落地 + 放到左侧
+    // ----------------------------
+    auto bunny_mat = make_shared<lambertian>(color(0.95, 0.90, 0.15)); // 亮黄色
+    // Bunny 原始尺度很小，Cornell 里需要放大很多
+    const vec3 bunny_scale(800, 800, 800);
+
+    auto bunny_raw = mesh::load_from_obj(
+        "assets/stanford bunny.obj",
+        bunny_mat,
+        vec3(0, 0, 0),      // 不 baked translation
+        bunny_scale,
+        true,
+        true               // bunny 通常没 vn，会自动退回 flat，不会出错
+    );
+
+    if (bunny_raw) {
+        aabb bb;
+        if (bunny_raw->bounding_box(0, 1, bb)) {
+            double lift = -bb.min().y();                 // 抬到地面
+
+            // 兔子没有明确“正面”，但统一转一下也无妨（你也可以改成 0）
+            auto bunny_rot = make_shared<rotate_y>(bunny_raw, 180);
+
+            // 放左侧、稍微更靠后一点，避免与猴子重叠
+            vec3 bunny_pos(210, lift, 330);
+            objects.add(make_shared<translate>(bunny_rot, bunny_pos));
+        } else {
+            auto bunny_rot = make_shared<rotate_y>(bunny_raw, 180);
+            objects.add(make_shared<translate>(bunny_rot, vec3(210, 80, 330)));
+        }
+    } else {
+        std::cerr << "failed to load stanford bunny.obj\n";
+    }
+
+    return make_shared<bvh_node>(objects, 0, 1);
+}
+
+
+
 
 
 struct ModelFeatureSettings {
@@ -1195,15 +1320,21 @@ SceneConfig select_scene(int scene_id) {
         break;
 
     case 17:
-        config.world = mesh_demo_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.7, 0.8, 1.0);
-        config.lookfrom = point3(10, 5, 15);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
+        config.world = cornell_box_suzanne_fixed();
+        config.aspect_ratio = 1.0;
+        config.image_width = 600;
+
+        // Cornell 没 NEE 还是容易噪，先用高一点更稳
+        config.samples_per_pixel = 10000;
+
+        config.background = color(0, 0, 0);
+        config.lookfrom = point3(278, 278, -800);
+        config.lookat   = point3(278, 278, 0);
+        config.vfov = 40.0;
+        config.aperture = 0.0;
         break;
+
+
 
     case 18: {
         ModelFeatureSettings settings{}; // All features enabled
