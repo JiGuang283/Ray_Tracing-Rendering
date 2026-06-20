@@ -13,14 +13,8 @@ class triangle : public hittable {
              shared_ptr<material> m, const vec2 &uv0 = vec2(0, 0),
              const vec2 &uv1 = vec2(0, 0), const vec2 &uv2 = vec2(0, 0),
              bool has_uvs = false)
-        : v0(p0),
-          v1(p1),
-          v2(p2),
-          uv0(uv0),
-          uv1(uv1),
-          uv2(uv2),
-          mat_ptr(std::move(m)),
-          has_texcoords(has_uvs) {
+        : v0(p0), v1(p1), v2(p2), uv0(uv0), uv1(uv1), uv2(uv2),
+          mat_ptr(std::move(m)), has_texcoords(has_uvs) {
         edge1 = v1 - v0;
         edge2 = v2 - v0;
         face_normal = unit_vector(cross(edge1, edge2));
@@ -31,17 +25,8 @@ class triangle : public hittable {
              shared_ptr<material> m, const vec2 &uv0 = vec2(0, 0),
              const vec2 &uv1 = vec2(0, 0), const vec2 &uv2 = vec2(0, 0),
              bool has_uvs = false)
-        : v0(p0),
-          v1(p1),
-          v2(p2),
-          n0(n0),
-          n1(n1),
-          n2(n2),
-          uv0(uv0),
-          uv1(uv1),
-          uv2(uv2),
-          mat_ptr(std::move(m)),
-          has_vertex_normals(true),
+        : v0(p0), v1(p1), v2(p2), n0(n0), n1(n1), n2(n2), uv0(uv0), uv1(uv1),
+          uv2(uv2), mat_ptr(std::move(m)), has_vertex_normals(true),
           has_texcoords(has_uvs) {
         edge1 = v1 - v0;
         edge2 = v2 - v0;
@@ -101,7 +86,8 @@ class triangle : public hittable {
         // 1) 先用几何法线决定 front_face（稳定，不会在三角形内乱跳）
         rec.front_face = dot(r.direction(), face_normal) < 0;
 
-        // 2) shading_normal 仍然用插值法线（你原来的逻辑是对的），但朝向要跟 front_face 一致
+        // 2) shading_normal 仍然用插值法线（你原来的逻辑是对的），但朝向要跟
+        // front_face 一致
         rec.normal = rec.front_face ? shading_normal : -shading_normal;
 
         return true;
@@ -117,10 +103,9 @@ class triangle : public hittable {
         double max_z = fmax(v0.z(), fmax(v1.z(), v2.z()));
 
         const double padding = 1e-4;
-        output_box = aabb(point3(min_x - padding, min_y - padding,
-                                 min_z - padding),
-                          point3(max_x + padding, max_y + padding,
-                                 max_z + padding));
+        output_box =
+            aabb(point3(min_x - padding, min_y - padding, min_z - padding),
+                 point3(max_x + padding, max_y + padding, max_z + padding));
         return true;
     }
 
