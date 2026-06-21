@@ -1,0 +1,37 @@
+#ifndef APP_OPTIONS_H
+#define APP_OPTIONS_H
+
+#include <string>
+
+namespace AppDefaults {
+constexpr int kMaxDepth = 50;
+}
+
+struct RenderOptions {
+    int width_override = 0;
+    int spp_override = 0;
+    int max_depth = AppDefaults::kMaxDepth;
+    int threads = 0;
+    unsigned seed = 1337;
+};
+
+struct BenchmarkOptions {
+    bool enabled = false;
+    bool save = false;
+    int runs = 1;
+};
+
+struct AppOptions {
+    int scene_id = 23;
+    int integrator_id = 4;
+    bool valid = true;
+    RenderOptions render;
+    BenchmarkOptions benchmark;
+    std::string scene_file;
+    std::string error;
+};
+
+AppOptions parse_options(int argc, char *args[]);
+void print_usage();
+
+#endif
