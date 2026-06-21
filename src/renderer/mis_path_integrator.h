@@ -119,16 +119,7 @@ class MISPathIntegrator : public Integrator {
             // BSDF 采样
             BSDFSample bs;
             if (!rec.mat_ptr->sample(rec, wo, bs, rng)) {
-                ray scattered;
-                color attenuation;
-                if (!rec.mat_ptr->scatter(current_ray, rec, attenuation,
-                                          scattered, rng)) {
-                    break;
-                }
-                throughput *= attenuation;
-                current_ray = scattered;
-                specular_bounce = false;
-                prev_bsdf_pdf = 0.0;
+                break;
             } else {
                 if (bs.pdf < 1e-8 && !bs.is_specular) {
                     break;

@@ -16,6 +16,32 @@ class isotropic : public material {
     isotropic(shared_ptr<texture> a) : albedo(a) {
     }
 
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled) const override {
+        RNG rng(make_thread_seed());
+        return sample(rec, wo, sampled, rng);
+    }
+
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled, RNG &rng) const override {
+        sampled.wi = random_unit_vector(rng);
+        sampled.f = albedo->value(rec.u, rec.v, rec.p) / (4.0 * pi);
+        sampled.pdf = 1.0 / (4.0 * pi);
+        sampled.is_specular = false;
+        sampled.is_transmission = false;
+        return true;
+    }
+
+    virtual color eval(const hit_record &rec, const vec3 &wo,
+                       const vec3 &wi) const override {
+        return albedo->value(rec.u, rec.v, rec.p) / (4.0 * pi);
+    }
+
+    virtual double pdf(const hit_record &rec, const vec3 &wo,
+                       const vec3 &wi) const override {
+        return 1.0 / (4.0 * pi);
+    }
+
     virtual bool scatter(const ray &r_in, const hit_record &rec,
                          color &attenuation, ray &scattered) const override {
         RNG rng(make_thread_seed());

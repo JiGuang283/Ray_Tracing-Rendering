@@ -1,34 +1,23 @@
 #ifndef MATERIAL_H
 #define MATERIAL_H
 
-#include "hittable.h"
+#include "interaction.h"
 #include "onb.h"
 #include "ray.h"
 #include "rtweekend.h"
 #include "texture.h"
 #include <algorithm>
 
-struct hit_record;
-
-struct BSDFSample {
-    vec3 wi;          // 采样生成的入射方向
-    color f;          // BSDF 吞吐量, 存 f (BSDF值)，让积分器自己乘 cos 和除
-                      // pdf(delta材质除外)。
-    double pdf;       // 采样该方向的概率密度
-    bool is_specular; // 是否是镜面反射（Delta分布）
-    bool is_transmission = false; // 区分透射
-};
-
 class material {
   public:
     virtual ~material() = default;
 
-    // 原emitted函数（保留旧接口）
+    // Legacy emitted interface; keep for tutorial-compatible code.
     virtual color emitted(double u, double v, const point3 &p) const {
         return color(0, 0, 0);
     }
 
-    // 新 emitted 接口
+    // Primary BSDF/emitter interface.
     virtual color emitted(const hit_record &rec, const vec3 &wo) const {
         return color(0, 0, 0);
     }
@@ -38,7 +27,7 @@ class material {
         return false;
     }
 
-    // 采样 BSDF 生成入射方向 (Importance Sampling)
+    // Sample BSDF to generate an incoming direction.
     virtual bool sample(const hit_record &rec, const vec3 &wo,
                         BSDFSample &sampled) const {
         return false;
@@ -48,19 +37,20 @@ class material {
         return sample(rec, wo, sampled);
     }
 
-    // 给定两个方向，计算反射比率（BSDF值）
+    // Evaluate BSDF for a pair of directions.
     virtual color eval(const hit_record &rec, const vec3 &wo,
                        const vec3 &wi) const {
         return color(0, 0, 0);
     }
 
-    // 计算pdf
+    // Evaluate the sampling PDF for a pair of directions.
     virtual double pdf(const hit_record &rec, const vec3 &wo,
                        const vec3 &wi) const {
         return 0.0;
     }
 
-    // Deprecated scatter
+    // Legacy tutorial scatter interface; new renderer code should use
+    // sample/eval/pdf/emitted above.
     virtual bool scatter(const ray &r_in, const hit_record &rec, color &albedo,
                          ray &scattered, double &pdf_val) const {
         return false;

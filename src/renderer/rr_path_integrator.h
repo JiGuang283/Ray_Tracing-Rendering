@@ -38,16 +38,24 @@ class RRPathInterator : public Integrator {
                 break;
             }
 
-            color emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.p);
+            vec3 wo = -unit_vector(current_ray.direction());
+            color emitted = rec.mat_ptr->emitted(rec, wo);
             L += throughput * emitted;
 
-            ray scattered;
-            color attenuation;
-            if (!rec.mat_ptr->scatter(current_ray, rec, attenuation, scattered,
-                                      rng)) {
+            BSDFSample bs;
+            if (!rec.mat_ptr->sample(rec, wo, bs, rng)) {
                 break;
             }
-            throughput *= attenuation;
+            if (bs.pdf < 1e-8 && !bs.is_specular) {
+                break;
+            }
+
+            if (bs.is_specular) {
+                throughput *= bs.f;
+            } else {
+                double cos_theta = std::abs(dot(bs.wi, rec.normal));
+                throughput *= bs.f * cos_theta / bs.pdf;
+            }
 
             if (depth >= m_rr_start_depth) {
                 double p_survive =
@@ -59,7 +67,7 @@ class RRPathInterator : public Integrator {
                 }
                 throughput /= p_survive;
             }
-            current_ray = scattered;
+            current_ray = ray(rec.p, bs.wi, current_ray.time());
         }
         return L;
     }

@@ -2,25 +2,9 @@
 #define HITTABLE_H
 
 #include "aabb.h"
+#include "interaction.h"
 #include "ray.h"
 #include "rtweekend.h"
-
-class material;
-
-struct hit_record {
-    point3 p;
-    vec3 normal;
-    material *mat_ptr;
-    double t;
-    double u;
-    double v;
-    bool front_face;
-
-    inline void set_face_normal(const ray &r, const vec3 &outWard_normal) {
-        front_face = dot(r.direction(), outWard_normal) < 0;
-        normal = front_face ? outWard_normal : -outWard_normal;
-    }
-};
 
 class hittable {
   public:
