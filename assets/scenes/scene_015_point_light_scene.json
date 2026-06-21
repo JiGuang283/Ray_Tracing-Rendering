@@ -1,0 +1,128 @@
+{
+  "name": "point_light_scene",
+  "camera": {
+    "lookfrom": [
+      0,
+      5,
+      10
+    ],
+    "lookat": [
+      0,
+      1,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 30,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 1000,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    "red": {
+      "type": "lambertian",
+      "albedo": [
+        0.8,
+        0.2,
+        0.2
+      ]
+    },
+    "metal": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "roughness": 0.05,
+      "metallic": 1.0
+    },
+    "plastic": {
+      "type": "pbr",
+      "albedo": [
+        0.2,
+        0.2,
+        0.8
+      ],
+      "roughness": 0.1,
+      "metallic": 0.0
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "red"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -3,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "metal"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        3,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "plastic"
+    }
+  ],
+  "lights": [
+    {
+      "type": "point",
+      "position": [
+        0,
+        6,
+        2
+      ],
+      "intensity": [
+        50,
+        50,
+        50
+      ]
+    }
+  ]
+}

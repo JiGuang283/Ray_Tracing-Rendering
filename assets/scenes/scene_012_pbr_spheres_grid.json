@@ -1,0 +1,1085 @@
+{
+  "name": "pbr_spheres_grid",
+  "camera": {
+    "lookfrom": [
+      0,
+      40,
+      0
+    ],
+    "lookat": [
+      0,
+      0,
+      0
+    ],
+    "vup": [
+      0,
+      0,
+      -1
+    ],
+    "vfov": 25,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.0
+  },
+  "render": {
+    "width": 800,
+    "spp": 500,
+    "background": [
+      0.05,
+      0.05,
+      0.05
+    ]
+  },
+  "textures": {
+    "checker": {
+      "type": "checker",
+      "even": [
+        0.2,
+        0.3,
+        0.1
+      ],
+      "odd": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    }
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": "checker"
+    },
+    "pbr_0_0": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.05,
+      "metallic": 0.0
+    },
+    "pbr_0_1": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.16666666666666666,
+      "metallic": 0.0
+    },
+    "pbr_0_2": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.3333333333333333,
+      "metallic": 0.0
+    },
+    "pbr_0_3": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.5,
+      "metallic": 0.0
+    },
+    "pbr_0_4": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.6666666666666666,
+      "metallic": 0.0
+    },
+    "pbr_0_5": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.8333333333333334,
+      "metallic": 0.0
+    },
+    "pbr_0_6": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 1.0,
+      "metallic": 0.0
+    },
+    "pbr_1_0": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.05,
+      "metallic": 0.16666666666666666
+    },
+    "pbr_1_1": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.16666666666666666,
+      "metallic": 0.16666666666666666
+    },
+    "pbr_1_2": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.3333333333333333,
+      "metallic": 0.16666666666666666
+    },
+    "pbr_1_3": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.5,
+      "metallic": 0.16666666666666666
+    },
+    "pbr_1_4": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.6666666666666666,
+      "metallic": 0.16666666666666666
+    },
+    "pbr_1_5": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.8333333333333334,
+      "metallic": 0.16666666666666666
+    },
+    "pbr_1_6": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 1.0,
+      "metallic": 0.16666666666666666
+    },
+    "pbr_2_0": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.05,
+      "metallic": 0.3333333333333333
+    },
+    "pbr_2_1": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.16666666666666666,
+      "metallic": 0.3333333333333333
+    },
+    "pbr_2_2": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.3333333333333333,
+      "metallic": 0.3333333333333333
+    },
+    "pbr_2_3": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.5,
+      "metallic": 0.3333333333333333
+    },
+    "pbr_2_4": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.6666666666666666,
+      "metallic": 0.3333333333333333
+    },
+    "pbr_2_5": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.8333333333333334,
+      "metallic": 0.3333333333333333
+    },
+    "pbr_2_6": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 1.0,
+      "metallic": 0.3333333333333333
+    },
+    "pbr_3_0": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.05,
+      "metallic": 0.5
+    },
+    "pbr_3_1": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.16666666666666666,
+      "metallic": 0.5
+    },
+    "pbr_3_2": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.3333333333333333,
+      "metallic": 0.5
+    },
+    "pbr_3_3": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.5,
+      "metallic": 0.5
+    },
+    "pbr_3_4": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.6666666666666666,
+      "metallic": 0.5
+    },
+    "pbr_3_5": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.8333333333333334,
+      "metallic": 0.5
+    },
+    "pbr_3_6": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 1.0,
+      "metallic": 0.5
+    },
+    "pbr_4_0": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.05,
+      "metallic": 0.6666666666666666
+    },
+    "pbr_4_1": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.16666666666666666,
+      "metallic": 0.6666666666666666
+    },
+    "pbr_4_2": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.3333333333333333,
+      "metallic": 0.6666666666666666
+    },
+    "pbr_4_3": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.5,
+      "metallic": 0.6666666666666666
+    },
+    "pbr_4_4": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.6666666666666666,
+      "metallic": 0.6666666666666666
+    },
+    "pbr_4_5": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.8333333333333334,
+      "metallic": 0.6666666666666666
+    },
+    "pbr_4_6": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 1.0,
+      "metallic": 0.6666666666666666
+    },
+    "pbr_5_0": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.05,
+      "metallic": 0.8333333333333334
+    },
+    "pbr_5_1": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.16666666666666666,
+      "metallic": 0.8333333333333334
+    },
+    "pbr_5_2": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.3333333333333333,
+      "metallic": 0.8333333333333334
+    },
+    "pbr_5_3": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.5,
+      "metallic": 0.8333333333333334
+    },
+    "pbr_5_4": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.6666666666666666,
+      "metallic": 0.8333333333333334
+    },
+    "pbr_5_5": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.8333333333333334,
+      "metallic": 0.8333333333333334
+    },
+    "pbr_5_6": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 1.0,
+      "metallic": 0.8333333333333334
+    },
+    "pbr_6_0": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.05,
+      "metallic": 1.0
+    },
+    "pbr_6_1": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.16666666666666666,
+      "metallic": 1.0
+    },
+    "pbr_6_2": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.3333333333333333,
+      "metallic": 1.0
+    },
+    "pbr_6_3": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.5,
+      "metallic": 1.0
+    },
+    "pbr_6_4": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.6666666666666666,
+      "metallic": 1.0
+    },
+    "pbr_6_5": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 0.8333333333333334,
+      "metallic": 1.0
+    },
+    "pbr_6_6": {
+      "type": "pbr",
+      "albedo": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "roughness": 1.0,
+      "metallic": 1.0
+    },
+    "light": {
+      "type": "diffuse_light",
+      "color": [
+        30,
+        30,
+        30
+      ]
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -7.5,
+        1,
+        -7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_0_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        -7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_0_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        -7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_0_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        -7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_0_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        -7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_0_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        -7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_0_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        7.5,
+        1,
+        -7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_0_6"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -7.5,
+        1,
+        -5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_1_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        -5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_1_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        -5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_1_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        -5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_1_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        -5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_1_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        -5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_1_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        7.5,
+        1,
+        -5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_1_6"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -7.5,
+        1,
+        -2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_2_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        -2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_2_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        -2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_2_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        -2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_2_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        -2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_2_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        -2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_2_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        7.5,
+        1,
+        -2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_2_6"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -7.5,
+        1,
+        0.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_3_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        0.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_3_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        0.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_3_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        0.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_3_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        0.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_3_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        0.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_3_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        7.5,
+        1,
+        0.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_3_6"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -7.5,
+        1,
+        2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_4_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_4_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_4_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_4_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_4_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_4_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        7.5,
+        1,
+        2.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_4_6"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -7.5,
+        1,
+        5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_5_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_5_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_5_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_5_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_5_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_5_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        7.5,
+        1,
+        5.0
+      ],
+      "radius": 1.0,
+      "material": "pbr_5_6"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -7.5,
+        1,
+        7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_6_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_6_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_6_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_6_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_6_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_6_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        7.5,
+        1,
+        7.5
+      ],
+      "radius": 1.0,
+      "material": "pbr_6_6"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        60,
+        0
+      ],
+      "radius": 10,
+      "material": "light"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -20,
+        10,
+        20
+      ],
+      "radius": 2,
+      "material": "light"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        20,
+        10,
+        20
+      ],
+      "radius": 2,
+      "material": "light"
+    }
+  ],
+  "lights": []
+}

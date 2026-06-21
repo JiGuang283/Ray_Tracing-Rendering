@@ -1,0 +1,257 @@
+{
+  "name": "jewelry_display",
+  "camera": {
+    "lookfrom": [
+      0,
+      4,
+      8
+    ],
+    "lookat": [
+      0,
+      0.8,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 35,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1200,
+    "spp": 1000,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "pedestal": {
+      "type": "pbr",
+      "albedo": [
+        0.02,
+        0.02,
+        0.02
+      ],
+      "roughness": 0.1,
+      "metallic": 0.0
+    },
+    "diamond": {
+      "type": "dielectric",
+      "ir": 2.4
+    },
+    "gold": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.1,
+      "metallic": 1.0
+    },
+    "silver": {
+      "type": "pbr",
+      "albedo": [
+        0.97,
+        0.96,
+        0.91
+      ],
+      "roughness": 0.15,
+      "metallic": 1.0
+    },
+    "rose_gold": {
+      "type": "pbr",
+      "albedo": [
+        0.92,
+        0.72,
+        0.65
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "platinum": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.89,
+        0.87
+      ],
+      "roughness": 0.05,
+      "metallic": 1.0
+    },
+    "copper": {
+      "type": "pbr",
+      "albedo": [
+        0.955,
+        0.638,
+        0.538
+      ],
+      "roughness": 0.25,
+      "metallic": 1.0
+    },
+    "pearl": {
+      "type": "pbr",
+      "albedo": [
+        0.95,
+        0.93,
+        0.88
+      ],
+      "roughness": 0.3,
+      "metallic": 0.0
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -100,
+        0
+      ],
+      "radius": 100.3,
+      "material": "pedestal"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1.2,
+        0
+      ],
+      "radius": 1.0,
+      "material": "diamond"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1.2,
+        0
+      ],
+      "radius": -0.6,
+      "material": "diamond"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        0.6,
+        0
+      ],
+      "radius": 0.6,
+      "material": "gold"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        0.5,
+        0
+      ],
+      "radius": 0.5,
+      "material": "silver"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -1.5,
+        0.4,
+        -2
+      ],
+      "radius": 0.4,
+      "material": "rose_gold"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        0.35,
+        -2.2
+      ],
+      "radius": 0.35,
+      "material": "platinum"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        1.5,
+        0.4,
+        -2
+      ],
+      "radius": 0.4,
+      "material": "copper"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1.25,
+        0
+      ],
+      "radius": 0.2,
+      "material": "diamond"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -1.5,
+        0.2,
+        2
+      ],
+      "radius": 0.2,
+      "material": "pearl"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -0.75,
+        0.2,
+        2
+      ],
+      "radius": 0.2,
+      "material": "pearl"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        0.2,
+        2
+      ],
+      "radius": 0.2,
+      "material": "pearl"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.75,
+        0.2,
+        2
+      ],
+      "radius": 0.2,
+      "material": "pearl"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        1.5,
+        0.2,
+        2
+      ],
+      "radius": 0.2,
+      "material": "pearl"
+    }
+  ],
+  "lights": [
+    {
+      "type": "environment",
+      "path": "brown_photostudio_02_4k.hdr"
+    }
+  ]
+}

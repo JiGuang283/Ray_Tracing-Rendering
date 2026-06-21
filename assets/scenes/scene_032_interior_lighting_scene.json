@@ -1,0 +1,429 @@
+{
+  "name": "interior_lighting_scene",
+  "camera": {
+    "lookfrom": [
+      0,
+      4,
+      8
+    ],
+    "lookat": [
+      0,
+      2,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 50,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1000,
+    "spp": 500,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "floor": {
+      "type": "pbr",
+      "albedo": [
+        0.3,
+        0.2,
+        0.15
+      ],
+      "roughness": 0.6,
+      "metallic": 0.0
+    },
+    "wall": {
+      "type": "lambertian",
+      "albedo": [
+        0.9,
+        0.9,
+        0.85
+      ]
+    },
+    "ceiling": {
+      "type": "lambertian",
+      "albedo": [
+        0.95,
+        0.95,
+        0.95
+      ]
+    },
+    "table": {
+      "type": "pbr",
+      "albedo": [
+        0.4,
+        0.25,
+        0.1
+      ],
+      "roughness": 0.3,
+      "metallic": 0.0
+    },
+    "chrome": {
+      "type": "metal",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "fuzz": 0.0
+    },
+    "glass": {
+      "type": "dielectric",
+      "ir": 1.5
+    },
+    "red_ceramic": {
+      "type": "pbr",
+      "albedo": [
+        0.7,
+        0.1,
+        0.1
+      ],
+      "roughness": 0.2,
+      "metallic": 0.0
+    },
+    "ceiling_light": {
+      "type": "diffuse_light",
+      "color": [
+        8,
+        8,
+        7
+      ]
+    },
+    "wall_metal_0_0": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.1,
+      "metallic": 1.0
+    },
+    "wall_metal_0_1": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.30000000000000004,
+      "metallic": 1.0
+    },
+    "wall_metal_0_2": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.5,
+      "metallic": 1.0
+    },
+    "wall_metal_1_0": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.1,
+      "metallic": 1.0
+    },
+    "wall_metal_1_1": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.30000000000000004,
+      "metallic": 1.0
+    },
+    "wall_metal_1_2": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.5,
+      "metallic": 1.0
+    },
+    "wall_metal_2_0": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.1,
+      "metallic": 1.0
+    },
+    "wall_metal_2_1": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.30000000000000004,
+      "metallic": 1.0
+    },
+    "wall_metal_2_2": {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "roughness": 0.5,
+      "metallic": 1.0
+    }
+  },
+  "objects": [
+    {
+      "type": "xz_rect",
+      "x0": -10,
+      "x1": 10,
+      "z0": -10,
+      "z1": 10,
+      "k": 0,
+      "material": "floor"
+    },
+    {
+      "type": "xy_rect",
+      "x0": -10,
+      "x1": 10,
+      "y0": 0,
+      "y1": 8,
+      "k": -5,
+      "material": "wall"
+    },
+    {
+      "type": "yz_rect",
+      "y0": 0,
+      "y1": 8,
+      "z0": -5,
+      "z1": 10,
+      "k": -10,
+      "material": "wall"
+    },
+    {
+      "type": "yz_rect",
+      "y0": 0,
+      "y1": 8,
+      "z0": -5,
+      "z1": 10,
+      "k": 10,
+      "material": "wall"
+    },
+    {
+      "type": "xz_rect",
+      "x0": -10,
+      "x1": 10,
+      "z0": -5,
+      "z1": 10,
+      "k": 8,
+      "material": "ceiling"
+    },
+    {
+      "type": "box",
+      "min": [
+        -2,
+        0,
+        -1
+      ],
+      "max": [
+        2,
+        1,
+        3
+      ],
+      "material": "table"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -1,
+        1.5,
+        1
+      ],
+      "radius": 0.5,
+      "material": "chrome"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.5,
+        1.4,
+        1.5
+      ],
+      "radius": 0.4,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        1,
+        1.6,
+        0.5
+      ],
+      "radius": 0.6,
+      "material": "red_ceramic"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -4,
+        3.0,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_0_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -4,
+        4.2,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_0_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -4,
+        5.4,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_0_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2,
+        3.0,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_1_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2,
+        4.2,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_1_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2,
+        5.4,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_1_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        3.0,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_2_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        4.2,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_2_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        5.4,
+        -4.8
+      ],
+      "radius": 0.3,
+      "material": "wall_metal_2_2"
+    },
+    {
+      "type": "flip_face",
+      "object": {
+        "type": "xz_rect",
+        "x0": -1,
+        "x1": 1,
+        "z0": 0,
+        "z1": 2,
+        "k": 7.99,
+        "material": "ceiling_light"
+      }
+    }
+  ],
+  "lights": [
+    {
+      "type": "quad",
+      "Q": [
+        -1,
+        7.99,
+        0
+      ],
+      "u": [
+        2,
+        0,
+        0
+      ],
+      "v": [
+        0,
+        0,
+        2
+      ],
+      "intensity": [
+        8,
+        8,
+        7
+      ]
+    },
+    {
+      "type": "spot",
+      "position": [
+        0,
+        6,
+        4
+      ],
+      "direction": [
+        0,
+        -1,
+        -0.3
+      ],
+      "cutoff": 25.0,
+      "intensity": [
+        800,
+        800,
+        750
+      ]
+    }
+  ]
+}

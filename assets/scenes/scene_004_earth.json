@@ -1,0 +1,58 @@
+{
+  "name": "earth",
+  "camera": {
+    "lookfrom": [
+      13,
+      2,
+      3
+    ],
+    "lookat": [
+      0,
+      0,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 20,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1280,
+    "spp": 100,
+    "background": [
+      0.7,
+      0.8,
+      1.0
+    ]
+  },
+  "textures": {
+    "earth": {
+      "type": "image",
+      "path": "earthmap.jpg"
+    }
+  },
+  "materials": {
+    "earth": {
+      "type": "lambertian",
+      "albedo": "earth"
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "radius": 2,
+      "material": "earth"
+    }
+  ],
+  "lights": []
+}

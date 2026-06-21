@@ -1,0 +1,294 @@
+{
+  "name": "pbr_materials_gallery",
+  "camera": {
+    "lookfrom": [
+      0,
+      10,
+      20
+    ],
+    "lookat": [
+      0,
+      0,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 25,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 2000,
+    "background": [
+      0.1,
+      0.1,
+      0.1
+    ]
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    "light": {
+      "type": "diffuse_light",
+      "color": [
+        10,
+        10,
+        10
+      ]
+    },
+    "non_metal_0": {
+      "type": "pbr",
+      "albedo": [
+        0.02,
+        0.02,
+        0.02
+      ],
+      "roughness": 0.5,
+      "metallic": 0.0
+    },
+    "non_metal_1": {
+      "type": "pbr",
+      "albedo": [
+        0.21,
+        0.28,
+        0.08
+      ],
+      "roughness": 0.5,
+      "metallic": 0.0
+    },
+    "non_metal_2": {
+      "type": "pbr",
+      "albedo": [
+        0.51,
+        0.51,
+        0.51
+      ],
+      "roughness": 0.5,
+      "metallic": 0.0
+    },
+    "non_metal_3": {
+      "type": "pbr",
+      "albedo": [
+        0.7,
+        0.7,
+        0.7
+      ],
+      "roughness": 0.5,
+      "metallic": 0.0
+    },
+    "non_metal_4": {
+      "type": "pbr",
+      "albedo": [
+        0.81,
+        0.81,
+        0.81
+      ],
+      "roughness": 0.5,
+      "metallic": 0.0
+    },
+    "metal_0": {
+      "type": "pbr",
+      "albedo": [
+        0.54,
+        0.49,
+        0.42
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "metal_1": {
+      "type": "pbr",
+      "albedo": [
+        0.56,
+        0.57,
+        0.58
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "metal_2": {
+      "type": "pbr",
+      "albedo": [
+        0.95,
+        0.64,
+        0.54
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "metal_3": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.71,
+        0.29
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "metal_4": {
+      "type": "pbr",
+      "albedo": [
+        0.91,
+        0.92,
+        0.92
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "metal_5": {
+      "type": "pbr",
+      "albedo": [
+        0.97,
+        0.96,
+        0.91
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        -2
+      ],
+      "radius": 1.0,
+      "material": "non_metal_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        -2
+      ],
+      "radius": 1.0,
+      "material": "non_metal_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        -2
+      ],
+      "radius": 1.0,
+      "material": "non_metal_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        -2
+      ],
+      "radius": 1.0,
+      "material": "non_metal_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        -2
+      ],
+      "radius": 1.0,
+      "material": "non_metal_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -6.25,
+        1,
+        2
+      ],
+      "radius": 1.0,
+      "material": "metal_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -3.75,
+        1,
+        2
+      ],
+      "radius": 1.0,
+      "material": "metal_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -1.25,
+        1,
+        2
+      ],
+      "radius": 1.0,
+      "material": "metal_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        1.25,
+        1,
+        2
+      ],
+      "radius": 1.0,
+      "material": "metal_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        3.75,
+        1,
+        2
+      ],
+      "radius": 1.0,
+      "material": "metal_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        6.25,
+        1,
+        2
+      ],
+      "radius": 1.0,
+      "material": "metal_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        20,
+        10
+      ],
+      "radius": 5,
+      "material": "light"
+    }
+  ],
+  "lights": []
+}

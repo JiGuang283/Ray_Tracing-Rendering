@@ -1,0 +1,41 @@
+{
+  "name": "final_scene",
+  "world_accel": false,
+  "camera": {
+    "lookfrom": [
+      478,
+      278,
+      -600
+    ],
+    "lookat": [
+      278,
+      278,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 40,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.0
+  },
+  "render": {
+    "width": 800,
+    "spp": 500,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {},
+  "objects": [
+    {
+      "type": "final_scene_generator"
+    }
+  ],
+  "lights": []
+}

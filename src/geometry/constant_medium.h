@@ -87,14 +87,14 @@ class constant_medium : public hittable {
     double neg_inv_density;
 };
 
-bool constant_medium::hit(const ray &r, double t_min, double t_max,
-                          hit_record &rec) const {
+inline bool constant_medium::hit(const ray &r, double t_min, double t_max,
+                                 hit_record &rec) const {
     RNG rng(make_thread_seed());
     return hit(r, t_min, t_max, rec, rng);
 }
 
-bool constant_medium::hit(const ray &r, double t_min, double t_max,
-                          hit_record &rec, RNG &rng) const {
+inline bool constant_medium::hit(const ray &r, double t_min, double t_max,
+                                 hit_record &rec, RNG &rng) const {
     // Print occasional samples when debugging. To enable, set enableDebug true.
     const bool enableDebug = false;
     const bool debugging = enableDebug && rng.next() < 0.00001;

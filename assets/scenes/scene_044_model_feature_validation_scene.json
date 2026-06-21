@@ -1,0 +1,145 @@
+{
+  "name": "model_feature_validation_scene",
+  "world_accel": true,
+  "camera": {
+    "lookfrom": [
+      8,
+      4,
+      12
+    ],
+    "lookat": [
+      0,
+      1.5,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 25,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 10000,
+    "background": [
+      0.65,
+      0.75,
+      0.9
+    ]
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": [
+        0.6,
+        0.6,
+        0.6
+      ]
+    },
+    "area_light": {
+      "type": "diffuse_light",
+      "color": [
+        6,
+        6,
+        6
+      ]
+    },
+    "matte": {
+      "type": "lambertian",
+      "albedo": [
+        0.75,
+        0.45,
+        0.35
+      ]
+    },
+    "mirror": {
+      "type": "metal",
+      "albedo": [
+        0.8,
+        0.85,
+        0.9
+      ],
+      "fuzz": 0.05
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "xz_rect",
+      "x0": -6,
+      "x1": 6,
+      "z0": -6,
+      "z1": 6,
+      "k": 6,
+      "material": "area_light"
+    },
+    {
+      "type": "obj",
+      "implementation": "legacy",
+      "path": "assets/sample_mesh.obj",
+      "translate": [
+        -2.5,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "build_bvh": true,
+      "use_vertex_normals": true,
+      "material": "matte"
+    },
+    {
+      "type": "translate",
+      "offset": [
+        3.5,
+        0.0,
+        0.0
+      ],
+      "object": {
+        "type": "obj",
+        "implementation": "legacy",
+        "path": "assets/sample_mesh.obj",
+        "translate": [
+          -2.5,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.5,
+          1.5,
+          1.5
+        ],
+        "build_bvh": true,
+        "use_vertex_normals": true,
+        "material": "matte"
+      }
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -4.0,
+        1.25,
+        -2.0
+      ],
+      "radius": 1.0,
+      "material": "mirror"
+    }
+  ],
+  "lights": []
+}

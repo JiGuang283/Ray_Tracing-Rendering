@@ -1,0 +1,284 @@
+{
+  "name": "multi_light_demo",
+  "camera": {
+    "lookfrom": [
+      0,
+      5,
+      14
+    ],
+    "lookat": [
+      0,
+      1.5,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 30,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1200,
+    "spp": 2000,
+    "background": [
+      0.02,
+      0.02,
+      0.05
+    ]
+  },
+  "textures": {
+    "checker": {
+      "type": "checker",
+      "even": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "odd": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  },
+  "materials": {
+    "floor": {
+      "type": "lambertian",
+      "albedo": "checker"
+    },
+    "wall": {
+      "type": "lambertian",
+      "albedo": [
+        0.73,
+        0.73,
+        0.73
+      ]
+    },
+    "podium": {
+      "type": "lambertian",
+      "albedo": [
+        0.2,
+        0.2,
+        0.2
+      ]
+    },
+    "glass": {
+      "type": "dielectric",
+      "ir": 1.5
+    },
+    "gold": {
+      "type": "metal",
+      "albedo": [
+        1.0,
+        0.71,
+        0.29
+      ],
+      "fuzz": 0.05
+    },
+    "red": {
+      "type": "lambertian",
+      "albedo": [
+        0.65,
+        0.05,
+        0.05
+      ]
+    },
+    "light": {
+      "type": "diffuse_light",
+      "color": [
+        8,
+        8,
+        10
+      ]
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "floor"
+    },
+    {
+      "type": "xy_rect",
+      "x0": -10,
+      "x1": 10,
+      "y0": 0,
+      "y1": 10,
+      "k": -5,
+      "material": "wall"
+    },
+    {
+      "type": "box",
+      "min": [
+        -3.5,
+        0,
+        -1
+      ],
+      "max": [
+        -1.5,
+        1,
+        1
+      ],
+      "material": "podium"
+    },
+    {
+      "type": "box",
+      "min": [
+        -1,
+        0,
+        -1
+      ],
+      "max": [
+        1,
+        2,
+        1
+      ],
+      "material": "podium"
+    },
+    {
+      "type": "box",
+      "min": [
+        1.5,
+        0,
+        -1
+      ],
+      "max": [
+        3.5,
+        1.5,
+        1
+      ],
+      "material": "podium"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1.8,
+        0
+      ],
+      "radius": 0.8,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1.8,
+        0
+      ],
+      "radius": -0.6,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        2.8,
+        0
+      ],
+      "radius": 0.8,
+      "material": "gold"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        2.3,
+        0
+      ],
+      "radius": 0.8,
+      "material": "red"
+    },
+    {
+      "type": "flip_face",
+      "object": {
+        "type": "xz_rect",
+        "x0": 2,
+        "x1": 6,
+        "z0": 0,
+        "z1": 4,
+        "k": 6,
+        "material": "light"
+      }
+    }
+  ],
+  "lights": [
+    {
+      "type": "spot",
+      "position": [
+        0,
+        10,
+        2
+      ],
+      "direction": [
+        0,
+        -1,
+        -0.1
+      ],
+      "cutoff": 25.0,
+      "intensity": [
+        80,
+        80,
+        70
+      ]
+    },
+    {
+      "type": "point",
+      "position": [
+        4,
+        4,
+        2
+      ],
+      "intensity": [
+        30,
+        15,
+        5
+      ]
+    },
+    {
+      "type": "quad",
+      "Q": [
+        2,
+        6,
+        0
+      ],
+      "u": [
+        4,
+        0,
+        0
+      ],
+      "v": [
+        0,
+        0,
+        4
+      ],
+      "intensity": [
+        8,
+        8,
+        10
+      ]
+    },
+    {
+      "type": "directional",
+      "direction": [
+        1,
+        -0.5,
+        -1
+      ],
+      "color": [
+        0.1,
+        0.1,
+        0.3
+      ]
+    }
+  ]
+}

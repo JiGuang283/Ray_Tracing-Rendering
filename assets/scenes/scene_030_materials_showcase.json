@@ -1,0 +1,293 @@
+{
+  "name": "materials_showcase",
+  "camera": {
+    "lookfrom": [
+      0,
+      5,
+      12
+    ],
+    "lookat": [
+      0,
+      1,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 35,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1200,
+    "spp": 500,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "textures": {
+    "checker": {
+      "type": "checker",
+      "even": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "odd": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    }
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": "checker"
+    },
+    "glass": {
+      "type": "dielectric",
+      "ir": 1.5
+    },
+    "mirror": {
+      "type": "metal",
+      "albedo": [
+        0.95,
+        0.95,
+        0.95
+      ],
+      "fuzz": 0.0
+    },
+    "gold": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.1,
+      "metallic": 1.0
+    },
+    "copper": {
+      "type": "pbr",
+      "albedo": [
+        0.955,
+        0.638,
+        0.538
+      ],
+      "roughness": 0.4,
+      "metallic": 1.0
+    },
+    "blue_plastic": {
+      "type": "pbr",
+      "albedo": [
+        0.1,
+        0.2,
+        0.8
+      ],
+      "roughness": 0.05,
+      "metallic": 0.0
+    },
+    "red_diffuse": {
+      "type": "lambertian",
+      "albedo": [
+        0.8,
+        0.1,
+        0.1
+      ]
+    },
+    "silver_0": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "roughness": 0.0,
+      "metallic": 1.0
+    },
+    "silver_1": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "roughness": 0.25,
+      "metallic": 1.0
+    },
+    "silver_2": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "roughness": 0.5,
+      "metallic": 1.0
+    },
+    "silver_3": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "roughness": 0.75,
+      "metallic": 1.0
+    },
+    "silver_4": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "roughness": 1.0,
+      "metallic": 1.0
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1.5,
+        0
+      ],
+      "radius": 1.5,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1.5,
+        0
+      ],
+      "radius": -1.4,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -4,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "mirror"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        4,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "gold"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        0.7,
+        -3
+      ],
+      "radius": 0.7,
+      "material": "copper"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        0.7,
+        -3
+      ],
+      "radius": 0.7,
+      "material": "blue_plastic"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        0.7,
+        -3
+      ],
+      "radius": 0.7,
+      "material": "red_diffuse"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -3.0,
+        0.4,
+        3
+      ],
+      "radius": 0.4,
+      "material": "silver_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -1.5,
+        0.4,
+        3
+      ],
+      "radius": 0.4,
+      "material": "silver_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        0.4,
+        3
+      ],
+      "radius": 0.4,
+      "material": "silver_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        1.5,
+        0.4,
+        3
+      ],
+      "radius": 0.4,
+      "material": "silver_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        3.0,
+        0.4,
+        3
+      ],
+      "radius": 0.4,
+      "material": "silver_4"
+    }
+  ],
+  "lights": [
+    {
+      "type": "environment",
+      "path": "brown_photostudio_02_4k.hdr"
+    }
+  ]
+}

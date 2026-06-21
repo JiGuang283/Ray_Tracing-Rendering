@@ -1,0 +1,42 @@
+{
+  "name": "example_light_scene",
+  "world_accel": false,
+  "camera": {
+    "lookfrom": [
+      13,
+      2,
+      3
+    ],
+    "lookat": [
+      0,
+      0,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 20,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1280,
+    "spp": 100,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {},
+  "objects": [
+    {
+      "type": "random_scene_generator",
+      "emissive_variant": true
+    }
+  ],
+  "lights": []
+}

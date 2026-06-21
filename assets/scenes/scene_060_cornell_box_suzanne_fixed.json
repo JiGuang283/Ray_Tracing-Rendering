@@ -1,0 +1,193 @@
+{
+  "name": "cornell_box_suzanne_fixed",
+  "camera": {
+    "lookfrom": [
+      278,
+      278,
+      -800
+    ],
+    "lookat": [
+      278,
+      278,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 40,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.0
+  },
+  "render": {
+    "width": 600,
+    "spp": 400,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "red": {
+      "type": "lambertian",
+      "albedo": [
+        0.65,
+        0.05,
+        0.05
+      ]
+    },
+    "white": {
+      "type": "lambertian",
+      "albedo": [
+        0.73,
+        0.73,
+        0.73
+      ]
+    },
+    "green": {
+      "type": "lambertian",
+      "albedo": [
+        0.12,
+        0.45,
+        0.15
+      ]
+    },
+    "light": {
+      "type": "diffuse_light",
+      "color": [
+        3,
+        3,
+        3
+      ]
+    },
+    "monkey": {
+      "type": "lambertian",
+      "albedo": [
+        0.2,
+        0.55,
+        0.95
+      ]
+    },
+    "bunny": {
+      "type": "lambertian",
+      "albedo": [
+        0.95,
+        0.9,
+        0.15
+      ]
+    }
+  },
+  "objects": [
+    {
+      "type": "yz_rect",
+      "y0": 0,
+      "y1": 555,
+      "z0": 0,
+      "z1": 555,
+      "k": 555,
+      "material": "green"
+    },
+    {
+      "type": "yz_rect",
+      "y0": 0,
+      "y1": 555,
+      "z0": 0,
+      "z1": 555,
+      "k": 0,
+      "material": "red"
+    },
+    {
+      "type": "xz_rect",
+      "x0": 0,
+      "x1": 555,
+      "z0": 0,
+      "z1": 555,
+      "k": 0,
+      "material": "white"
+    },
+    {
+      "type": "xz_rect",
+      "x0": 0,
+      "x1": 555,
+      "z0": 0,
+      "z1": 555,
+      "k": 555,
+      "material": "white"
+    },
+    {
+      "type": "xy_rect",
+      "x0": 0,
+      "x1": 555,
+      "y0": 0,
+      "y1": 555,
+      "k": 555,
+      "material": "white"
+    },
+    {
+      "type": "flip_face",
+      "object": {
+        "type": "xz_rect",
+        "x0": 113,
+        "x1": 443,
+        "z0": 127,
+        "z1": 432,
+        "k": 554,
+        "material": "light"
+      }
+    },
+    {
+      "type": "obj",
+      "implementation": "legacy",
+      "path": "assets/Suzanne.obj",
+      "scale": [
+        90,
+        90,
+        90
+      ],
+      "translate": [
+        0,
+        0,
+        0
+      ],
+      "rotation_y": 180,
+      "auto_lift_to_ground": true,
+      "position": [
+        390,
+        0,
+        360
+      ],
+      "build_bvh": true,
+      "use_vertex_normals": true,
+      "material": "monkey"
+    },
+    {
+      "type": "obj",
+      "implementation": "legacy",
+      "path": "assets/stanford bunny.obj",
+      "scale": [
+        800,
+        800,
+        800
+      ],
+      "translate": [
+        0,
+        0,
+        0
+      ],
+      "rotation_y": 180,
+      "auto_lift_to_ground": true,
+      "position": [
+        210,
+        0,
+        330
+      ],
+      "build_bvh": true,
+      "use_vertex_normals": true,
+      "material": "bunny"
+    }
+  ],
+  "lights": []
+}

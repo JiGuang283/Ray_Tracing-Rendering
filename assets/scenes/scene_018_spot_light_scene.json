@@ -1,0 +1,138 @@
+{
+  "name": "spot_light_scene",
+  "camera": {
+    "lookfrom": [
+      0,
+      5,
+      10
+    ],
+    "lookat": [
+      0,
+      1,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 30,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 100,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    "white": {
+      "type": "lambertian",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    },
+    "red": {
+      "type": "lambertian",
+      "albedo": [
+        0.8,
+        0.1,
+        0.1
+      ]
+    },
+    "blue": {
+      "type": "lambertian",
+      "albedo": [
+        0.1,
+        0.1,
+        0.8
+      ]
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1,
+        0
+      ],
+      "radius": 1,
+      "material": "white"
+    },
+    {
+      "type": "box",
+      "min": [
+        -2,
+        0,
+        -1
+      ],
+      "max": [
+        -1,
+        2,
+        0
+      ],
+      "material": "red"
+    },
+    {
+      "type": "box",
+      "min": [
+        1,
+        0,
+        -1
+      ],
+      "max": [
+        2,
+        2,
+        0
+      ],
+      "material": "blue"
+    }
+  ],
+  "lights": [
+    {
+      "type": "spot",
+      "position": [
+        0,
+        8,
+        4
+      ],
+      "direction": [
+        0,
+        -1,
+        -0.5
+      ],
+      "cutoff": 20.0,
+      "intensity": [
+        2000,
+        2000,
+        2000
+      ]
+    }
+  ]
+}

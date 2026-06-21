@@ -29,12 +29,12 @@ class moving_sphere : public hittable {
     shared_ptr<material> mat_ptr;
 };
 
-point3 moving_sphere::center(double time) const {
+inline point3 moving_sphere::center(double time) const {
     return center0 + ((time - time0) / (time1 - time0)) * (center1 - center0);
 }
 
-bool moving_sphere::hit(const ray &r, double t_min, double t_max,
-                        hit_record &rec) const {
+inline bool moving_sphere::hit(const ray &r, double t_min, double t_max,
+                               hit_record &rec) const {
     vec3 oc = r.origin() - center(r.time());
     auto a = r.direction().length_squared();
     auto half_b = dot(oc, r.direction());
@@ -61,8 +61,8 @@ bool moving_sphere::hit(const ray &r, double t_min, double t_max,
     return true;
 }
 
-bool moving_sphere::bounding_box(double _time0, double _time1,
-                                 aabb &output_box) const {
+inline bool moving_sphere::bounding_box(double _time0, double _time1,
+                                        aabb &output_box) const {
     aabb box0(center(_time0) - vec3(radius, radius, radius),
               center(_time0) + vec3(radius, radius, radius));
     aabb box1(center(_time1) - vec3(radius, radius, radius),

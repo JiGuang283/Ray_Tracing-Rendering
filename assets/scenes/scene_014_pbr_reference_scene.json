@@ -1,0 +1,394 @@
+{
+  "name": "pbr_reference_scene",
+  "camera": {
+    "lookfrom": [
+      0,
+      15,
+      25
+    ],
+    "lookat": [
+      0,
+      0,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 25,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1000,
+    "spp": 5000,
+    "background": [
+      0.05,
+      0.05,
+      0.05
+    ]
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": [
+        0.2,
+        0.2,
+        0.2
+      ]
+    },
+    "light": {
+      "type": "diffuse_light",
+      "color": [
+        10,
+        10,
+        10
+      ]
+    },
+    "ref_metal_0": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "ref_metal_1": {
+      "type": "pbr",
+      "albedo": [
+        0.955,
+        0.638,
+        0.538
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "ref_metal_2": {
+      "type": "pbr",
+      "albedo": [
+        0.56,
+        0.57,
+        0.58
+      ],
+      "roughness": 0.3,
+      "metallic": 1.0
+    },
+    "ref_metal_3": {
+      "type": "pbr",
+      "albedo": [
+        0.913,
+        0.922,
+        0.924
+      ],
+      "roughness": 0.1,
+      "metallic": 1.0
+    },
+    "ref_non_metal_0": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.1,
+        0.1
+      ],
+      "roughness": 0.1,
+      "metallic": 0.0
+    },
+    "ref_non_metal_1": {
+      "type": "pbr",
+      "albedo": [
+        0.1,
+        0.1,
+        1.0
+      ],
+      "roughness": 0.8,
+      "metallic": 0.0
+    },
+    "ref_non_metal_2": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "roughness": 0.02,
+      "metallic": 0.0
+    },
+    "ref_non_metal_3": {
+      "type": "pbr",
+      "albedo": [
+        0.02,
+        0.02,
+        0.02
+      ],
+      "roughness": 0.9,
+      "metallic": 0.0
+    },
+    "ref_non_metal_4": {
+      "type": "pbr",
+      "albedo": [
+        0.81,
+        0.81,
+        0.81
+      ],
+      "roughness": 0.9,
+      "metallic": 0.0
+    },
+    "gold_gradient_0": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.0,
+      "metallic": 1.0
+    },
+    "gold_gradient_1": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "gold_gradient_2": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.4,
+      "metallic": 1.0
+    },
+    "gold_gradient_3": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.6,
+      "metallic": 1.0
+    },
+    "gold_gradient_4": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.8,
+      "metallic": 1.0
+    },
+    "gold_gradient_5": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 1.0,
+      "metallic": 1.0
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -3.75,
+        1,
+        -5
+      ],
+      "radius": 1.0,
+      "material": "ref_metal_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -1.25,
+        1,
+        -5
+      ],
+      "radius": 1.0,
+      "material": "ref_metal_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        1.25,
+        1,
+        -5
+      ],
+      "radius": 1.0,
+      "material": "ref_metal_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        3.75,
+        1,
+        -5
+      ],
+      "radius": 1.0,
+      "material": "ref_metal_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -5.0,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "ref_non_metal_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2.5,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "ref_non_metal_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0.0,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "ref_non_metal_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2.5,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "ref_non_metal_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        5.0,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "ref_non_metal_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -6.25,
+        1,
+        5
+      ],
+      "radius": 1.0,
+      "material": "gold_gradient_0"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -3.75,
+        1,
+        5
+      ],
+      "radius": 1.0,
+      "material": "gold_gradient_1"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -1.25,
+        1,
+        5
+      ],
+      "radius": 1.0,
+      "material": "gold_gradient_2"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        1.25,
+        1,
+        5
+      ],
+      "radius": 1.0,
+      "material": "gold_gradient_3"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        3.75,
+        1,
+        5
+      ],
+      "radius": 1.0,
+      "material": "gold_gradient_4"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        6.25,
+        1,
+        5
+      ],
+      "radius": 1.0,
+      "material": "gold_gradient_5"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        30,
+        10
+      ],
+      "radius": 8,
+      "material": "light"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -20,
+        10,
+        20
+      ],
+      "radius": 2,
+      "material": "light"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        20,
+        10,
+        20
+      ],
+      "radius": 2,
+      "material": "light"
+    }
+  ],
+  "lights": []
+}

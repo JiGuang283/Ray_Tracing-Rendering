@@ -1,0 +1,159 @@
+{
+  "name": "soft_shadow_demo",
+  "camera": {
+    "lookfrom": [
+      0,
+      6,
+      12
+    ],
+    "lookat": [
+      0,
+      2,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 40,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 1000,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ]
+    },
+    "red": {
+      "type": "lambertian",
+      "albedo": [
+        0.8,
+        0.2,
+        0.2
+      ]
+    },
+    "blue": {
+      "type": "lambertian",
+      "albedo": [
+        0.2,
+        0.2,
+        0.8
+      ]
+    },
+    "metal": {
+      "type": "metal",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "fuzz": 0.1
+    },
+    "light": {
+      "type": "diffuse_light",
+      "color": [
+        10,
+        10,
+        10
+      ]
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        2,
+        0
+      ],
+      "radius": 1.0,
+      "material": "red"
+    },
+    {
+      "type": "box",
+      "min": [
+        -4,
+        0,
+        -1
+      ],
+      "max": [
+        -2,
+        2,
+        1
+      ],
+      "material": "blue"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        3.5,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "metal"
+    },
+    {
+      "type": "flip_face",
+      "object": {
+        "type": "xz_rect",
+        "x0": -2,
+        "x1": 2,
+        "z0": -2,
+        "z1": 2,
+        "k": 8,
+        "material": "light"
+      }
+    }
+  ],
+  "lights": [
+    {
+      "type": "quad",
+      "Q": [
+        -2,
+        8,
+        -2
+      ],
+      "u": [
+        4,
+        0,
+        0
+      ],
+      "v": [
+        0,
+        0,
+        4
+      ],
+      "intensity": [
+        10,
+        10,
+        10
+      ]
+    }
+  ]
+}

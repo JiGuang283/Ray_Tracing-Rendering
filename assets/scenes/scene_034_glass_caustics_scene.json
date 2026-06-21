@@ -1,0 +1,226 @@
+{
+  "name": "glass_caustics_scene",
+  "camera": {
+    "lookfrom": [
+      0,
+      6,
+      12
+    ],
+    "lookat": [
+      0,
+      1,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 40,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1000,
+    "spp": 800,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "white": {
+      "type": "lambertian",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    },
+    "glass": {
+      "type": "dielectric",
+      "ir": 1.5
+    },
+    "crystal": {
+      "type": "dielectric",
+      "ir": 2.0
+    },
+    "mirror": {
+      "type": "metal",
+      "albedo": [
+        0.95,
+        0.95,
+        0.95
+      ],
+      "fuzz": 0.0
+    },
+    "gold": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.766,
+        0.336
+      ],
+      "roughness": 0.1,
+      "metallic": 1.0
+    },
+    "light": {
+      "type": "diffuse_light",
+      "color": [
+        12,
+        12,
+        12
+      ]
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "white"
+    },
+    {
+      "type": "xy_rect",
+      "x0": -10,
+      "x1": 10,
+      "y0": 0,
+      "y1": 10,
+      "k": -5,
+      "material": "white"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        2,
+        0
+      ],
+      "radius": 2,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -3,
+        0.8,
+        3
+      ],
+      "radius": 0.8,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        0.8,
+        3
+      ],
+      "radius": 0.8,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        3,
+        0.8,
+        3
+      ],
+      "radius": 0.8,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -4,
+        1,
+        -2
+      ],
+      "radius": 1.0,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        4,
+        1.2,
+        -1.5
+      ],
+      "radius": 1.2,
+      "material": "crystal"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        4,
+        1.2,
+        -1.5
+      ],
+      "radius": -1.0,
+      "material": "crystal"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -4,
+        0.7,
+        2
+      ],
+      "radius": 0.7,
+      "material": "mirror"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        4,
+        0.6,
+        2.5
+      ],
+      "radius": 0.6,
+      "material": "gold"
+    },
+    {
+      "type": "flip_face",
+      "object": {
+        "type": "xz_rect",
+        "x0": -3,
+        "x1": 3,
+        "z0": -3,
+        "z1": 3,
+        "k": 10,
+        "material": "light"
+      }
+    }
+  ],
+  "lights": [
+    {
+      "type": "quad",
+      "Q": [
+        -3,
+        10,
+        -3
+      ],
+      "u": [
+        6,
+        0,
+        0
+      ],
+      "v": [
+        0,
+        0,
+        6
+      ],
+      "intensity": [
+        12,
+        12,
+        12
+      ]
+    }
+  ]
+}

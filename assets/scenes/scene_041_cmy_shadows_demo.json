@@ -1,0 +1,138 @@
+{
+  "name": "cmy_shadows_demo",
+  "camera": {
+    "lookfrom": [
+      0,
+      2,
+      8
+    ],
+    "lookat": [
+      0,
+      1.5,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 30,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 1000,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "white": {
+      "type": "lambertian",
+      "albedo": [
+        1,
+        1,
+        1
+      ]
+    },
+    "rod": {
+      "type": "metal",
+      "albedo": [
+        0.7,
+        0.7,
+        0.7
+      ],
+      "fuzz": 0.1
+    }
+  },
+  "objects": [
+    {
+      "type": "xy_rect",
+      "x0": -10,
+      "x1": 10,
+      "y0": 0,
+      "y1": 10,
+      "k": -2,
+      "material": "white"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "white"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1.5,
+        2
+      ],
+      "radius": 1.0,
+      "material": "white"
+    },
+    {
+      "type": "box",
+      "min": [
+        -0.1,
+        0,
+        1.9
+      ],
+      "max": [
+        0.1,
+        0.5,
+        2.1
+      ],
+      "material": "rod"
+    }
+  ],
+  "lights": [
+    {
+      "type": "point",
+      "position": [
+        -2.5,
+        5,
+        5
+      ],
+      "intensity": [
+        40,
+        0,
+        0
+      ]
+    },
+    {
+      "type": "point",
+      "position": [
+        0,
+        5,
+        8
+      ],
+      "intensity": [
+        0,
+        40,
+        0
+      ]
+    },
+    {
+      "type": "point",
+      "position": [
+        2.5,
+        5,
+        5
+      ],
+      "intensity": [
+        0,
+        0,
+        40
+      ]
+    }
+  ]
+}

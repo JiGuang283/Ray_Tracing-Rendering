@@ -1,0 +1,182 @@
+{
+  "name": "infinity_mirror_demo",
+  "camera": {
+    "lookfrom": [
+      0,
+      2,
+      4
+    ],
+    "lookat": [
+      0,
+      2,
+      -4
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 60,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 1000,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "mirror": {
+      "type": "metal",
+      "albedo": [
+        0.95,
+        0.95,
+        0.95
+      ],
+      "fuzz": 0.0
+    },
+    "dark_floor": {
+      "type": "lambertian",
+      "albedo": [
+        0.05,
+        0.05,
+        0.05
+      ]
+    },
+    "red_light": {
+      "type": "diffuse_light",
+      "color": [
+        4,
+        0.5,
+        0.5
+      ]
+    },
+    "blue_light": {
+      "type": "diffuse_light",
+      "color": [
+        0.5,
+        0.5,
+        4
+      ]
+    },
+    "green_light": {
+      "type": "diffuse_light",
+      "color": [
+        0.5,
+        4,
+        0.5
+      ]
+    },
+    "chrome": {
+      "type": "metal",
+      "albedo": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "fuzz": 0.1
+    }
+  },
+  "objects": [
+    {
+      "type": "xz_rect",
+      "x0": -5,
+      "x1": 5,
+      "z0": -5,
+      "z1": 5,
+      "k": 0,
+      "material": "dark_floor"
+    },
+    {
+      "type": "xz_rect",
+      "x0": -5,
+      "x1": 5,
+      "z0": -5,
+      "z1": 5,
+      "k": 5,
+      "material": "mirror"
+    },
+    {
+      "type": "xy_rect",
+      "x0": -5,
+      "x1": 5,
+      "y0": 0,
+      "y1": 5,
+      "k": -5,
+      "material": "mirror"
+    },
+    {
+      "type": "yz_rect",
+      "y0": 0,
+      "y1": 5,
+      "z0": -5,
+      "z1": 5,
+      "k": -5,
+      "material": "mirror"
+    },
+    {
+      "type": "yz_rect",
+      "y0": 0,
+      "y1": 5,
+      "z0": -5,
+      "z1": 5,
+      "k": 5,
+      "material": "mirror"
+    },
+    {
+      "type": "xy_rect",
+      "x0": -5,
+      "x1": 5,
+      "y0": 0,
+      "y1": 5,
+      "k": 5,
+      "material": "mirror"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -2,
+        1,
+        0
+      ],
+      "radius": 0.5,
+      "material": "red_light"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        2,
+        1,
+        0
+      ],
+      "radius": 0.5,
+      "material": "blue_light"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        3,
+        -2
+      ],
+      "radius": 0.5,
+      "material": "green_light"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "chrome"
+    }
+  ],
+  "lights": []
+}

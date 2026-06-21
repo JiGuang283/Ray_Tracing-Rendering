@@ -1,0 +1,134 @@
+{
+  "name": "triangle_vertex_normal_validation_scene",
+  "camera": {
+    "lookfrom": [
+      -4.5,
+      1.47,
+      -4.5
+    ],
+    "lookat": [
+      0.0,
+      1.47,
+      0.0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 40,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 1000,
+    "background": [
+      0.65,
+      0.75,
+      0.9
+    ]
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": [
+        0.6,
+        0.6,
+        0.6
+      ]
+    },
+    "top_light": {
+      "type": "diffuse_light",
+      "color": [
+        6,
+        6,
+        6
+      ]
+    },
+    "side_light": {
+      "type": "diffuse_light",
+      "color": [
+        25,
+        25,
+        25
+      ]
+    },
+    "tri": {
+      "type": "lambertian",
+      "albedo": [
+        0.85,
+        0.25,
+        0.25
+      ]
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "xz_rect",
+      "x0": -8,
+      "x1": 8,
+      "z0": -8,
+      "z1": 8,
+      "k": 6,
+      "material": "top_light"
+    },
+    {
+      "type": "xy_rect",
+      "x0": 2.2,
+      "x1": 5.0,
+      "y0": 2.0,
+      "y1": 4.5,
+      "k": 2.0,
+      "material": "side_light"
+    },
+    {
+      "type": "triangle",
+      "vertices": [
+        [
+          -1.5,
+          0.8,
+          0.0
+        ],
+        [
+          1.5,
+          0.8,
+          0.0
+        ],
+        [
+          0.0,
+          2.8,
+          0.0
+        ]
+      ],
+      "material": "tri",
+      "n0": [
+        -0.3,
+        1.0,
+        0.2
+      ],
+      "n1": [
+        0.9,
+        1.0,
+        -0.1
+      ],
+      "n2": [
+        0.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "lights": []
+}

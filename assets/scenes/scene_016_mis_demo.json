@@ -1,0 +1,146 @@
+{
+  "name": "mis_demo",
+  "camera": {
+    "lookfrom": [
+      0,
+      5,
+      10
+    ],
+    "lookat": [
+      0,
+      1,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 30,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 500,
+    "background": [
+      0.1,
+      0.1,
+      0.1
+    ]
+  },
+  "materials": {
+    "ground": {
+      "type": "lambertian",
+      "albedo": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    "smooth_metal": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "roughness": 0.05,
+      "metallic": 1.0
+    },
+    "rough_metal": {
+      "type": "pbr",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "roughness": 0.5,
+      "metallic": 1.0
+    },
+    "diffuse": {
+      "type": "lambertian",
+      "albedo": [
+        0.2,
+        0.2,
+        0.8
+      ]
+    },
+    "light": {
+      "type": "diffuse_light",
+      "color": [
+        10,
+        5,
+        5
+      ]
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        -1000,
+        0
+      ],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        -4,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "smooth_metal"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "rough_metal"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        4,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "diffuse"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1,
+        -3
+      ],
+      "radius": 1.0,
+      "material": "light"
+    }
+  ],
+  "lights": [
+    {
+      "type": "point",
+      "position": [
+        5,
+        10,
+        5
+      ],
+      "intensity": [
+        100,
+        100,
+        100
+      ]
+    }
+  ]
+}

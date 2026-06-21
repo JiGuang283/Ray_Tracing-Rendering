@@ -1,0 +1,96 @@
+{
+  "name": "hdr_demo_scene",
+  "camera": {
+    "lookfrom": [
+      0,
+      3,
+      10
+    ],
+    "lookat": [
+      0,
+      1,
+      0
+    ],
+    "vup": [
+      0,
+      1,
+      0
+    ],
+    "vfov": 30,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 200,
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "materials": {
+    "chrome": {
+      "type": "metal",
+      "albedo": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "fuzz": 0.0
+    },
+    "rough_gold": {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.71,
+        0.29
+      ],
+      "roughness": 0.2,
+      "metallic": 1.0
+    },
+    "glass": {
+      "type": "dielectric",
+      "ir": 1.5
+    }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [
+        -4,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "chrome"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        0,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "rough_gold"
+    },
+    {
+      "type": "sphere",
+      "center": [
+        4,
+        1,
+        0
+      ],
+      "radius": 1.0,
+      "material": "glass"
+    }
+  ],
+  "lights": [
+    {
+      "type": "environment",
+      "path": "rnl_probe.hdr"
+    }
+  ]
+}

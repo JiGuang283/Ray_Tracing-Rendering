@@ -1,0 +1,286 @@
+{
+  "format": "scene_catalog_v1",
+  "default_scene_id": 10,
+  "scenes": [
+    {
+      "id": 1,
+      "name": "random_scene",
+      "path": "assets/scenes/scene_001_random_scene.json"
+    },
+    {
+      "id": 2,
+      "name": "two_spheres",
+      "path": "assets/scenes/scene_002_two_spheres.json"
+    },
+    {
+      "id": 4,
+      "name": "earth",
+      "path": "assets/scenes/scene_004_earth.json"
+    },
+    {
+      "id": 5,
+      "name": "simple_light",
+      "path": "assets/scenes/scene_005_simple_light.json"
+    },
+    {
+      "id": 6,
+      "name": "example_light_scene",
+      "path": "assets/scenes/scene_006_example_light_scene.json"
+    },
+    {
+      "id": 7,
+      "name": "cornell_box",
+      "path": "assets/scenes/scene_007_cornell_box.json"
+    },
+    {
+      "id": 8,
+      "name": "cornell_smoke",
+      "path": "assets/scenes/scene_008_cornell_smoke.json"
+    },
+    {
+      "id": 9,
+      "name": "final_scene",
+      "path": "assets/scenes/scene_009_final_scene.json"
+    },
+    {
+      "id": 10,
+      "name": "two_perlin_spheres",
+      "path": "assets/scenes/scene_010_two_perlin_spheres.json"
+    },
+    {
+      "id": 11,
+      "name": "pbr_test_scene",
+      "path": "assets/scenes/scene_011_pbr_test_scene.json"
+    },
+    {
+      "id": 12,
+      "name": "pbr_spheres_grid",
+      "path": "assets/scenes/scene_012_pbr_spheres_grid.json"
+    },
+    {
+      "id": 13,
+      "name": "pbr_materials_gallery",
+      "path": "assets/scenes/scene_013_pbr_materials_gallery.json"
+    },
+    {
+      "id": 14,
+      "name": "pbr_reference_scene",
+      "path": "assets/scenes/scene_014_pbr_reference_scene.json"
+    },
+    {
+      "id": 15,
+      "name": "point_light_scene",
+      "path": "assets/scenes/scene_015_point_light_scene.json"
+    },
+    {
+      "id": 16,
+      "name": "mis_demo",
+      "path": "assets/scenes/scene_016_mis_demo.json"
+    },
+    {
+      "id": 17,
+      "name": "directional_light_scene",
+      "path": "assets/scenes/scene_017_directional_light_scene.json"
+    },
+    {
+      "id": 18,
+      "name": "spot_light_scene",
+      "path": "assets/scenes/scene_018_spot_light_scene.json"
+    },
+    {
+      "id": 19,
+      "name": "environment_light_scene",
+      "path": "assets/scenes/scene_019_environment_light_scene.json"
+    },
+    {
+      "id": 20,
+      "name": "quad_light_scene",
+      "path": "assets/scenes/scene_020_quad_light_scene.json"
+    },
+    {
+      "id": 21,
+      "name": "cornell_box_nee",
+      "path": "assets/scenes/scene_021_cornell_box_nee.json"
+    },
+    {
+      "id": 22,
+      "name": "final_scene_nee",
+      "path": "assets/scenes/scene_022_final_scene_nee.json"
+    },
+    {
+      "id": 23,
+      "name": "mis_comparison_scene",
+      "path": "assets/scenes/scene_023_mis_comparison_scene.json"
+    },
+    {
+      "id": 24,
+      "name": "hdr_demo_scene",
+      "path": "assets/scenes/scene_024_hdr_demo_scene.json"
+    },
+    {
+      "id": 25,
+      "name": "hdr_demo_scene",
+      "path": "assets/scenes/scene_025_hdr_demo_scene.json"
+    },
+    {
+      "id": 26,
+      "name": "hdr_demo_scene",
+      "path": "assets/scenes/scene_026_hdr_demo_scene.json"
+    },
+    {
+      "id": 27,
+      "name": "hdr_demo_scene",
+      "path": "assets/scenes/scene_027_hdr_demo_scene.json"
+    },
+    {
+      "id": 28,
+      "name": "hdr_demo_scene",
+      "path": "assets/scenes/scene_028_hdr_demo_scene.json"
+    },
+    {
+      "id": 30,
+      "name": "materials_showcase",
+      "path": "assets/scenes/scene_030_materials_showcase.json"
+    },
+    {
+      "id": 31,
+      "name": "cornell_box_extended",
+      "path": "assets/scenes/scene_031_cornell_box_extended.json"
+    },
+    {
+      "id": 32,
+      "name": "interior_lighting_scene",
+      "path": "assets/scenes/scene_032_interior_lighting_scene.json"
+    },
+    {
+      "id": 33,
+      "name": "jewelry_display",
+      "path": "assets/scenes/scene_033_jewelry_display.json"
+    },
+    {
+      "id": 34,
+      "name": "glass_caustics_scene",
+      "path": "assets/scenes/scene_034_glass_caustics_scene.json"
+    },
+    {
+      "id": 37,
+      "name": "pbr_spheres_grid_lights",
+      "path": "assets/scenes/scene_037_pbr_spheres_grid_lights.json"
+    },
+    {
+      "id": 38,
+      "name": "soft_shadow_demo",
+      "path": "assets/scenes/scene_038_soft_shadow_demo.json"
+    },
+    {
+      "id": 39,
+      "name": "jewelry_display_simplified",
+      "path": "assets/scenes/scene_039_jewelry_display_simplified.json"
+    },
+    {
+      "id": 40,
+      "name": "multi_light_demo",
+      "path": "assets/scenes/scene_040_multi_light_demo.json"
+    },
+    {
+      "id": 41,
+      "name": "cmy_shadows_demo",
+      "path": "assets/scenes/scene_041_cmy_shadows_demo.json"
+    },
+    {
+      "id": 42,
+      "name": "infinity_mirror_demo",
+      "path": "assets/scenes/scene_042_infinity_mirror_demo.json"
+    },
+    {
+      "id": 43,
+      "name": "cornell_box_suzanne_fixed",
+      "path": "assets/scenes/scene_043_cornell_box_suzanne_fixed.json"
+    },
+    {
+      "id": 44,
+      "name": "model_feature_validation_scene",
+      "path": "assets/scenes/scene_044_model_feature_validation_scene.json"
+    },
+    {
+      "id": 45,
+      "name": "model_feature_validation_scene",
+      "path": "assets/scenes/scene_045_model_feature_validation_scene.json"
+    },
+    {
+      "id": 46,
+      "name": "model_feature_validation_scene",
+      "path": "assets/scenes/scene_046_model_feature_validation_scene.json"
+    },
+    {
+      "id": 47,
+      "name": "model_feature_validation_scene",
+      "path": "assets/scenes/scene_047_model_feature_validation_scene.json"
+    },
+    {
+      "id": 48,
+      "name": "model_feature_validation_scene",
+      "path": "assets/scenes/scene_048_model_feature_validation_scene.json"
+    },
+    {
+      "id": 49,
+      "name": "world_bvh_on_mesh_bvh_on",
+      "path": "assets/scenes/scene_049_world_bvh_on_mesh_bvh_on.json"
+    },
+    {
+      "id": 50,
+      "name": "mesh_bvh_stress_scene",
+      "path": "assets/scenes/scene_050_mesh_bvh_stress_scene.json"
+    },
+    {
+      "id": 51,
+      "name": "mesh_bvh_stress_scene",
+      "path": "assets/scenes/scene_051_mesh_bvh_stress_scene.json"
+    },
+    {
+      "id": 52,
+      "name": "mesh_bvh_stress_scene",
+      "path": "assets/scenes/scene_052_mesh_bvh_stress_scene.json"
+    },
+    {
+      "id": 53,
+      "name": "triangle_hit_validation_scene",
+      "path": "assets/scenes/scene_053_triangle_hit_validation_scene.json"
+    },
+    {
+      "id": 54,
+      "name": "triangle_occlusion_validation_scene",
+      "path": "assets/scenes/scene_054_triangle_occlusion_validation_scene.json"
+    },
+    {
+      "id": 55,
+      "name": "triangle_vertex_normal_validation_scene",
+      "path": "assets/scenes/scene_055_triangle_vertex_normal_validation_scene.json"
+    },
+    {
+      "id": 56,
+      "name": "triangle_normal_interp_compare_scene",
+      "path": "assets/scenes/scene_056_triangle_normal_interp_compare_scene.json"
+    },
+    {
+      "id": 57,
+      "name": "pyramid_pointlight_compare_scene",
+      "path": "assets/scenes/scene_057_pyramid_pointlight_compare_scene.json"
+    },
+    {
+      "id": 58,
+      "name": "mesh_demo_scene",
+      "path": "assets/scenes/scene_058_mesh_demo_scene.json"
+    },
+    {
+      "id": 59,
+      "name": "mesh_monkey_scene",
+      "path": "assets/scenes/scene_059_mesh_monkey_scene.json"
+    },
+    {
+      "id": 60,
+      "name": "cornell_box_suzanne_fixed",
+      "path": "assets/scenes/scene_060_cornell_box_suzanne_fixed.json"
+    }
+  ]
+}
