@@ -41,7 +41,8 @@ class WindowsApp final {
         return m_mouse_left_button_pressed;
     }
 
-    void updateScreenSurface(const std::vector<std::vector<color>> &canvas);
+    void updateScreenSurface(const std::vector<color> &canvas, int width,
+                             int height);
 
     static WindowsApp::ptr getInstance();
     static WindowsApp::ptr getInstance(int width, int height,

@@ -11,16 +11,16 @@
 class RenderBuffer {
   public:
     RenderBuffer(int width, int height) : m_width(width), m_height(height) {
-        m_pixels.resize(height, std::vector<color>(width));
+        m_pixels.resize(static_cast<size_t>(width) * height);
     }
 
     void set_pixel(int x, int y, const color &pixel_color) {
         if (x >= 0 && x < m_width && y >= 0 && y < m_height) {
-            m_pixels[y][x] = pixel_color;
+            m_pixels[index(x, y)] = pixel_color;
         }
     }
 
-    const std::vector<std::vector<color>> &get_data() const {
+    const std::vector<color> &get_data() const {
         return m_pixels;
     }
 
@@ -39,13 +39,13 @@ class RenderBuffer {
             for (int i = 0; i < m_width; ++i) {
                 // 翻转Y坐标，使图片正确显示
                 int flipped_j = m_height - 1 - j;
-                int index = (j * m_width + i) * 3;
-                const auto &pixel = m_pixels[flipped_j][i];
-                image_data[index + 0] =
+                int image_index = (j * m_width + i) * 3;
+                const auto &pixel = m_pixels[index(i, flipped_j)];
+                image_data[image_index + 0] =
                     static_cast<unsigned char>(pixel[0] * 255);
-                image_data[index + 1] =
+                image_data[image_index + 1] =
                     static_cast<unsigned char>(pixel[1] * 255);
-                image_data[index + 2] =
+                image_data[image_index + 2] =
                     static_cast<unsigned char>(pixel[2] * 255);
             }
         }
@@ -62,13 +62,13 @@ class RenderBuffer {
             for (int i = 0; i < m_width; ++i) {
                 // 翻转Y坐标，使图片正确显示
                 int flipped_j = m_height - 1 - j;
-                int index = (j * m_width + i) * 3;
-                const auto &pixel = m_pixels[flipped_j][i];
-                image_data[index + 0] =
+                int image_index = (j * m_width + i) * 3;
+                const auto &pixel = m_pixels[index(i, flipped_j)];
+                image_data[image_index + 0] =
                     static_cast<unsigned char>(pixel[0] * 255);
-                image_data[index + 1] =
+                image_data[image_index + 1] =
                     static_cast<unsigned char>(pixel[1] * 255);
-                image_data[index + 2] =
+                image_data[image_index + 2] =
                     static_cast<unsigned char>(pixel[2] * 255);
             }
         }
@@ -78,9 +78,13 @@ class RenderBuffer {
     }
 
   private:
+    int index(int x, int y) const {
+        return y * m_width + x;
+    }
+
     int m_width;
     int m_height;
-    std::vector<std::vector<color>> m_pixels;
+    std::vector<color> m_pixels;
 };
 
 #endif

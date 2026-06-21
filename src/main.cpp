@@ -292,7 +292,7 @@ static int run_windowed(const AppOptions &options) {
 
     while (!winApp->shouldWindowClose()) {
         winApp->processEvent();
-        winApp->updateScreenSurface(render_buffer->get_data());
+        winApp->updateScreenSurface(render_buffer->get_data(), width, height);
         std::this_thread::sleep_for(std::chrono::milliseconds(33));
     }
 

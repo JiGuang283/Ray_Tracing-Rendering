@@ -93,17 +93,15 @@ void WindowsApp::processEvent() {
     }
 }
 
-void WindowsApp::updateScreenSurface(
-    const std::vector<std::vector<color>> &canvas) {
+void WindowsApp::updateScreenSurface(const std::vector<color> &canvas,
+                                     int width, int height) {
     // Update pixels
-    int height = canvas.size();
-    int width = canvas[0].size();
     SDL_LockSurface(m_screen_surface);
     {
         Uint32 *destPixels = (Uint32 *)m_screen_surface->pixels;
         for (int j = 0; j < height; ++j) {
             for (int i = 0; i < width; ++i) {
-                const auto &pixel = canvas[j][i];
+                const auto &pixel = canvas[j * width + i];
 
                 Uint32 color = SDL_MapRGB(m_screen_surface->format,
                                           static_cast<uint8_t>(pixel[0] * 255),
