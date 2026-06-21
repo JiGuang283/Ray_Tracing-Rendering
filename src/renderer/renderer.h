@@ -8,11 +8,20 @@
 #include "render_buffer.h"
 #include "rtweekend.h"
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <thread>
 #include <vector>
+
+struct RenderStats {
+    double seconds = 0.0;
+    int width = 0;
+    int height = 0;
+    int samples_per_pixel = 0;
+    long long sample_count = 0;
+};
 
 class Renderer {
   public:
@@ -27,9 +36,9 @@ class Renderer {
         m_integrator = integrator;
     }
 
-    void render(shared_ptr<hittable> world, shared_ptr<camera> cam,
-                const color &background, RenderBuffer &target_buffer,
-                const std::vector<shared_ptr<Light>> &lights = {}) {
+    RenderStats render(shared_ptr<hittable> world, shared_ptr<camera> cam,
+                       const color &background, RenderBuffer &target_buffer,
+                       const std::vector<shared_ptr<Light>> &lights = {}) {
         m_is_rendering = true;
 
         auto start_time = std::chrono::high_resolution_clock::now();
@@ -45,7 +54,8 @@ class Renderer {
 
         std::atomic<int> next_tile_index(0);
 
-        const int num_threads = std::thread::hardware_concurrency();
+        const int num_threads =
+            std::max(1u, std::thread::hardware_concurrency());
         std::vector<std::thread> threads;
 
         auto render_worker = [&]() {
@@ -99,6 +109,15 @@ class Renderer {
         m_is_rendering = false;
         std::cout << "Rendering finished in " << elapsed.count() << " seconds."
                   << std::endl;
+
+        RenderStats stats;
+        stats.seconds = elapsed.count();
+        stats.width = image_width;
+        stats.height = image_height;
+        stats.samples_per_pixel = m_settings.samples_per_pixel;
+        stats.sample_count = static_cast<long long>(image_width) * image_height *
+                             m_settings.samples_per_pixel;
+        return stats;
     }
 
     void set_samples(int samples) {
