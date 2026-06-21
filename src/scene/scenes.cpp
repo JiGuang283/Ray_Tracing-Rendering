@@ -1559,10 +1559,18 @@ shared_ptr<hittable> mesh_demo_scene(const SceneBuildOptions &options) {
     const vec3 bunny_pos(0.0, -0.3, 0.0);
 
     // Load bunny (build BVH inside mesh; try to use vertex normals if present)
-    auto bunny = mesh::load_from_obj("assets/stanford bunny.obj", bunny_mat,
-                                     bunny_pos, bunny_scale,
-                                     true,  // build_bvh
-                                     true); // use_vertex_normals
+    shared_ptr<hittable> bunny;
+    if (options.use_flat_mesh) {
+        bunny = FlatMesh::load_from_obj("assets/stanford bunny.obj", bunny_mat,
+                                        bunny_pos, bunny_scale,
+                                        true,  // build_bvh
+                                        true); // use_vertex_normals
+    } else {
+        bunny = mesh::load_from_obj("assets/stanford bunny.obj", bunny_mat,
+                                    bunny_pos, bunny_scale,
+                                    true,  // build_bvh
+                                    true); // use_vertex_normals
+    }
     if (bunny) {
         world.add(bunny);
     }
@@ -1592,10 +1600,18 @@ shared_ptr<hittable> mesh_monkey_scene(const SceneBuildOptions &options) {
     const vec3 bunny_pos(0.0, 1.5, 0.0);
 
     // Load bunny (build BVH inside mesh; try to use vertex normals if present)
-    auto bunny = mesh::load_from_obj("assets/Suzanne.obj", bunny_mat, bunny_pos,
-                                     bunny_scale,
-                                     true,  // build_bvh
-                                     true); // use_vertex_normals
+    shared_ptr<hittable> bunny;
+    if (options.use_flat_mesh) {
+        bunny = FlatMesh::load_from_obj("assets/Suzanne.obj", bunny_mat,
+                                        bunny_pos, bunny_scale,
+                                        true,  // build_bvh
+                                        true); // use_vertex_normals
+    } else {
+        bunny = mesh::load_from_obj("assets/Suzanne.obj", bunny_mat, bunny_pos,
+                                    bunny_scale,
+                                    true,  // build_bvh
+                                    true); // use_vertex_normals
+    }
     if (bunny) {
         world.add(bunny);
     }
