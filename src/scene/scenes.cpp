@@ -1,7 +1,7 @@
 #include "scenes.h"
+#include "accel.h"
 #include "aarect.h"
 #include "box.h"
-#include "bvh.h"
 #include "constant_medium.h"
 #include "directional_light.h"
 #include "environmental_light.h"
@@ -9,15 +9,12 @@
 #include "material.h"
 #include "mesh.h"
 #include "moving_sphere.h"
+#include "point_light.h"
 #include "quad_light.h"
+#include "scene_registry.h"
 #include "sphere.h"
 #include "spot_light.h"
 #include "triangle.h"
-
-shared_ptr<hittable> make_accel(const hittable_list &world, double time0,
-                                double time1) {
-    return make_shared<LinearBVH>(world, time0, time1);
-}
 
 shared_ptr<hittable> random_scene() {
     hittable_list world;
@@ -609,7 +606,7 @@ shared_ptr<hittable> mis_comparison_scene() {
     auto glass = make_shared<dielectric>(1.5);
     world.add(make_shared<sphere>(point3(2.5, 1, 0), 1.0, glass));
 
-    // Lights are added in select_scene via config.lights
+    // Lights are added in select_scene via config.scene.lights
     // But we need visual representation here
 
     // Large Area Light (Top)
@@ -2093,327 +2090,327 @@ shared_ptr<hittable> pyramid_pointlight_compare_scene() {
     return make_accel(world, 0, 1);
 }
 
-SceneConfig select_scene(int scene_id) {
+static SceneConfig make_builtin_scene(int scene_id) {
     SceneConfig config;
 
     switch (scene_id) {
     case 1:
-        config.world = random_scene();
-        config.aspect_ratio = 1.0;
-        config.image_width = 400;
-        config.samples_per_pixel = 50;
-        config.background = color(0.70, 0.80, 1.00);
-        config.lookfrom = point3(13, 2, 3);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 20.0;
-        config.aperture = 0.1;
+        config.scene.world = random_scene();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 400;
+        config.preset.samples_per_pixel = 50;
+        config.preset.background = color(0.70, 0.80, 1.00);
+        config.camera.lookfrom = point3(13, 2, 3);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 20.0;
+        config.camera.aperture = 0.1;
         break;
 
     case 2:
-        config.world = two_spheres();
-        config.background = color(0.70, 0.80, 1.00);
-        config.lookfrom = point3(13, 2, 3);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 20.0;
+        config.scene.world = two_spheres();
+        config.preset.background = color(0.70, 0.80, 1.00);
+        config.camera.lookfrom = point3(13, 2, 3);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 20.0;
         break;
 
     case 4:
-        config.world = earth();
-        config.lookfrom = point3(13, 2, 3);
-        config.background = color(0.70, 0.80, 1.00);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 20.0;
+        config.scene.world = earth();
+        config.camera.lookfrom = point3(13, 2, 3);
+        config.preset.background = color(0.70, 0.80, 1.00);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 20.0;
         break;
 
     case 5:
-        config.world = simple_light();
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(26, 3, 6);
-        config.lookat = point3(0, 2, 0);
-        config.vfov = 20.0;
+        config.scene.world = simple_light();
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(26, 3, 6);
+        config.camera.lookat = point3(0, 2, 0);
+        config.camera.vfov = 20.0;
         break;
 
     case 6:
-        config.world = example_light_scene();
-        config.background = color(0.00, 0.00, 0.00);
-        config.lookfrom = point3(13, 2, 3);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 20.0;
-        config.aperture = 0.0;
+        config.scene.world = example_light_scene();
+        config.preset.background = color(0.00, 0.00, 0.00);
+        config.camera.lookfrom = point3(13, 2, 3);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 20.0;
+        config.camera.aperture = 0.0;
         break;
 
     case 7:
-        config.world = cornell_box();
-        config.aspect_ratio = 1.0;
-        config.image_width = 600;
-        config.samples_per_pixel = 400;
-        config.background = color(0, 0, 0);
-        config.lookfrom = point3(278, 278, -800);
-        config.lookat = point3(278, 278, 0);
-        config.vfov = 40.0;
-        config.aperture = 0.0;
+        config.scene.world = cornell_box();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 600;
+        config.preset.samples_per_pixel = 400;
+        config.preset.background = color(0, 0, 0);
+        config.camera.lookfrom = point3(278, 278, -800);
+        config.camera.lookat = point3(278, 278, 0);
+        config.camera.vfov = 40.0;
+        config.camera.aperture = 0.0;
         break;
 
     case 8:
-        config.world = cornell_smoke();
-        config.aspect_ratio = 1.0;
-        config.image_width = 600;
-        config.samples_per_pixel = 200;
-        config.background = color(0, 0, 0);
-        config.lookfrom = point3(278, 278, -800);
-        config.lookat = point3(278, 278, 0);
-        config.vfov = 40.0;
+        config.scene.world = cornell_smoke();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 600;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0, 0, 0);
+        config.camera.lookfrom = point3(278, 278, -800);
+        config.camera.lookat = point3(278, 278, 0);
+        config.camera.vfov = 40.0;
         break;
 
     case 9:
-        config.world = final_scene();
-        config.aspect_ratio = 1.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 500; // 原10000
-        config.background = color(0, 0, 0);
-        config.lookfrom = point3(478, 278, -600);
-        config.lookat = point3(278, 278, 0);
-        config.vfov = 40.0;
+        config.scene.world = final_scene();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 500; // 原10000
+        config.preset.background = color(0, 0, 0);
+        config.camera.lookfrom = point3(478, 278, -600);
+        config.camera.lookat = point3(278, 278, 0);
+        config.camera.vfov = 40.0;
         break;
 
     case 11:
-        config.world = pbr_test_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 100;
-        config.background = color(0.70, 0.80, 1.00);
-        config.lookfrom = point3(13, 2, 3);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 20.0;
+        config.scene.world = pbr_test_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 100;
+        config.preset.background = color(0.70, 0.80, 1.00);
+        config.camera.lookfrom = point3(13, 2, 3);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 20.0;
         break;
 
     case 12:
-        config.world = pbr_spheres_grid();
-        config.aspect_ratio = 1.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 500;
-        config.background = color(0.05, 0.05, 0.05);
-        config.lookfrom = point3(0, 40, 0);
-        config.lookat = point3(0, 0, 0);
-        config.vup = vec3(0, 0, -1);
-        config.vfov = 25.0;
+        config.scene.world = pbr_spheres_grid();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 500;
+        config.preset.background = color(0.05, 0.05, 0.05);
+        config.camera.lookfrom = point3(0, 40, 0);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vup = vec3(0, 0, -1);
+        config.camera.vfov = 25.0;
         break;
 
     case 13:
-        config.world = pbr_materials_gallery();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 2000;
-        config.background = color(0.1, 0.1, 0.1);
-        config.lookfrom = point3(0, 10, 20);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 25.0;
+        config.scene.world = pbr_materials_gallery();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 2000;
+        config.preset.background = color(0.1, 0.1, 0.1);
+        config.camera.lookfrom = point3(0, 10, 20);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 25.0;
         break;
 
     case 14:
-        config.world = pbr_reference_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 1000;
-        config.samples_per_pixel = 5000;
-        config.background = color(0.05, 0.05, 0.05);
-        config.lookfrom = point3(0, 15, 25);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 25.0;
+        config.scene.world = pbr_reference_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 1000;
+        config.preset.samples_per_pixel = 5000;
+        config.preset.background = color(0.05, 0.05, 0.05);
+        config.camera.lookfrom = point3(0, 15, 25);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 25.0;
         break;
 
     case 15:
-        config.world = point_light_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 1000;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 5, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(
+        config.scene.world = point_light_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 1000;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 5, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(
             make_shared<PointLight>(point3(0, 6, 2), color(50, 50, 50)));
         break;
 
     case 16:
-        config.world = mis_demo();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 500;
-        config.background = color(0.1, 0.1, 0.1);
-        config.lookfrom = point3(0, 5, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
+        config.scene.world = mis_demo();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 500;
+        config.preset.background = color(0.1, 0.1, 0.1);
+        config.camera.lookfrom = point3(0, 5, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
         // Add PointLight (NEE sampling)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<PointLight>(point3(5, 10, 5), color(100, 100, 100)));
         break;
 
     case 17:
-        config.world = directional_light_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 400;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 6, 12);
-        config.lookat = point3(0, 2, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(
+        config.scene.world = directional_light_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 400;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 6, 12);
+        config.camera.lookat = point3(0, 2, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(
             make_shared<DirectionalLight>(vec3(-1, -1, -0.5), color(3, 3, 3)));
         break;
     case 18:
-        config.world = spot_light_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 100;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 5, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(make_shared<SpotLight>(
+        config.scene.world = spot_light_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 100;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 5, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(make_shared<SpotLight>(
             point3(0, 8, 4), vec3(0, -1, -0.5), 20.0, color(2000, 2000, 2000)));
         break;
     case 19:
-        config.world = environment_light_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 100;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 2, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(make_shared<EnvironmentLight>("sky.hdr"));
+        config.scene.world = environment_light_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 100;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 2, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(make_shared<EnvironmentLight>("sky.hdr"));
         break;
     case 20:
-        config.world = quad_light_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 1000;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 4, 15);
-        config.lookat = point3(0, 3, 0);
-        config.vfov = 50.0;
+        config.scene.world = quad_light_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 1000;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 4, 15);
+        config.camera.lookat = point3(0, 3, 0);
+        config.camera.vfov = 50.0;
         // Add QuadLight (NEE sampling)
         // Q = (-2, 7, -2), u = (4, 0, 0), v = (0, 0, 4)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(-2, 7, -2), vec3(4, 0, 0),
                                    vec3(0, 0, 4), color(15, 15, 15)));
         break;
 
     case 21:
-        config.world = cornell_box_nee();
-        config.aspect_ratio = 1.0;
-        config.image_width = 600;
-        config.samples_per_pixel = 400;
-        config.background = color(0, 0, 0);
-        config.lookfrom = point3(278, 278, -800);
-        config.lookat = point3(278, 278, 0);
-        config.vfov = 40.0;
-        config.aperture = 0.0;
+        config.scene.world = cornell_box_nee();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 600;
+        config.preset.samples_per_pixel = 400;
+        config.preset.background = color(0, 0, 0);
+        config.camera.lookfrom = point3(278, 278, -800);
+        config.camera.lookat = point3(278, 278, 0);
+        config.camera.vfov = 40.0;
+        config.camera.aperture = 0.0;
         // Add QuadLight: xz_rect(213, 343, 227, 332, 554)
         // Q = (213, 554, 227), u = (130, 0, 0), v = (0, 0, 105)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(213, 554, 227), vec3(130, 0, 0),
                                    vec3(0, 0, 105), color(15, 15, 15)));
         break;
 
     case 22:
-        config.world = final_scene_nee();
-        config.aspect_ratio = 1.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 500;
-        config.background = color(0, 0, 0);
-        config.lookfrom = point3(478, 278, -600);
-        config.lookat = point3(278, 278, 0);
-        config.vfov = 40.0;
+        config.scene.world = final_scene_nee();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 500;
+        config.preset.background = color(0, 0, 0);
+        config.camera.lookfrom = point3(478, 278, -600);
+        config.camera.lookat = point3(278, 278, 0);
+        config.camera.vfov = 40.0;
         // Add QuadLight: xz_rect(123, 423, 147, 412, 554)
         // Q = (123, 554, 147), u = (300, 0, 0), v = (0, 0, 265)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(123, 554, 147), vec3(300, 0, 0),
                                    vec3(0, 0, 265), color(7, 7, 7)));
         break;
 
     case 23:
-        config.world = mis_comparison_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 64; // Low samples to highlight noise
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 3, 8);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 35.0;
+        config.scene.world = mis_comparison_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 64; // Low samples to highlight noise
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 3, 8);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 35.0;
 
         // Large Light (Top)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(-10, 10, -10), vec3(20, 0, 0),
                                    vec3(0, 0, 20), color(5, 5, 5)));
 
         // Small Light (Right)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(6, 4, 2), vec3(0, 0.5, 0),
                                    vec3(0, 0, 0.5), color(50, 50, 50)));
         break;
 
     case 24: // brown_photostudio_02_4k.hdr
-        config.world = hdr_demo_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 3, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(
+        config.scene.world = hdr_demo_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 3, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(
             make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
         break;
 
     case 25: // cedar_bridge_sunset_2_4k.hdr
-        config.world = hdr_demo_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 3, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(
+        config.scene.world = hdr_demo_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 3, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(
             make_shared<EnvironmentLight>("cedar_bridge_sunset_2_4k.hdr"));
         break;
 
     case 26: // rnl_probe.hdr
-        config.world = hdr_demo_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 3, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(make_shared<EnvironmentLight>("rnl_probe.hdr"));
+        config.scene.world = hdr_demo_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 3, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(make_shared<EnvironmentLight>("rnl_probe.hdr"));
         break;
 
     case 27: // stpeters_probe.hdr
-        config.world = hdr_demo_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 3, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(
+        config.scene.world = hdr_demo_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 3, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(
             make_shared<EnvironmentLight>("stpeters_probe.hdr"));
         break;
 
     case 28: // uffizi_probe.hdr
-        config.world = hdr_demo_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 3, 10);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 30.0;
-        config.lights.push_back(
+        config.scene.world = hdr_demo_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 3, 10);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 30.0;
+        config.scene.lights.push_back(
             make_shared<EnvironmentLight>("uffizi_probe.hdr"));
         break;
 
@@ -2422,274 +2419,274 @@ SceneConfig select_scene(int scene_id) {
         // ========================================================================
 
     case 30: // Materials Showcase - 材质展示场景
-        config.world = materials_showcase();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 1200;
-        config.samples_per_pixel = 500;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 5, 12);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 35.0;
-        config.lights.push_back(
+        config.scene.world = materials_showcase();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 1200;
+        config.preset.samples_per_pixel = 500;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 5, 12);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 35.0;
+        config.scene.lights.push_back(
             make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
         break;
 
     case 31: // Cornell Box Extended - 扩展康奈尔盒
-        config.world = cornell_box_extended();
-        config.aspect_ratio = 1.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 1000;
-        config.background = color(0, 0, 0);
-        config.lookfrom = point3(278, 278, -800);
-        config.lookat = point3(278, 278, 0);
-        config.vfov = 40.0;
-        config.aperture = 0.0;
+        config.scene.world = cornell_box_extended();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 1000;
+        config.preset.background = color(0, 0, 0);
+        config.camera.lookfrom = point3(278, 278, -800);
+        config.camera.lookat = point3(278, 278, 0);
+        config.camera.vfov = 40.0;
+        config.camera.aperture = 0.0;
         // QuadLight 对应顶部灯
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(213, 554, 227), vec3(130, 0, 0),
                                    vec3(0, 0, 105), color(15, 15, 15)));
         break;
 
     case 32: // Interior Lighting Scene - 室内照明场景
-        config.world = interior_lighting_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 1000;
-        config.samples_per_pixel = 500;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 4, 8);
-        config.lookat = point3(0, 2, 0);
-        config.vfov = 50.0;
+        config.scene.world = interior_lighting_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 1000;
+        config.preset.samples_per_pixel = 500;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 4, 8);
+        config.camera.lookat = point3(0, 2, 0);
+        config.camera.vfov = 50.0;
         // 天花板面光源
-        config.lights.push_back(make_shared<QuadLight>(
+        config.scene.lights.push_back(make_shared<QuadLight>(
             point3(-1, 7.99, 0), vec3(2, 0, 0), vec3(0, 0, 2), color(8, 8, 7)));
         // 聚光灯照亮桌面
-        config.lights.push_back(make_shared<SpotLight>(
+        config.scene.lights.push_back(make_shared<SpotLight>(
             point3(0, 6, 4), vec3(0, -1, -0.3), 25.0, color(800, 800, 750)));
         break;
 
     case 33: // Jewelry Display - 珠宝展示台 (使用HDR照明)
-        config.world = jewelry_display();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 1200;
-        config.samples_per_pixel = 1000;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 4, 8);
-        config.lookat = point3(0, 0.8, 0);
-        config.vfov = 35.0;
-        config.lights.push_back(
+        config.scene.world = jewelry_display();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 1200;
+        config.preset.samples_per_pixel = 1000;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 4, 8);
+        config.camera.lookat = point3(0, 0.8, 0);
+        config.camera.vfov = 35.0;
+        config.scene.lights.push_back(
             make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
         break;
 
     case 34: // Glass Caustics Scene - 玻璃焦散场景
-        config.world = glass_caustics_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 1000;
-        config.samples_per_pixel = 800;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 6, 12);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 40.0;
+        config.scene.world = glass_caustics_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 1000;
+        config.preset.samples_per_pixel = 800;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 6, 12);
+        config.camera.lookat = point3(0, 1, 0);
+        config.camera.vfov = 40.0;
         // 顶部面光源
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(-3, 10, -3), vec3(6, 0, 0),
                                    vec3(0, 0, 6), color(12, 12, 12)));
         break;
 
     case 37: // PBR Spheres Grid with NEE/MIS
-        config.world = pbr_spheres_grid_lights();
-        config.aspect_ratio = 1.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 500;
-        config.background = color(0.05, 0.05, 0.05);
-        config.lookfrom = point3(0, 40, 0);
-        config.lookat = point3(0, 0, 0);
-        config.vup = vec3(0, 0, -1);
-        config.vfov = 25.0;
+        config.scene.world = pbr_spheres_grid_lights();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 500;
+        config.preset.background = color(0.05, 0.05, 0.05);
+        config.camera.lookfrom = point3(0, 40, 0);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vup = vec3(0, 0, -1);
+        config.camera.vfov = 25.0;
 
         // Add QuadLights
         // Main Light: Q=(-15, 60, -15), u=(30, 0, 0), v=(0, 0, 30)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(-15, 60, -15), vec3(30, 0, 0),
                                    vec3(0, 0, 30), color(15, 15, 15)));
 
         // Side Light 1: Q=(-23, 10, 17), u=(6, 0, 0), v=(0, 0, 6)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(-23, 10, 17), vec3(6, 0, 0),
                                    vec3(0, 0, 6), color(15, 15, 15)));
 
         // Side Light 2: Q=(17, 10, 17), u=(6, 0, 0), v=(0, 0, 6)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(17, 10, 17), vec3(6, 0, 0),
                                    vec3(0, 0, 6), color(15, 15, 15)));
         break;
 
     case 38: // Soft Shadow Demo (Quad Light)
-        config.world = soft_shadow_demo();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 1000;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 6, 12);
-        config.lookat = point3(0, 2, 0);
-        config.vfov = 40.0;
+        config.scene.world = soft_shadow_demo();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 1000;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 6, 12);
+        config.camera.lookat = point3(0, 2, 0);
+        config.camera.vfov = 40.0;
 
         // Add QuadLight for NEE
         // Center(0, 8, 0), Size 4x4 -> Q(-2, 8, -2), u(4, 0, 0), v(0, 0, 4)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<QuadLight>(point3(-2, 8, -2), vec3(4, 0, 0),
                                    vec3(0, 0, 4), color(10, 10, 10)));
         break;
 
     case 39: // Jewelry Display Simplified - 珠宝展示台（简化版）
-        config.world = jewelry_display_simplified();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 1200;
-        config.samples_per_pixel = 1000;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 4, 8);
-        config.lookat = point3(0, 0.8, 0);
-        config.vfov = 35.0;
-        config.lights.push_back(
+        config.scene.world = jewelry_display_simplified();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 1200;
+        config.preset.samples_per_pixel = 1000;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 4, 8);
+        config.camera.lookat = point3(0, 0.8, 0);
+        config.camera.vfov = 35.0;
+        config.scene.lights.push_back(
             make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
         break;
 
     case 40: // Multi-Light Demo
-        config.world = multi_light_demo();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 1200;
-        config.samples_per_pixel = 2000; // Increased samples for better quality
-        config.background =
+        config.scene.world = multi_light_demo();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 1200;
+        config.preset.samples_per_pixel = 2000; // Increased samples for better quality
+        config.preset.background =
             color(0.02, 0.02, 0.05); // Very dark blueish background
-        config.lookfrom = point3(0, 5, 14);
-        config.lookat = point3(0, 1.5, 0);
-        config.vfov = 30.0;
+        config.camera.lookfrom = point3(0, 5, 14);
+        config.camera.lookat = point3(0, 1.5, 0);
+        config.camera.vfov = 30.0;
 
         // 1. Spot Light (Main Key Light for Center Gold Sphere)
         // Positioned high up, targeting the gold sphere (0, 2.8, 0)
-        config.lights.push_back(make_shared<SpotLight>(
+        config.scene.lights.push_back(make_shared<SpotLight>(
             point3(0, 10, 2), vec3(0, -1, -0.1), 25.0, color(80, 80, 70)));
 
         // 2. Point Light (Warm Accent for Right Rough Sphere)
         // Positioned near the right sphere to create dramatic side lighting
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<PointLight>(point3(4, 4, 2), color(30, 15, 5)));
 
         // 3. Quad Light (Cool Fill/Softbox for Left Glass Sphere)
         // Matches geometry: xz_rect(2, 6, 0, 4, 6) -> Q=(2, 6, 0), u=(4, 0, 0),
         // v=(0, 0, 4) Note: The geometry was xz_rect(2, 6, 0, 4, 6) which means
         // x in [2,6], z in [0,4], y=6 Q=(2, 6, 0), u=(4, 0, 0), v=(0, 0, 4)
-        config.lights.push_back(make_shared<QuadLight>(
+        config.scene.lights.push_back(make_shared<QuadLight>(
             point3(2, 6, 0), vec3(4, 0, 0), vec3(0, 0, 4), color(8, 8, 10)));
 
         // 4. Directional Light (Rim Light / Moon)
         // Coming from behind-left
-        config.lights.push_back(make_shared<DirectionalLight>(
+        config.scene.lights.push_back(make_shared<DirectionalLight>(
             vec3(1, -0.5, -1), color(0.1, 0.1, 0.3)));
         break;
 
     case 41: // CMY Colored Shadows
-        config.world = cmy_shadows_demo();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 1000;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 2, 8);
-        config.lookat = point3(0, 1.5, 0);
-        config.vfov = 30.0;
+        config.scene.world = cmy_shadows_demo();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 1000;
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 2, 8);
+        config.camera.lookat = point3(0, 1.5, 0);
+        config.camera.vfov = 30.0;
 
         // Three Point Lights in equilateral triangle formation
         // All at same height (y=5), spread wider for clearer separation
         // Red (Left)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<PointLight>(point3(-2.5, 5, 5), color(40, 0, 0)));
         // Green (Back Center) - moved back in Z to create depth separation
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<PointLight>(point3(0, 5, 8), color(0, 40, 0)));
         // Blue (Right)
-        config.lights.push_back(
+        config.scene.lights.push_back(
             make_shared<PointLight>(point3(2.5, 5, 5), color(0, 0, 40)));
         break;
 
     case 42: // Infinity Mirror Room
-        config.world = infinity_mirror_demo();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel =
+        config.scene.world = infinity_mirror_demo();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel =
             1000; // Needs high samples for deep reflections
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 2, 4); // Inside the box
-        config.lookat = point3(0, 2, -4);
-        config.vfov = 60.0; // Wide angle
+        config.preset.background = color(0.0, 0.0, 0.0);
+        config.camera.lookfrom = point3(0, 2, 4); // Inside the box
+        config.camera.lookat = point3(0, 2, -4);
+        config.camera.vfov = 60.0; // Wide angle
         // No external lights, lit by emissive spheres
         break;
 
     case 43:
-        config.world = cornell_box_suzanne_fixed();
-        config.aspect_ratio = 1.0;
-        config.image_width = 600;
+        config.scene.world = cornell_box_suzanne_fixed();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 600;
 
         // Cornell 没 NEE 还是容易噪，先用高一点更稳
-        config.samples_per_pixel = 10000;
+        config.preset.samples_per_pixel = 10000;
 
-        config.background = color(0, 0, 0);
-        config.lookfrom = point3(278, 278, -800);
-        config.lookat = point3(278, 278, 0);
-        config.vfov = 40.0;
-        config.aperture = 0.0;
+        config.preset.background = color(0, 0, 0);
+        config.camera.lookfrom = point3(278, 278, -800);
+        config.camera.lookat = point3(278, 278, 0);
+        config.camera.vfov = 40.0;
+        config.camera.aperture = 0.0;
         break;
 
     case 44: {
         ModelFeatureSettings settings{}; // All features enabled
-        config.world = model_feature_validation_scene(settings);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 10000;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(8, 4, 12);
-        config.lookat = point3(0, 1.5, 0);
-        config.vfov = 25.0;
+        config.scene.world = model_feature_validation_scene(settings);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 10000;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(8, 4, 12);
+        config.camera.lookat = point3(0, 1.5, 0);
+        config.camera.vfov = 25.0;
         break;
     }
 
     case 45: {
         ModelFeatureSettings settings{};
         settings.build_bvh = false; // Disable BVH to compare traversal paths
-        config.world = model_feature_validation_scene(settings);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(8, 4, 12);
-        config.lookat = point3(0, 1.5, 0);
-        config.vfov = 25.0;
+        config.scene.world = model_feature_validation_scene(settings);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(8, 4, 12);
+        config.camera.lookat = point3(0, 1.5, 0);
+        config.camera.vfov = 25.0;
         break;
     }
 
     case 46: {
         ModelFeatureSettings settings{};
         settings.apply_transform = false; // Render without translate/scale
-        config.world = model_feature_validation_scene(settings);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(8, 4, 12);
-        config.lookat = point3(0, 1.5, 0);
-        config.vfov = 25.0;
+        config.scene.world = model_feature_validation_scene(settings);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(8, 4, 12);
+        config.camera.lookat = point3(0, 1.5, 0);
+        config.camera.vfov = 25.0;
         break;
     }
 
     case 47: {
         ModelFeatureSettings settings{};
         settings.use_vertex_normals = false; // Flat shading for comparison
-        config.world = model_feature_validation_scene(settings);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(8, 4, 12);
-        config.lookat = point3(0, 1.5, 0);
-        config.vfov = 25.0;
+        config.scene.world = model_feature_validation_scene(settings);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(8, 4, 12);
+        config.camera.lookat = point3(0, 1.5, 0);
+        config.camera.vfov = 25.0;
         break;
     }
 
@@ -2697,187 +2694,202 @@ SceneConfig select_scene(int scene_id) {
         ModelFeatureSettings settings{};
         settings.disable_mesh = true; // Replace mesh to validate loader path
         settings.duplicate_mesh = false;
-        config.world = model_feature_validation_scene(settings);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(8, 4, 12);
-        config.lookat = point3(0, 1.5, 0);
-        config.vfov = 25.0;
+        config.scene.world = model_feature_validation_scene(settings);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(8, 4, 12);
+        config.camera.lookat = point3(0, 1.5, 0);
+        config.camera.vfov = 25.0;
         break;
     }
 
     // ===== NEW stress-test cases =====
     case 49: { // World BVH ON, Mesh BVH ON
-        config.world = mesh_bvh_stress_scene(true, true, 15);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 2000;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(30, 18, 30);
-        config.lookat = point3(0, 0.8, 0);
-        config.vfov = 35.0;
+        config.scene.world = mesh_bvh_stress_scene(true, true, 15);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 2000;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(30, 18, 30);
+        config.camera.lookat = point3(0, 0.8, 0);
+        config.camera.vfov = 35.0;
         break;
     }
 
     case 50: { // World BVH OFF, Mesh BVH ON
-        config.world = mesh_bvh_stress_scene(false, true, 15);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(30, 18, 30);
-        config.lookat = point3(0, 0.8, 0);
-        config.vfov = 35.0;
+        config.scene.world = mesh_bvh_stress_scene(false, true, 15);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(30, 18, 30);
+        config.camera.lookat = point3(0, 0.8, 0);
+        config.camera.vfov = 35.0;
         break;
     }
 
     case 51: { // World BVH ON, Mesh BVH OFF
-        config.world = mesh_bvh_stress_scene(true, false, 15);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 2000;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(30, 18, 30);
-        config.lookat = point3(0, 0.8, 0);
-        config.vfov = 35.0;
+        config.scene.world = mesh_bvh_stress_scene(true, false, 15);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 2000;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(30, 18, 30);
+        config.camera.lookat = point3(0, 0.8, 0);
+        config.camera.vfov = 35.0;
         break;
     }
 
     case 52: { // World BVH OFF, Mesh BVH OFF (worst-case)
-        config.world = mesh_bvh_stress_scene(false, false, 15);
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 2000;
-        config.background = color(0.65, 0.75, 0.9);
-        config.lookfrom = point3(30, 18, 30);
-        config.lookat = point3(0, 0.8, 0);
-        config.vfov = 35.0;
+        config.scene.world = mesh_bvh_stress_scene(false, false, 15);
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 2000;
+        config.preset.background = color(0.65, 0.75, 0.9);
+        config.camera.lookfrom = point3(30, 18, 30);
+        config.camera.lookat = point3(0, 0.8, 0);
+        config.camera.vfov = 35.0;
         break;
     }
 
     case 10:
     default:
-        config.world = two_perlin_spheres();
-        config.background = color(0.70, 0.80, 1.00);
-        config.lookfrom = point3(13, 2, 3);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 20.0;
+        config.scene.world = two_perlin_spheres();
+        config.preset.background = color(0.70, 0.80, 1.00);
+        config.camera.lookfrom = point3(13, 2, 3);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 20.0;
         break;
 
     case 53: {
-        config.world = triangle_hit_validation_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.65, 0.75, 0.9);
+        config.scene.world = triangle_hit_validation_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.65, 0.75, 0.9);
 
         // Camera: look at triangle
-        config.lookfrom = point3(0.0, 2.0, 6.5);
-        config.lookat = point3(0.0, 1.8, 0.0);
-        config.vfov = 30.0;
-        config.aperture = 0.0;
+        config.camera.lookfrom = point3(0.0, 2.0, 6.5);
+        config.camera.lookat = point3(0.0, 1.8, 0.0);
+        config.camera.vfov = 30.0;
+        config.camera.aperture = 0.0;
         break;
     }
 
     case 54: {
-        config.world = triangle_occlusion_validation_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.65, 0.75, 0.9);
+        config.scene.world = triangle_occlusion_validation_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.65, 0.75, 0.9);
 
-        config.lookfrom = point3(0.0, 2.0, 6.5);
-        config.lookat = point3(0.0, 1.8, -0.8);
-        config.vfov = 30.0;
-        config.aperture = 0.0;
+        config.camera.lookfrom = point3(0.0, 2.0, 6.5);
+        config.camera.lookat = point3(0.0, 1.8, -0.8);
+        config.camera.vfov = 30.0;
+        config.camera.aperture = 0.0;
         break;
     }
 
     case 55: {
-        config.world = triangle_vertex_normal_validation_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 1000; // 稍微高一点，梯度更干净
-        config.background = color(0.65, 0.75, 0.9);
+        config.scene.world = triangle_vertex_normal_validation_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 1000; // 稍微高一点，梯度更干净
+        config.preset.background = color(0.65, 0.75, 0.9);
 
         point3 tri_center(0.0, 1.47, 0.0);
 
         // if light emits toward -Z, reverse direction is +Z,
         // so camera should sit at Z negative and look toward +Z
-        config.lookfrom =
+        config.camera.lookfrom =
             tri_center + vec3(-1.0, 0.0, -1.0) * 4.5; // (0, 1.47, -6.5)
-        config.lookat = tri_center;
+        config.camera.lookat = tri_center;
 
-        config.aperture = 0.0;
+        config.camera.aperture = 0.0;
         break;
     }
 
     case 56: {
-        config.world = triangle_normal_interp_compare_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 10000;
-        config.background = color(0.65, 0.75, 0.9);
+        config.scene.world = triangle_normal_interp_compare_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 10000;
+        config.preset.background = color(0.65, 0.75, 0.9);
 
         // Camera: straightforward front view, so differences are easy to see
-        config.lookfrom = point3(0.6, 1.75, 4.875);
-        config.lookat = point3(0.6, 1.7, 0.0);
-        config.vfov = 30.0;
-        config.aperture = 0.0;
+        config.camera.lookfrom = point3(0.6, 1.75, 4.875);
+        config.camera.lookat = point3(0.6, 1.7, 0.0);
+        config.camera.vfov = 30.0;
+        config.camera.aperture = 0.0;
         break;
     }
 
     case 57: {
-        config.world = pyramid_pointlight_compare_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 900;
-        config.samples_per_pixel = 1500; // 点光源 + 路径追踪会更噪，建议高一点
-        config.background = color(0.65, 0.75, 0.9);
+        config.scene.world = pyramid_pointlight_compare_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 900;
+        config.preset.samples_per_pixel = 1500; // 点光源 + 路径追踪会更噪，建议高一点
+        config.preset.background = color(0.65, 0.75, 0.9);
 
         // Camera: slightly above, looking at center between two pyramids
-        config.lookfrom = point3(0.0, 4.4, 14.0);
-        config.lookat = point3(0.0, 1.4, 0.0);
-        config.vfov = 28.0;
-        config.aperture = 0.0;
+        config.camera.lookfrom = point3(0.0, 4.4, 14.0);
+        config.camera.lookat = point3(0.0, 1.4, 0.0);
+        config.camera.vfov = 28.0;
+        config.camera.aperture = 0.0;
         break;
     }
 
     case 58:
-        config.world = mesh_demo_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.70, 0.80, 1.00);
-        config.lookfrom = point3(13, 2, 3);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 20.0;
+        config.scene.world = mesh_demo_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.70, 0.80, 1.00);
+        config.camera.lookfrom = point3(13, 2, 3);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 20.0;
         break;
 
     case 59:
-        config.world = mesh_monkey_scene();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 200;
-        config.background = color(0.70, 0.80, 1.00);
-        config.lookfrom = point3(13, 2, 3);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 20.0;
+        config.scene.world = mesh_monkey_scene();
+        config.camera.aspect_ratio = 16.0 / 9.0;
+        config.preset.image_width = 800;
+        config.preset.samples_per_pixel = 200;
+        config.preset.background = color(0.70, 0.80, 1.00);
+        config.camera.lookfrom = point3(13, 2, 3);
+        config.camera.lookat = point3(0, 0, 0);
+        config.camera.vfov = 20.0;
         break;
 
     case 60:
-        config.world = cornell_box_suzanne_fixed();
-        config.aspect_ratio = 1.0;
-        config.image_width = 600;
-        config.samples_per_pixel = 400;
-        config.background = color(0, 0, 0);
-        config.lookfrom = point3(278, 278, -800);
-        config.lookat = point3(278, 278, 0);
-        config.vfov = 40.0;
-        config.aperture = 0.0;
+        config.scene.world = cornell_box_suzanne_fixed();
+        config.camera.aspect_ratio = 1.0;
+        config.preset.image_width = 600;
+        config.preset.samples_per_pixel = 400;
+        config.preset.background = color(0, 0, 0);
+        config.camera.lookfrom = point3(278, 278, -800);
+        config.camera.lookat = point3(278, 278, 0);
+        config.camera.vfov = 40.0;
+        config.camera.aperture = 0.0;
         break;
     }
 
     return config;
+}
+
+void register_builtin_scenes(SceneRegistry &registry) {
+    const int scene_ids[] = {
+        1,  2,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32,
+        33, 34, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+        50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+    };
+
+    for (int scene_id : scene_ids) {
+        registry.register_scene(
+            scene_id, [scene_id]() { return make_builtin_scene(scene_id); });
+    }
+    registry.set_default([]() { return make_builtin_scene(10); });
 }

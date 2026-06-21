@@ -49,18 +49,26 @@ constexpr double kShutterOpen = 0.0;
 constexpr double kShutterClose = 1.0;
 } // namespace RenderConfig
 
-struct AppOptions {
-    int scene_id = 23;
-    int integrator_id = 4; // 0: Path, 1: RR, 2: PBR, 3: NEE, 4: MIS
-    bool valid = true;
-    bool bench = false;
-    bool save = false;
-    int runs = 1;
+struct RenderOptions {
     int width_override = 0;
     int spp_override = 0;
     int max_depth = RenderConfig::kMaxDepth;
     int threads = 0;
     unsigned seed = 1337;
+};
+
+struct BenchmarkOptions {
+    bool enabled = false;
+    bool save = false;
+    int runs = 1;
+};
+
+struct AppOptions {
+    int scene_id = 23;
+    int integrator_id = 4; // 0: Path, 1: RR, 2: PBR, 3: NEE, 4: MIS
+    bool valid = true;
+    RenderOptions render;
+    BenchmarkOptions benchmark;
     std::string error;
 };
 
@@ -103,29 +111,29 @@ static AppOptions parse_options(int argc, char *args[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = args[i];
         if (arg == "--bench") {
-            options.bench = true;
+            options.benchmark.enabled = true;
         } else if (arg == "--save") {
-            options.save = true;
+            options.benchmark.save = true;
         } else if (arg == "--mesh-flat") {
             fail("--mesh-flat was removed; FlatMesh is now the default OBJ path.");
             break;
         } else if (arg == "--runs" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.runs)) {
+            if (!parse_int_arg(args[++i], options.benchmark.runs)) {
                 fail("--runs expects an integer.");
                 break;
             }
         } else if (arg == "--width" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.width_override)) {
+            if (!parse_int_arg(args[++i], options.render.width_override)) {
                 fail("--width expects an integer.");
                 break;
             }
         } else if (arg == "--spp" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.spp_override)) {
+            if (!parse_int_arg(args[++i], options.render.spp_override)) {
                 fail("--spp expects an integer.");
                 break;
             }
         } else if (arg == "--max-depth" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.max_depth)) {
+            if (!parse_int_arg(args[++i], options.render.max_depth)) {
                 fail("--max-depth expects an integer.");
                 break;
             }
@@ -136,13 +144,13 @@ static AppOptions parse_options(int argc, char *args[]) {
         } else if (arg == "--seed" && i + 1 < argc) {
             int parsed_seed = 0;
             if (parse_int_arg(args[++i], parsed_seed)) {
-                options.seed = static_cast<unsigned>(parsed_seed);
+                options.render.seed = static_cast<unsigned>(parsed_seed);
             } else {
                 fail("--seed expects an integer.");
                 break;
             }
         } else if (arg == "--threads" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.threads)) {
+            if (!parse_int_arg(args[++i], options.render.threads)) {
                 fail("--threads expects an integer.");
                 break;
             }
@@ -163,14 +171,14 @@ static AppOptions parse_options(int argc, char *args[]) {
     if (positional.size() > 1) {
         options.integrator_id = std::atoi(positional[1].c_str());
     }
-    if (options.runs < 1) {
-        options.runs = 1;
+    if (options.benchmark.runs < 1) {
+        options.benchmark.runs = 1;
     }
-    if (options.seed == 0) {
-        options.seed = 1;
+    if (options.render.seed == 0) {
+        options.render.seed = 1;
     }
-    if (options.threads < 0) {
-        options.threads = 0;
+    if (options.render.threads < 0) {
+        options.render.threads = 0;
     }
     return options;
 }
@@ -192,31 +200,31 @@ static shared_ptr<Integrator> make_integrator(int integrator_id) {
 }
 
 static void apply_overrides(SceneConfig &config, const AppOptions &options) {
-    if (options.width_override > 0) {
-        config.image_width = options.width_override;
+    if (options.render.width_override > 0) {
+        config.preset.image_width = options.render.width_override;
     }
-    if (options.spp_override > 0) {
-        config.samples_per_pixel = options.spp_override;
+    if (options.render.spp_override > 0) {
+        config.preset.samples_per_pixel = options.render.spp_override;
     }
 }
 
 static void apply_seed(const AppOptions &options) {
-    set_random_seed(options.seed);
+    set_random_seed(options.render.seed);
 }
 
 static void configure_renderer(Renderer &renderer, const SceneConfig &config,
                                const AppOptions &options) {
-    renderer.set_samples(config.samples_per_pixel);
-    renderer.set_seed(options.seed);
-    renderer.set_thread_count(options.threads);
+    renderer.set_samples(config.preset.samples_per_pixel);
+    renderer.set_seed(options.render.seed);
+    renderer.set_thread_count(options.render.threads);
     renderer.set_integrator(make_integrator(options.integrator_id));
-    renderer.set_max_depth(options.max_depth);
+    renderer.set_max_depth(options.render.max_depth);
 }
 
 static shared_ptr<camera> make_camera(const SceneConfig &config) {
     return make_shared<camera>(
-        config.lookfrom, config.lookat, config.vup, config.vfov,
-        config.aspect_ratio, config.aperture, config.focus_dist,
+        config.camera.lookfrom, config.camera.lookat, config.camera.vup, config.camera.vfov,
+        config.camera.aspect_ratio, config.camera.aperture, config.camera.focus_dist,
         RenderConfig::kShutterOpen, RenderConfig::kShutterClose);
 }
 
@@ -248,8 +256,8 @@ static RenderStats render_once(const AppOptions &options,
     apply_overrides(config, options);
 
     auto cam = make_camera(config);
-    int width = config.image_width;
-    int height = static_cast<int>(width / config.aspect_ratio);
+    int width = config.preset.image_width;
+    int height = static_cast<int>(width / config.camera.aspect_ratio);
     auto owned_buffer = make_shared<RenderBuffer>(width, height);
     RenderBuffer &render_buffer =
         external_buffer != nullptr ? *external_buffer : *owned_buffer;
@@ -257,30 +265,30 @@ static RenderStats render_once(const AppOptions &options,
     Renderer renderer;
     configure_renderer(renderer, config, options);
 
-    return renderer.render(config.world, cam, config.background, render_buffer,
-                           config.lights);
+    return renderer.render(config.scene.world, cam, config.preset.background, render_buffer,
+                           config.scene.lights);
 }
 
 static int run_benchmark(const AppOptions &options) {
     std::vector<double> seconds;
-    seconds.reserve(options.runs);
+    seconds.reserve(options.benchmark.runs);
     RenderStats last_stats;
     shared_ptr<RenderBuffer> saved_buffer;
 
-    for (int run = 1; run <= options.runs; ++run) {
+    for (int run = 1; run <= options.benchmark.runs; ++run) {
         apply_seed(options);
         SceneConfig config = select_scene(options.scene_id);
         apply_overrides(config, options);
-        int width = config.image_width;
-        int height = static_cast<int>(width / config.aspect_ratio);
+        int width = config.preset.image_width;
+        int height = static_cast<int>(width / config.camera.aspect_ratio);
         auto render_buffer = make_shared<RenderBuffer>(width, height);
 
         auto cam = make_camera(config);
         Renderer renderer;
         configure_renderer(renderer, config, options);
 
-        last_stats = renderer.render(config.world, cam, config.background,
-                                     *render_buffer, config.lights);
+        last_stats = renderer.render(config.scene.world, cam, config.preset.background,
+                                     *render_buffer, config.scene.lights);
         seconds.push_back(last_stats.seconds);
         saved_buffer = render_buffer;
 
@@ -308,7 +316,7 @@ static int run_benchmark(const AppOptions &options) {
     double samples_per_second =
         median > 0.0 ? last_stats.sample_count / median : 0.0;
     std::cout << "BENCH_SUMMARY"
-              << " runs=" << options.runs << " scene=" << options.scene_id
+              << " runs=" << options.benchmark.runs << " scene=" << options.scene_id
               << " integrator=" << options.integrator_id
               << " width=" << last_stats.width
               << " height=" << last_stats.height
@@ -318,7 +326,7 @@ static int run_benchmark(const AppOptions &options) {
               << " seed=" << last_stats.seed
               << " threads=" << last_stats.threads << std::endl;
 
-    if (options.save && saved_buffer) {
+    if (options.benchmark.save && saved_buffer) {
         save_rendered_image(*saved_buffer, options.scene_id,
                             options.integrator_id);
     }
@@ -332,8 +340,8 @@ static int run_windowed(const AppOptions &options) {
     apply_overrides(config, options);
 
     auto cam = make_camera(config);
-    int width = config.image_width;
-    int height = static_cast<int>(width / config.aspect_ratio);
+    int width = config.preset.image_width;
+    int height = static_cast<int>(width / config.camera.aspect_ratio);
     auto render_buffer = make_shared<RenderBuffer>(width, height);
 
     Renderer renderer;
@@ -346,9 +354,9 @@ static int run_windowed(const AppOptions &options) {
         return -1;
     }
 
-    std::thread renderingThread([&renderer, world = config.world, cam,
-                                 render_buffer, bg = config.background,
-                                 lights = config.lights]() {
+    std::thread renderingThread([&renderer, world = config.scene.world, cam,
+                                 render_buffer, bg = config.preset.background,
+                                 lights = config.scene.lights]() {
         renderer.render(world, cam, bg, *render_buffer, lights);
     });
 
@@ -375,7 +383,7 @@ int main(int argc, char *args[]) {
         print_usage();
         return 1;
     }
-    if (options.bench) {
+    if (options.benchmark.enabled) {
         return run_benchmark(options);
     }
     return run_windowed(options);
