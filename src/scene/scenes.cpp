@@ -12,6 +12,7 @@
 #include "quad_light.h"
 #include "sphere.h"
 #include "spot_light.h"
+#include "triangle.h"
 
 shared_ptr<hittable> make_accel(const hittable_list &world, double time0,
                                 double time1) {
