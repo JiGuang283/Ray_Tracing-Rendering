@@ -1,7 +1,9 @@
 #ifndef RTWEEKEND_H
 #define RTWEEKEND_H
 
+#include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <memory>
@@ -16,6 +18,48 @@ using std::unique_ptr;
 
 constexpr double infinity = std::numeric_limits<double>::infinity();
 constexpr double pi = 3.1415926535897932385;
+using Float = double;
+
+struct RNG {
+    uint32_t state;
+
+    explicit RNG(uint32_t seed = 1) : state(seed == 0 ? 1 : seed) {
+    }
+
+    double next() {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        return state * 2.3283064365386963e-10;
+    }
+
+    double next(double min, double max) {
+        return min + (max - min) * next();
+    }
+};
+
+inline std::atomic<uint32_t> &random_seed_base() {
+    static std::atomic<uint32_t> seed{0};
+    return seed;
+}
+
+inline std::atomic<uint32_t> &random_seed_generation() {
+    static std::atomic<uint32_t> generation{1};
+    return generation;
+}
+
+inline void set_random_seed(uint32_t seed) {
+    random_seed_base().store(seed == 0 ? 1 : seed, std::memory_order_relaxed);
+    random_seed_generation().fetch_add(1, std::memory_order_relaxed);
+}
+
+inline uint32_t make_thread_seed() {
+    uint32_t seed = random_seed_base().load(std::memory_order_relaxed);
+    uint32_t thread_hash = static_cast<uint32_t>(
+        std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    seed = seed == 0 ? thread_hash : (seed ^ thread_hash);
+    return seed == 0 ? 1 : seed;
+}
 
 inline constexpr double degrees_to_radians(double degrees) {
     return degrees * pi / 180.0;
@@ -23,8 +67,15 @@ inline constexpr double degrees_to_radians(double degrees) {
 
 inline double random_double() {
 
-    static thread_local uint32_t seed =
-        std::hash<std::thread::id>{}(std::this_thread::get_id());
+    static thread_local uint32_t local_generation = 0;
+    static thread_local uint32_t seed = make_thread_seed();
+
+    uint32_t current_generation =
+        random_seed_generation().load(std::memory_order_relaxed);
+    if (local_generation != current_generation) {
+        seed = make_thread_seed();
+        local_generation = current_generation;
+    }
 
     seed ^= seed << 13;
     seed ^= seed >> 17;

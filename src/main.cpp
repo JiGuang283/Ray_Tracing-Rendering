@@ -161,6 +161,12 @@ static SceneBuildOptions make_scene_build_options(const AppOptions &options) {
     return build_options;
 }
 
+static void apply_seed(const AppOptions &options) {
+    if (options.has_seed) {
+        set_random_seed(options.seed);
+    }
+}
+
 static shared_ptr<camera> make_camera(const SceneConfig &config) {
     return make_shared<camera>(
         config.lookfrom, config.lookat, config.vup, config.vfov,
@@ -189,6 +195,7 @@ static std::string save_rendered_image(const RenderBuffer &render_buffer,
 
 static RenderStats render_once(const AppOptions &options,
                                RenderBuffer *external_buffer = nullptr) {
+    apply_seed(options);
     SceneConfig config =
         select_scene(options.scene_id, make_scene_build_options(options));
     apply_overrides(config, options);
@@ -216,6 +223,7 @@ static int run_benchmark(const AppOptions &options) {
     shared_ptr<RenderBuffer> saved_buffer;
 
     for (int run = 1; run <= options.runs; ++run) {
+        apply_seed(options);
         SceneConfig config =
             select_scene(options.scene_id, make_scene_build_options(options));
         apply_overrides(config, options);
@@ -277,6 +285,7 @@ static int run_benchmark(const AppOptions &options) {
 }
 
 static int run_windowed(const AppOptions &options) {
+    apply_seed(options);
     SceneConfig config =
         select_scene(options.scene_id, make_scene_build_options(options));
     apply_overrides(config, options);
