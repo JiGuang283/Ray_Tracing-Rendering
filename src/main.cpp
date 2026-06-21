@@ -23,6 +23,7 @@ THE SOFTWARE.*/
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <exception>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -41,6 +42,7 @@ THE SOFTWARE.*/
 #include "render_buffer.h"
 #include "renderer.h"
 #include "rr_path_integrator.h"
+#include "scene_loader.h"
 #include "scenes.h"
 
 namespace RenderConfig {
@@ -69,6 +71,7 @@ struct AppOptions {
     bool valid = true;
     RenderOptions render;
     BenchmarkOptions benchmark;
+    std::string scene_file;
     std::string error;
 };
 
@@ -90,6 +93,8 @@ static void print_usage() {
         << "Usage: ./CGAssignment4 [scene] [integrator] [options]\n"
         << "Options:\n"
         << "  --bench              Run headless benchmark mode\n"
+        << "  --scene-file PATH    Load scene from a JSON file\n"
+        << "  --integrator N       Select integrator for --scene-file mode\n"
         << "  --runs N             Benchmark run count\n"
         << "  --width N            Override image width\n"
         << "  --spp N              Override samples per pixel\n"
@@ -114,6 +119,13 @@ static AppOptions parse_options(int argc, char *args[]) {
             options.benchmark.enabled = true;
         } else if (arg == "--save") {
             options.benchmark.save = true;
+        } else if (arg == "--scene-file" && i + 1 < argc) {
+            options.scene_file = args[++i];
+        } else if (arg == "--integrator" && i + 1 < argc) {
+            if (!parse_int_arg(args[++i], options.integrator_id)) {
+                fail("--integrator expects an integer.");
+                break;
+            }
         } else if (arg == "--mesh-flat") {
             fail("--mesh-flat was removed; FlatMesh is now the default OBJ path.");
             break;
@@ -165,6 +177,11 @@ static AppOptions parse_options(int argc, char *args[]) {
     if (!options.valid) {
         return options;
     }
+    if (!options.scene_file.empty() && !positional.empty()) {
+        fail("--scene-file does not accept positional scene ids; use "
+             "--integrator N to select an integrator.");
+        return options;
+    }
     if (!positional.empty()) {
         options.scene_id = std::atoi(positional[0].c_str());
     }
@@ -212,6 +229,13 @@ static void apply_seed(const AppOptions &options) {
     set_random_seed(options.render.seed);
 }
 
+static SceneConfig load_scene_config(const AppOptions &options) {
+    if (!options.scene_file.empty()) {
+        return load_scene_file(options.scene_file);
+    }
+    return select_scene(options.scene_id);
+}
+
 static void configure_renderer(Renderer &renderer, const SceneConfig &config,
                                const AppOptions &options) {
     renderer.set_samples(config.preset.samples_per_pixel);
@@ -252,7 +276,7 @@ static std::string save_rendered_image(const RenderBuffer &render_buffer,
 static RenderStats render_once(const AppOptions &options,
                                RenderBuffer *external_buffer = nullptr) {
     apply_seed(options);
-    SceneConfig config = select_scene(options.scene_id);
+    SceneConfig config = load_scene_config(options);
     apply_overrides(config, options);
 
     auto cam = make_camera(config);
@@ -277,7 +301,7 @@ static int run_benchmark(const AppOptions &options) {
 
     for (int run = 1; run <= options.benchmark.runs; ++run) {
         apply_seed(options);
-        SceneConfig config = select_scene(options.scene_id);
+        SceneConfig config = load_scene_config(options);
         apply_overrides(config, options);
         int width = config.preset.image_width;
         int height = static_cast<int>(width / config.camera.aspect_ratio);
@@ -336,7 +360,7 @@ static int run_benchmark(const AppOptions &options) {
 
 static int run_windowed(const AppOptions &options) {
     apply_seed(options);
-    SceneConfig config = select_scene(options.scene_id);
+    SceneConfig config = load_scene_config(options);
     apply_overrides(config, options);
 
     auto cam = make_camera(config);
@@ -383,8 +407,13 @@ int main(int argc, char *args[]) {
         print_usage();
         return 1;
     }
-    if (options.benchmark.enabled) {
-        return run_benchmark(options);
+    try {
+        if (options.benchmark.enabled) {
+            return run_benchmark(options);
+        }
+        return run_windowed(options);
+    } catch (const std::exception &error) {
+        std::cerr << "Error: " << error.what() << std::endl;
+        return 1;
     }
-    return run_windowed(options);
 }

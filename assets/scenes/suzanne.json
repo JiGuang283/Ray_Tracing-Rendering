@@ -1,0 +1,39 @@
+{
+  "name": "suzanne_demo",
+  "camera": {
+    "lookfrom": [13, 2, 3],
+    "lookat": [0, 0, 0],
+    "vup": [0, 1, 0],
+    "vfov": 20,
+    "aperture": 0,
+    "focus_dist": 10,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 800,
+    "spp": 200,
+    "background": [0.70, 0.80, 1.00]
+  },
+  "materials": {
+    "ground": { "type": "lambertian", "albedo": [0.5, 0.5, 0.5] },
+    "mesh": { "type": "lambertian", "albedo": [0.8, 0.3, 0.3] }
+  },
+  "objects": [
+    {
+      "type": "sphere",
+      "center": [0, -1000, 0],
+      "radius": 1000,
+      "material": "ground"
+    },
+    {
+      "type": "obj",
+      "path": "assets/Suzanne.obj",
+      "material": "mesh",
+      "translate": [0, 1.5, 0],
+      "scale": [1, 1, 1],
+      "build_bvh": true,
+      "use_vertex_normals": true
+    }
+  ],
+  "lights": []
+}
