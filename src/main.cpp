@@ -122,6 +122,11 @@ static AppOptions parse_options(int argc, char *args[]) {
     if (options.runs < 1) {
         options.runs = 1;
     }
+    if (options.accel_mode != "pointer" && options.accel_mode != "linear") {
+        std::cerr << "Warning: unknown accel mode '" << options.accel_mode
+                  << "', falling back to pointer." << std::endl;
+        options.accel_mode = "pointer";
+    }
     return options;
 }
 
