@@ -30,13 +30,18 @@ class camera {
     }
 
     ray get_ray(double s, double t) const {
-        vec3 rd = lens_radius * random_in_unit_disk();
+        RNG rng(make_thread_seed());
+        return get_ray(s, t, rng);
+    }
+
+    ray get_ray(double s, double t, RNG &rng) const {
+        vec3 rd = lens_radius * random_in_unit_disk(rng);
         vec3 offset = u * rd.x() + v * rd.y();
 
         return ray(origin + offset,
                    lower_left_corner + s * horizontal + t * vertical - origin -
                        offset,
-                   random_double(time0, time1));
+                   rng.next_double(time0, time1));
     }
 
   private:

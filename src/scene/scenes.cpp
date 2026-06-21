@@ -13,14 +13,9 @@
 #include "sphere.h"
 #include "spot_light.h"
 
-shared_ptr<hittable> build_accel(const hittable_list &world, double time0,
-                                 double time1,
-                                 const SceneBuildOptions &options) {
-    if (options.accel_mode == AccelMode::LinearBVH) {
-        return make_shared<LinearBVH>(
-            make_shared<bvh_node>(world, time0, time1), time0, time1);
-    }
-    return make_shared<bvh_node>(world, time0, time1);
+shared_ptr<hittable> make_accel(const hittable_list &world, double time0,
+                                double time1) {
+    return make_shared<LinearBVH>(world, time0, time1);
 }
 
 shared_ptr<hittable> random_scene() {
@@ -66,7 +61,7 @@ shared_ptr<hittable> random_scene() {
     auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
     world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material3));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> example_light_scene() {
@@ -116,7 +111,7 @@ shared_ptr<hittable> example_light_scene() {
     auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
     world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material3));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> two_spheres() {
@@ -130,7 +125,7 @@ shared_ptr<hittable> two_spheres() {
     objects.add(make_shared<sphere>(point3(0, 10, 0), 10,
                                     make_shared<lambertian>(checker)));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> two_perlin_spheres() {
@@ -142,7 +137,7 @@ shared_ptr<hittable> two_perlin_spheres() {
     objects.add(make_shared<sphere>(point3(0, 2, 0), 2,
                                     make_shared<lambertian>(pertext)));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> earth() {
@@ -150,7 +145,7 @@ shared_ptr<hittable> earth() {
     auto earth_surface = make_shared<lambertian>(earth_texture);
     auto globe = make_shared<sphere>(point3(0, 0, 0), 2, earth_surface);
 
-    return make_shared<bvh_node>(hittable_list(globe), 0, 1);
+    return make_accel(hittable_list(globe), 0, 1);
 }
 
 shared_ptr<hittable> simple_light() {
@@ -164,10 +159,10 @@ shared_ptr<hittable> simple_light() {
     objects.add(make_shared<xy_rect>(3, 5, 1, 3, -2, difflight));
     objects.add(make_shared<sphere>(vec3(0, 7, 0), 2, difflight));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
-shared_ptr<hittable> cornell_box(const SceneBuildOptions &options) {
+shared_ptr<hittable> cornell_box() {
     hittable_list objects;
 
     auto red = make_shared<lambertian>(color(.65, .05, .05));
@@ -194,11 +189,7 @@ shared_ptr<hittable> cornell_box(const SceneBuildOptions &options) {
     box2 = make_shared<translate>(box2, vec3(130, 0, 65));
     objects.add(box2);
 
-    return build_accel(objects, 0, 1, options);
-}
-
-shared_ptr<hittable> cornell_box() {
-    return cornell_box(SceneBuildOptions{});
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> cornell_smoke() {
@@ -230,7 +221,7 @@ shared_ptr<hittable> cornell_smoke() {
     box2 = make_shared<constant_medium>(box2, 0.01, color(1, 1, 1));
     objects.add(box2);
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> final_scene() {
@@ -255,7 +246,7 @@ shared_ptr<hittable> final_scene() {
 
     hittable_list objects;
 
-    objects.add(make_shared<bvh_node>(boxes1, 0, 1));
+    objects.add(make_accel(boxes1, 0, 1));
 
     auto light = make_shared<diffuse_light>(color(7, 7, 7));
     objects.add(make_shared<xz_rect>(123, 423, 147, 412, 554, light));
@@ -298,10 +289,10 @@ shared_ptr<hittable> final_scene() {
     }
 
     objects.add(make_shared<translate>(
-        make_shared<rotate_y>(make_shared<bvh_node>(boxes2, 0.0, 1.0), 15),
+        make_shared<rotate_y>(make_accel(boxes2, 0.0, 1.0), 15),
         vec3(-100, 270, 395)));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> pbr_test_scene() {
@@ -335,7 +326,7 @@ shared_ptr<hittable> pbr_test_scene() {
         make_shared<PBRMaterial>(blue_albedo, blue_rough, blue_metal);
     world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, blue_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> pbr_spheres_grid() {
@@ -377,7 +368,7 @@ shared_ptr<hittable> pbr_spheres_grid() {
     world.add(make_shared<sphere>(point3(-20, 10, 20), 2, light_mat));
     world.add(make_shared<sphere>(point3(20, 10, 20), 2, light_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> pbr_materials_gallery() {
@@ -442,7 +433,7 @@ shared_ptr<hittable> pbr_materials_gallery() {
     auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
     world.add(make_shared<sphere>(point3(0, 20, 10), 5, light_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> pbr_reference_scene() {
@@ -529,7 +520,7 @@ shared_ptr<hittable> pbr_reference_scene() {
     world.add(make_shared<sphere>(point3(-20, 10, 20), 2, light_mat));
     world.add(make_shared<sphere>(point3(20, 10, 20), 2, light_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> point_light_scene() {
@@ -557,7 +548,7 @@ shared_ptr<hittable> point_light_scene() {
         make_shared<PBRMaterial>(d_albedo, d_roughness, d_metallic);
     world.add(make_shared<sphere>(point3(3, 1, 0), 1.0, plastic_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> mis_demo() {
@@ -589,10 +580,10 @@ shared_ptr<hittable> mis_demo() {
     auto light_mat = make_shared<diffuse_light>(color(10, 5, 5));
     world.add(make_shared<sphere>(point3(0, 1, -3), 1.0, light_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
-shared_ptr<hittable> mis_comparison_scene(const SceneBuildOptions &options) {
+shared_ptr<hittable> mis_comparison_scene() {
     hittable_list world;
 
     auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
@@ -637,11 +628,7 @@ shared_ptr<hittable> mis_comparison_scene(const SceneBuildOptions &options) {
     world.add(make_shared<flip_face>(
         make_shared<yz_rect>(3.75, 4.25, 1.75, 2.25, 6, small_light_mat)));
 
-    return build_accel(world, 0, 1, options);
-}
-
-shared_ptr<hittable> mis_comparison_scene() {
-    return mis_comparison_scene(SceneBuildOptions{});
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> soft_shadow_demo() {
@@ -672,7 +659,7 @@ shared_ptr<hittable> soft_shadow_demo() {
     world.add(make_shared<flip_face>(
         make_shared<xz_rect>(-2, 2, -2, 2, 8, light_emit)));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> hdr_demo_scene() {
@@ -698,7 +685,7 @@ shared_ptr<hittable> hdr_demo_scene() {
     // auto matte = make_shared<lambertian>(color(0.8, 0.8, 0.8));
     // world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, matte)); // 地面
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> directional_light_scene() {
@@ -732,7 +719,7 @@ shared_ptr<hittable> directional_light_scene() {
     auto material_diffuse = make_shared<lambertian>(color(0.8, 0.5, 0.2));
     objects.add(make_shared<sphere>(point3(0, 5, 0), 1.0, material_diffuse));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> spot_light_scene() {
@@ -750,7 +737,7 @@ shared_ptr<hittable> spot_light_scene() {
     auto blue = make_shared<lambertian>(color(0.1, 0.1, 0.8));
     objects.add(make_shared<box>(point3(1, 0, -1), point3(2, 2, 0), blue));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> environment_light_scene() {
@@ -773,7 +760,7 @@ shared_ptr<hittable> environment_light_scene() {
     objects.add(
         make_shared<sphere>(point3(0, -1000, 0), 1000, ground_material));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> quad_light_scene() {
@@ -792,7 +779,7 @@ shared_ptr<hittable> quad_light_scene() {
     auto light_rect = make_shared<xz_rect>(-2, 2, -2, 2, 7, light_mat);
     objects.add(make_shared<flip_face>(light_rect));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> cornell_box_nee() {
@@ -824,7 +811,7 @@ shared_ptr<hittable> cornell_box_nee() {
     box2 = make_shared<translate>(box2, vec3(130, 0, 65));
     objects.add(box2);
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 shared_ptr<hittable> final_scene_nee() {
@@ -849,7 +836,7 @@ shared_ptr<hittable> final_scene_nee() {
 
     hittable_list objects;
 
-    objects.add(make_shared<bvh_node>(boxes1, 0, 1));
+    objects.add(make_accel(boxes1, 0, 1));
 
     auto light = make_shared<diffuse_light>(color(7, 7, 7));
     // Flip face so light emits downward
@@ -894,10 +881,10 @@ shared_ptr<hittable> final_scene_nee() {
     }
 
     objects.add(make_shared<translate>(
-        make_shared<rotate_y>(make_shared<bvh_node>(boxes2, 0.0, 1.0), 15),
+        make_shared<rotate_y>(make_accel(boxes2, 0.0, 1.0), 15),
         vec3(-100, 270, 395)));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 // ============================================================================
@@ -960,7 +947,7 @@ shared_ptr<hittable> materials_showcase() {
         world.add(make_shared<sphere>(point3(-3 + i * 1.5, 0.4, 3), 0.4, mat));
     }
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 // Scene 2: Cornell Box Extended - 扩展康奈尔盒
@@ -1000,7 +987,7 @@ shared_ptr<hittable> cornell_box_extended() {
                                  make_shared<solid_color>(1.0, 1.0, 1.0));
     objects.add(make_shared<sphere>(point3(350, 380, 350), 50, gold));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 // Scene 3: Interior Lighting Scene - 室内照明场景
@@ -1071,7 +1058,7 @@ shared_ptr<hittable> interior_lighting_scene() {
     objects.add(make_shared<flip_face>(
         make_shared<xz_rect>(-1, 1, 0, 2, 7.99, ceiling_light)));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 // Scene 4: Jewelry Display - 珠宝展示台
@@ -1141,7 +1128,7 @@ shared_ptr<hittable> jewelry_display() {
             make_shared<sphere>(point3(-1.5 + i * 0.75, 0.2, 2), 0.2, pearl));
     }
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 // Scene 4 Simplified: Jewelry Display Simplified - 珠宝展示台（简化版）
@@ -1205,7 +1192,7 @@ shared_ptr<hittable> jewelry_display_simplified() {
 
     // 前排小珍珠 -> 已移除
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 // Scene 5: Glass Caustics Scene - 玻璃焦散场景
@@ -1255,7 +1242,7 @@ shared_ptr<hittable> glass_caustics_scene() {
     objects.add(
         make_shared<flip_face>(make_shared<xz_rect>(-3, 3, -3, 3, 10, light)));
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 // Scene 6: PBR Texture Demo - PBR 贴图演示
@@ -1317,7 +1304,7 @@ shared_ptr<hittable> glass_caustics_scene() {
 //     world.add(make_shared<sphere>(point3(0, 10, 5), 2, light_mat));
 //     world.add(make_shared<sphere>(point3(-5, 5, 5), 1, light_mat));
 
-//     return make_shared<bvh_node>(world, 0, 1);
+//     return make_accel(world, 0, 1);
 // }
 
 // // Scene 7: PBR Floating Spheres with Environment Light
@@ -1366,7 +1353,7 @@ shared_ptr<hittable> glass_caustics_scene() {
 
 //     world.add(make_shared<sphere>(point3(3.0, 0, 0), 1.2, mat_rust));
 
-//     return make_shared<bvh_node>(world, 0, 1);
+//     return make_accel(world, 0, 1);
 // }
 
 // Scene 37: PBR Spheres Grid with Explicit Lights (for NEE/MIS)
@@ -1419,7 +1406,7 @@ shared_ptr<hittable> pbr_spheres_grid_lights() {
     world.add(make_shared<flip_face>(
         make_shared<xz_rect>(17, 23, 17, 23, 10, light_mat)));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> multi_light_demo() {
@@ -1476,7 +1463,7 @@ shared_ptr<hittable> multi_light_demo() {
     world.add(
         make_shared<flip_face>(make_shared<xz_rect>(2, 6, 0, 4, 6, light_mat)));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> cmy_shadows_demo() {
@@ -1499,7 +1486,7 @@ shared_ptr<hittable> cmy_shadows_demo() {
     world.add(
         make_shared<box>(point3(-0.1, 0, 1.9), point3(0.1, 0.5, 2.1), rod_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> infinity_mirror_demo() {
@@ -1538,10 +1525,10 @@ shared_ptr<hittable> infinity_mirror_demo() {
     auto chrome = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
     world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, chrome));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
-shared_ptr<hittable> mesh_demo_scene(const SceneBuildOptions &options) {
+shared_ptr<hittable> mesh_demo_scene() {
     hittable_list world;
 
     // Ground
@@ -1558,31 +1545,20 @@ shared_ptr<hittable> mesh_demo_scene(const SceneBuildOptions &options) {
     // 放在地面上：y 方向稍微抬一点点，避免穿地（不同 bunny 文件底部可能略不同）
     const vec3 bunny_pos(0.0, -0.3, 0.0);
 
-    // Load bunny (build BVH inside mesh; try to use vertex normals if present)
-    shared_ptr<hittable> bunny;
-    if (options.use_flat_mesh) {
-        bunny = FlatMesh::load_from_obj("assets/stanford bunny.obj", bunny_mat,
-                                        bunny_pos, bunny_scale,
-                                        true,  // build_bvh
-                                        true); // use_vertex_normals
-    } else {
-        bunny = mesh::load_from_obj("assets/stanford bunny.obj", bunny_mat,
-                                    bunny_pos, bunny_scale,
-                                    true,  // build_bvh
-                                    true); // use_vertex_normals
-    }
+    // Load bunny with the stable flat mesh path.
+    shared_ptr<hittable> bunny =
+        FlatMesh::load_from_obj("assets/stanford bunny.obj", bunny_mat,
+                                bunny_pos, bunny_scale,
+                                true,  // build_bvh
+                                true); // use_vertex_normals
     if (bunny) {
         world.add(bunny);
     }
 
-    return build_accel(world, 0, 1, options);
+    return make_accel(world, 0, 1);
 }
 
-shared_ptr<hittable> mesh_demo_scene() {
-    return mesh_demo_scene(SceneBuildOptions{});
-}
-
-shared_ptr<hittable> mesh_monkey_scene(const SceneBuildOptions &options) {
+shared_ptr<hittable> mesh_monkey_scene() {
     hittable_list world;
 
     // Ground
@@ -1599,28 +1575,17 @@ shared_ptr<hittable> mesh_monkey_scene(const SceneBuildOptions &options) {
     // 放在地面上：y 方向稍微抬一点点，避免穿地（不同 bunny 文件底部可能略不同）
     const vec3 bunny_pos(0.0, 1.5, 0.0);
 
-    // Load bunny (build BVH inside mesh; try to use vertex normals if present)
-    shared_ptr<hittable> bunny;
-    if (options.use_flat_mesh) {
-        bunny = FlatMesh::load_from_obj("assets/Suzanne.obj", bunny_mat,
-                                        bunny_pos, bunny_scale,
-                                        true,  // build_bvh
-                                        true); // use_vertex_normals
-    } else {
-        bunny = mesh::load_from_obj("assets/Suzanne.obj", bunny_mat, bunny_pos,
-                                    bunny_scale,
-                                    true,  // build_bvh
-                                    true); // use_vertex_normals
-    }
+    // Load Suzanne with the stable flat mesh path.
+    shared_ptr<hittable> bunny =
+        FlatMesh::load_from_obj("assets/Suzanne.obj", bunny_mat, bunny_pos,
+                                bunny_scale,
+                                true,  // build_bvh
+                                true); // use_vertex_normals
     if (bunny) {
         world.add(bunny);
     }
 
-    return build_accel(world, 0, 1, options);
-}
-
-shared_ptr<hittable> mesh_monkey_scene() {
-    return mesh_monkey_scene(SceneBuildOptions{});
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> cornell_box_suzanne_fixed() {
@@ -1706,7 +1671,7 @@ shared_ptr<hittable> cornell_box_suzanne_fixed() {
         std::cerr << "failed to load stanford bunny.obj\n";
     }
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return make_accel(objects, 0, 1);
 }
 
 struct ModelFeatureSettings {
@@ -1756,7 +1721,7 @@ model_feature_validation_scene(const ModelFeatureSettings &settings) {
     world.add(make_shared<sphere>(point3(-4.0, 1.25, -2.0), 1.0, mirror));
 
     if (settings.build_bvh) {
-        return make_shared<bvh_node>(world, 0, 1);
+        return make_accel(world, 0, 1);
     }
 
     return make_shared<hittable_list>(world);
@@ -1865,7 +1830,7 @@ shared_ptr<hittable> mesh_bvh_stress_scene(bool build_world_bvh,
                                         hemi(n3, f134), hemi(n4, f134), mat));
 
         if (local_build_bvh) {
-            return make_shared<bvh_node>(local, 0.0, 1.0);
+            return make_accel(local, 0.0, 1.0);
         }
         return make_shared<hittable_list>(local);
     };
@@ -1902,7 +1867,7 @@ shared_ptr<hittable> mesh_bvh_stress_scene(bool build_world_bvh,
                                   mirror));
 
     if (build_world_bvh) {
-        return make_shared<bvh_node>(world, 0.0, 1.0);
+        return make_accel(world, 0.0, 1.0);
     }
     return make_shared<hittable_list>(world);
 }
@@ -1948,7 +1913,7 @@ shared_ptr<hittable> triangle_normal_interp_compare_scene() {
     world.add(
         make_shared<triangle>(a0 + shift, a1 + shift, a2 + shift, tri_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> triangle_vertex_normal_validation_scene() {
@@ -1989,7 +1954,7 @@ shared_ptr<hittable> triangle_vertex_normal_validation_scene() {
     world.add(make_shared<triangle>(v0, v1, v2, n0, n1, n2, tri_mat, vec2(0, 0),
                                     vec2(0, 0), vec2(0, 0), false));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> triangle_hit_validation_scene() {
@@ -2012,7 +1977,7 @@ shared_ptr<hittable> triangle_hit_validation_scene() {
     world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
 
     // Wrap with BVH for consistency (not required, but fine)
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> triangle_occlusion_validation_scene() {
@@ -2036,7 +2001,7 @@ shared_ptr<hittable> triangle_occlusion_validation_scene() {
         make_shared<lambertian>(color(0.85, 0.65, 0.20)); // yellowish
     world.add(make_shared<sphere>(point3(-0.3, 1.6, -0.3), 0.9, occ_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
 shared_ptr<hittable> pyramid_pointlight_compare_scene() {
@@ -2124,10 +2089,10 @@ shared_ptr<hittable> pyramid_pointlight_compare_scene() {
     // Right: flat
     add_tetra(point3(1.8, 0.8, 0.0), 1.15, false);
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return make_accel(world, 0, 1);
 }
 
-SceneConfig select_scene(int scene_id, const SceneBuildOptions &options) {
+SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
     switch (scene_id) {
@@ -2177,7 +2142,7 @@ SceneConfig select_scene(int scene_id, const SceneBuildOptions &options) {
         break;
 
     case 7:
-        config.world = cornell_box(options);
+        config.world = cornell_box();
         config.aspect_ratio = 1.0;
         config.image_width = 600;
         config.samples_per_pixel = 400;
@@ -2367,7 +2332,7 @@ SceneConfig select_scene(int scene_id, const SceneBuildOptions &options) {
         break;
 
     case 23:
-        config.world = mis_comparison_scene(options);
+        config.world = mis_comparison_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
         config.samples_per_pixel = 64; // Low samples to highlight noise
@@ -2879,7 +2844,7 @@ SceneConfig select_scene(int scene_id, const SceneBuildOptions &options) {
     }
 
     case 58:
-        config.world = mesh_demo_scene(options);
+        config.world = mesh_demo_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
         config.samples_per_pixel = 200;
@@ -2890,7 +2855,7 @@ SceneConfig select_scene(int scene_id, const SceneBuildOptions &options) {
         break;
 
     case 59:
-        config.world = mesh_monkey_scene(options);
+        config.world = mesh_monkey_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
         config.samples_per_pixel = 200;
@@ -2914,8 +2879,4 @@ SceneConfig select_scene(int scene_id, const SceneBuildOptions &options) {
     }
 
     return config;
-}
-
-SceneConfig select_scene(int scene_id) {
-    return select_scene(scene_id, SceneBuildOptions{});
 }

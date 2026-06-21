@@ -43,6 +43,10 @@ class material {
                         BSDFSample &sampled) const {
         return false;
     }
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled, RNG &rng) const {
+        return sample(rec, wo, sampled);
+    }
 
     // 给定两个方向，计算反射比率（BSDF值）
     virtual color eval(const hit_record &rec, const vec3 &wo,
@@ -61,11 +65,19 @@ class material {
                          ray &scattered, double &pdf_val) const {
         return false;
     }
+    virtual bool scatter(const ray &r_in, const hit_record &rec, color &albedo,
+                         ray &scattered, double &pdf_val, RNG &rng) const {
+        return scatter(r_in, rec, albedo, scattered, pdf_val);
+    }
 
     // 保留旧接口
     virtual bool scatter(const ray &r_in, const hit_record &rec,
                          color &attenuation, ray &scattered) const {
         return false;
+    }
+    virtual bool scatter(const ray &r_in, const hit_record &rec,
+                         color &attenuation, ray &scattered, RNG &rng) const {
+        return scatter(r_in, rec, attenuation, scattered);
     }
 };
 
@@ -78,7 +90,13 @@ class lambertian : public material {
 
     virtual bool sample(const hit_record &rec, const vec3 &wo,
                         BSDFSample &sampled) const override {
-        vec3 scatter_direction = rec.normal + random_unit_vector();
+        RNG rng(make_thread_seed());
+        return sample(rec, wo, sampled, rng);
+    }
+
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled, RNG &rng) const override {
+        vec3 scatter_direction = rec.normal + random_unit_vector(rng);
         if (scatter_direction.near_zero()) {
             scatter_direction = rec.normal;
         }
@@ -102,7 +120,14 @@ class lambertian : public material {
 
     virtual bool scatter(const ray &r_in, const hit_record &rec,
                          color &attenuation, ray &scattered) const override {
-        auto scatter_direction = rec.normal + random_unit_vector();
+        RNG rng(make_thread_seed());
+        return scatter(r_in, rec, attenuation, scattered, rng);
+    }
+
+    virtual bool scatter(const ray &r_in, const hit_record &rec,
+                         color &attenuation, ray &scattered,
+                         RNG &rng) const override {
+        auto scatter_direction = rec.normal + random_unit_vector(rng);
         if (scatter_direction.near_zero()) {
             scatter_direction = rec.normal;
         }
@@ -122,8 +147,15 @@ class metal : public material {
 
     virtual bool sample(const hit_record &rec, const vec3 &wo,
                         BSDFSample &sampled) const override {
+        RNG rng(make_thread_seed());
+        return sample(rec, wo, sampled, rng);
+    }
+
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled, RNG &rng) const override {
         vec3 reflected = reflect(unit_vector(-wo), rec.normal);
-        sampled.wi = unit_vector(reflected + fuzz * random_in_unit_sphere());
+        sampled.wi =
+            unit_vector(reflected + fuzz * random_in_unit_sphere(rng));
         sampled.f = albedo;
         sampled.pdf = 1.0;
         sampled.is_specular = true;
@@ -132,9 +164,16 @@ class metal : public material {
 
     virtual bool scatter(const ray &r_in, const hit_record &rec,
                          color &attenuation, ray &scattered) const override {
+        RNG rng(make_thread_seed());
+        return scatter(r_in, rec, attenuation, scattered, rng);
+    }
+
+    virtual bool scatter(const ray &r_in, const hit_record &rec,
+                         color &attenuation, ray &scattered,
+                         RNG &rng) const override {
         vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
-        scattered =
-            ray(rec.p, reflected + fuzz * random_in_unit_sphere(), r_in.time());
+        scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(rng),
+                        r_in.time());
         attenuation = albedo;
         return (dot(scattered.direction(), rec.normal) > 0);
     }
@@ -151,6 +190,12 @@ class dielectric : public material {
 
     virtual bool sample(const hit_record &rec, const vec3 &wo,
                         BSDFSample &sampled) const override {
+        RNG rng(make_thread_seed());
+        return sample(rec, wo, sampled, rng);
+    }
+
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled, RNG &rng) const override {
         sampled.f = color(1.0, 1.0, 1.0);
         sampled.is_specular = true;
         sampled.pdf = 1.0;
@@ -163,7 +208,7 @@ class dielectric : public material {
         bool cannot_refract = refraction_ratio * sin_theta > 1.0;
 
         if (cannot_refract ||
-            reflectance(cos_theta, refraction_ratio) > random_double()) {
+            reflectance(cos_theta, refraction_ratio) > rng.next()) {
             sampled.wi = reflect(unit_direction, rec.normal);
             sampled.is_transmission = false;
         } else {
@@ -175,6 +220,13 @@ class dielectric : public material {
 
     virtual bool scatter(const ray &r_in, const hit_record &rec,
                          color &attenuation, ray &scattered) const override {
+        RNG rng(make_thread_seed());
+        return scatter(r_in, rec, attenuation, scattered, rng);
+    }
+
+    virtual bool scatter(const ray &r_in, const hit_record &rec,
+                         color &attenuation, ray &scattered,
+                         RNG &rng) const override {
         attenuation = color(1.0, 1.0, 1.0);
         double refraction_ratio = rec.front_face ? (1.0 / ir) : ir;
         vec3 unit_direction = unit_vector(r_in.direction());
@@ -183,7 +235,7 @@ class dielectric : public material {
         bool cannot_refract = refraction_ratio * sin_theta > 1.0;
         vec3 direction;
         if (cannot_refract ||
-            reflectance(cos_theta, refraction_ratio) > random_double()) {
+            reflectance(cos_theta, refraction_ratio) > rng.next()) {
             direction = reflect(unit_direction, rec.normal);
         } else {
             direction = refract(unit_direction, rec.normal, refraction_ratio);
@@ -244,6 +296,12 @@ class PBRMaterial : public material {
 
     virtual bool sample(const hit_record &rec, const vec3 &wo,
                         BSDFSample &sampled) const override {
+        RNG rng(make_thread_seed());
+        return sample(rec, wo, sampled, rng);
+    }
+
+    virtual bool sample(const hit_record &rec, const vec3 &wo,
+                        BSDFSample &sampled, RNG &rng) const override {
         vec3 N = rec.normal;
         if (normal_map) {
             onb uvw;
@@ -264,12 +322,12 @@ class PBRMaterial : public material {
         rough = clamp(rough, 0.01, 1.0);
 
         // 50% chance to sample specular (GGX), 50% diffuse (Cosine)
-        if (random_double() < 0.5) {
+        if (rng.next() < 0.5) {
             // Sample Specular (GGX)
             onb uvw;
             uvw.build_from_w(N);
-            double r1 = random_double();
-            double r2 = random_double();
+            double r1 = rng.next();
+            double r2 = rng.next();
             double a = rough * rough;
             double phi = 2.0 * pi * r1;
 
@@ -287,7 +345,7 @@ class PBRMaterial : public material {
             // Sample Diffuse (Cosine)
             onb uvw;
             uvw.build_from_w(N);
-            vec3 L = uvw.local(random_cosine_direction());
+            vec3 L = uvw.local(random_cosine_direction(rng));
             if (dot(N, L) <= 0)
                 L = N; // Should not happen with cosine sample but safety
             sampled.wi = unit_vector(L);

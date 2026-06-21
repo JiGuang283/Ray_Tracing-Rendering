@@ -19,12 +19,26 @@ class MISPathIntegrator : public Integrator {
 
     virtual color Li(const ray &r, const hittable &scene,
                      const color &background) const override {
-        return Li(r, scene, background, {});
+        RNG rng(make_thread_seed());
+        return Li(r, scene, background, {}, rng);
     }
 
     virtual color
     Li(const ray &r, const hittable &scene, const color &background,
        const std::vector<shared_ptr<Light>> &lights) const override {
+        RNG rng(make_thread_seed());
+        return Li(r, scene, background, lights, rng);
+    }
+
+    virtual color Li(const ray &r, const hittable &scene,
+                     const color &background, RNG &rng) const override {
+        return Li(r, scene, background, {}, rng);
+    }
+
+    virtual color
+    Li(const ray &r, const hittable &scene, const color &background,
+       const std::vector<shared_ptr<Light>> &lights,
+       RNG &rng) const override {
         color throughput(1.0, 1.0, 1.0);
         color L(0.0, 0.0, 0.0);
         ray current_ray = r;
@@ -34,7 +48,7 @@ class MISPathIntegrator : public Integrator {
         for (int depth = 0; depth < m_max_depth; ++depth) {
             hit_record rec;
 
-            if (!scene.hit(current_ray, 0.001, infinity, rec)) {
+            if (!scene.hit(current_ray, 0.001, infinity, rec, rng)) {
                 color env_L(0, 0, 0);
                 bool found_env = false;
 
@@ -98,17 +112,17 @@ class MISPathIntegrator : public Integrator {
             // 对于非镜面材质，进行显式光源采样（带 MIS）
             if (!specular_bounce && !lights.empty()) {
                 color L_direct =
-                    throughput * sample_lights_mis(rec, wo, scene, lights);
+                    throughput * sample_lights_mis(rec, wo, scene, lights, rng);
                 L += clamp_radiance(L_direct);
             }
 
             // BSDF 采样
             BSDFSample bs;
-            if (!rec.mat_ptr->sample(rec, wo, bs)) {
+            if (!rec.mat_ptr->sample(rec, wo, bs, rng)) {
                 ray scattered;
                 color attenuation;
                 if (!rec.mat_ptr->scatter(current_ray, rec, attenuation,
-                                          scattered)) {
+                                          scattered, rng)) {
                     break;
                 }
                 throughput *= attenuation;
@@ -139,7 +153,7 @@ class MISPathIntegrator : public Integrator {
                     std::max({throughput.x(), throughput.y(), throughput.z()});
                 p_survive = clamp(p_survive, 0.05, 0.95);
 
-                if (random_double() > p_survive) {
+                if (rng.next() > p_survive) {
                     break;
                 }
                 throughput /= p_survive;
@@ -191,18 +205,19 @@ class MISPathIntegrator : public Integrator {
     color
     sample_lights_mis(const hit_record &rec, const vec3 &wo,
                       const hittable &scene,
-                      const std::vector<shared_ptr<Light>> &lights) const {
+                      const std::vector<shared_ptr<Light>> &lights,
+                      RNG &rng) const {
         if (lights.empty())
             return color(0, 0, 0);
 
         color L_direct(0, 0, 0);
 
         // 随机选择一个光源
-        int light_idx = random_int(0, lights.size() - 1);
+        int light_idx = rng.next_int(0, static_cast<int>(lights.size()) - 1);
         const auto &light = lights[light_idx];
         double light_select_pdf = 1.0 / lights.size();
 
-        vec2 u(random_double(), random_double());
+        vec2 u(rng.next(), rng.next());
         LightSample ls = light->sample(rec.p, u);
 
         if (ls.pdf > 0 && ls.Li.length_squared() > 0) {
@@ -210,7 +225,7 @@ class MISPathIntegrator : public Integrator {
             ray shadow_ray(rec.p, ls.wi, 0);
             hit_record shadow_rec;
             bool in_shadow =
-                scene.hit(shadow_ray, 0.001, ls.dist - 0.001, shadow_rec);
+                scene.hit(shadow_ray, 0.001, ls.dist - 0.001, shadow_rec, rng);
 
             if (!in_shadow) {
                 color f = rec.mat_ptr->eval(rec, wo, ls.wi);

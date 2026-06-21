@@ -19,12 +19,26 @@ class DirectLightIntegrator : public Integrator {
 
     virtual color Li(const ray &r, const hittable &scene,
                      const color &background) const override {
-        return Li(r, scene, background, {});
+        RNG rng(make_thread_seed());
+        return Li(r, scene, background, {}, rng);
     }
 
     virtual color
     Li(const ray &r, const hittable &scene, const color &background,
        const std::vector<shared_ptr<Light>> &lights) const override {
+        RNG rng(make_thread_seed());
+        return Li(r, scene, background, lights, rng);
+    }
+
+    virtual color Li(const ray &r, const hittable &scene,
+                     const color &background, RNG &rng) const override {
+        return Li(r, scene, background, {}, rng);
+    }
+
+    virtual color
+    Li(const ray &r, const hittable &scene, const color &background,
+       const std::vector<shared_ptr<Light>> &lights,
+       RNG &rng) const override {
         color throughput(1.0, 1.0, 1.0);
         color L(0.0, 0.0, 0.0);
         ray current_ray = r;
@@ -32,7 +46,7 @@ class DirectLightIntegrator : public Integrator {
 
         for (int depth = 0; depth < m_max_depth; ++depth) {
             hit_record rec;
-            if (!scene.hit(current_ray, 0.001, infinity, rec)) {
+            if (!scene.hit(current_ray, 0.001, infinity, rec, rng)) {
                 // Check if there is an environment light in the lights list
                 bool found_env = false;
                 for (const auto &light : lights) {
@@ -57,11 +71,12 @@ class DirectLightIntegrator : public Integrator {
             specular_bounce = rec.mat_ptr->is_specular();
 
             if (!specular_bounce && !lights.empty()) {
-                L += throughput * sample_lights_direct(rec, wo, scene, lights);
+                L +=
+                    throughput * sample_lights_direct(rec, wo, scene, lights, rng);
             }
 
             BSDFSample bs;
-            if (!rec.mat_ptr->sample(rec, wo, bs)) {
+            if (!rec.mat_ptr->sample(rec, wo, bs, rng)) {
                 break;
             }
 
@@ -84,7 +99,7 @@ class DirectLightIntegrator : public Integrator {
                 double p_survive =
                     std::max({throughput.x(), throughput.y(), throughput.z()});
                 p_survive = clamp(p_survive, 0.05, 0.95);
-                if (random_double() > p_survive) {
+                if (rng.next() > p_survive) {
                     break;
                 }
                 throughput /= p_survive;
@@ -97,17 +112,18 @@ class DirectLightIntegrator : public Integrator {
     color
     sample_lights_direct(const hit_record &rec, const vec3 &wo,
                          const hittable &scene,
-                         const std::vector<shared_ptr<Light>> &lights) const {
+                         const std::vector<shared_ptr<Light>> &lights,
+                         RNG &rng) const {
         if (lights.empty()) {
             return color(0, 0, 0);
         }
         color L_direct(0, 0, 0);
 
-        int light_idx = random_int(0, lights.size() - 1);
+        int light_idx = rng.next_int(0, static_cast<int>(lights.size()) - 1);
         const auto &light = lights[light_idx];
         double light_pdf = 1.0 / lights.size();
 
-        vec2 u(random_double(), random_double());
+        vec2 u(rng.next(), rng.next());
 
         LightSample ls = light->sample(rec.p, u);
 
@@ -116,7 +132,7 @@ class DirectLightIntegrator : public Integrator {
             hit_record shadow_rec;
 
             bool in_shadow =
-                scene.hit(shadow_ray, 0.001, ls.dist - 0.001, shadow_rec);
+                scene.hit(shadow_ray, 0.001, ls.dist - 0.001, shadow_rec, rng);
 
             if (!in_shadow) {
                 color f = rec.mat_ptr->eval(rec, wo, ls.wi);

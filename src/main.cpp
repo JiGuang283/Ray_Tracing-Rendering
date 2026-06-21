@@ -52,16 +52,16 @@ constexpr double kShutterClose = 1.0;
 struct AppOptions {
     int scene_id = 23;
     int integrator_id = 4; // 0: Path, 1: RR, 2: PBR, 3: NEE, 4: MIS
+    bool valid = true;
     bool bench = false;
     bool save = false;
     int runs = 1;
     int width_override = 0;
     int spp_override = 0;
     int max_depth = RenderConfig::kMaxDepth;
-    std::string accel_mode = "pointer";
-    bool mesh_flat = false;
-    bool has_seed = false;
-    unsigned seed = 0;
+    int threads = 0;
+    unsigned seed = 1337;
+    std::string error;
 };
 
 static bool parse_int_arg(const char *value, int &out) {
@@ -77,9 +77,28 @@ static bool parse_int_arg(const char *value, int &out) {
     return true;
 }
 
+static void print_usage() {
+    std::cerr
+        << "Usage: ./CGAssignment4 [scene] [integrator] [options]\n"
+        << "Options:\n"
+        << "  --bench              Run headless benchmark mode\n"
+        << "  --runs N             Benchmark run count\n"
+        << "  --width N            Override image width\n"
+        << "  --spp N              Override samples per pixel\n"
+        << "  --max-depth N        Override integrator max depth\n"
+        << "  --seed N             Set render and scene seed (default 1337)\n"
+        << "  --threads N          Set render worker count (default hardware)\n"
+        << "  --save               Save final rendered image\n";
+}
+
 static AppOptions parse_options(int argc, char *args[]) {
     AppOptions options;
     std::vector<std::string> positional;
+
+    auto fail = [&](const std::string &message) {
+        options.valid = false;
+        options.error = message;
+    };
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = args[i];
@@ -88,31 +107,56 @@ static AppOptions parse_options(int argc, char *args[]) {
         } else if (arg == "--save") {
             options.save = true;
         } else if (arg == "--mesh-flat") {
-            options.mesh_flat = true;
+            fail("--mesh-flat was removed; FlatMesh is now the default OBJ path.");
+            break;
         } else if (arg == "--runs" && i + 1 < argc) {
-            parse_int_arg(args[++i], options.runs);
+            if (!parse_int_arg(args[++i], options.runs)) {
+                fail("--runs expects an integer.");
+                break;
+            }
         } else if (arg == "--width" && i + 1 < argc) {
-            parse_int_arg(args[++i], options.width_override);
+            if (!parse_int_arg(args[++i], options.width_override)) {
+                fail("--width expects an integer.");
+                break;
+            }
         } else if (arg == "--spp" && i + 1 < argc) {
-            parse_int_arg(args[++i], options.spp_override);
+            if (!parse_int_arg(args[++i], options.spp_override)) {
+                fail("--spp expects an integer.");
+                break;
+            }
         } else if (arg == "--max-depth" && i + 1 < argc) {
-            parse_int_arg(args[++i], options.max_depth);
+            if (!parse_int_arg(args[++i], options.max_depth)) {
+                fail("--max-depth expects an integer.");
+                break;
+            }
         } else if (arg == "--accel" && i + 1 < argc) {
-            options.accel_mode = args[++i];
+            ++i;
+            fail("--accel was removed; LinearBVH is now the default accelerator.");
+            break;
         } else if (arg == "--seed" && i + 1 < argc) {
             int parsed_seed = 0;
             if (parse_int_arg(args[++i], parsed_seed)) {
-                options.has_seed = true;
                 options.seed = static_cast<unsigned>(parsed_seed);
+            } else {
+                fail("--seed expects an integer.");
+                break;
+            }
+        } else if (arg == "--threads" && i + 1 < argc) {
+            if (!parse_int_arg(args[++i], options.threads)) {
+                fail("--threads expects an integer.");
+                break;
             }
         } else if (!arg.empty() && arg[0] == '-') {
-            std::cerr << "Warning: ignoring unknown option '" << arg << "'."
-                      << std::endl;
+            fail("Unknown option '" + arg + "'.");
+            break;
         } else {
             positional.push_back(arg);
         }
     }
 
+    if (!options.valid) {
+        return options;
+    }
     if (!positional.empty()) {
         options.scene_id = std::atoi(positional[0].c_str());
     }
@@ -122,10 +166,11 @@ static AppOptions parse_options(int argc, char *args[]) {
     if (options.runs < 1) {
         options.runs = 1;
     }
-    if (options.accel_mode != "pointer" && options.accel_mode != "linear") {
-        std::cerr << "Warning: unknown accel mode '" << options.accel_mode
-                  << "', falling back to pointer." << std::endl;
-        options.accel_mode = "pointer";
+    if (options.seed == 0) {
+        options.seed = 1;
+    }
+    if (options.threads < 0) {
+        options.threads = 0;
     }
     return options;
 }
@@ -155,21 +200,17 @@ static void apply_overrides(SceneConfig &config, const AppOptions &options) {
     }
 }
 
-static SceneBuildOptions make_scene_build_options(const AppOptions &options) {
-    SceneBuildOptions build_options;
-    if (options.accel_mode == "linear") {
-        build_options.accel_mode = AccelMode::LinearBVH;
-    } else {
-        build_options.accel_mode = AccelMode::PointerBVH;
-    }
-    build_options.use_flat_mesh = options.mesh_flat;
-    return build_options;
+static void apply_seed(const AppOptions &options) {
+    set_random_seed(options.seed);
 }
 
-static void apply_seed(const AppOptions &options) {
-    if (options.has_seed) {
-        set_random_seed(options.seed);
-    }
+static void configure_renderer(Renderer &renderer, const SceneConfig &config,
+                               const AppOptions &options) {
+    renderer.set_samples(config.samples_per_pixel);
+    renderer.set_seed(options.seed);
+    renderer.set_thread_count(options.threads);
+    renderer.set_integrator(make_integrator(options.integrator_id));
+    renderer.set_max_depth(options.max_depth);
 }
 
 static shared_ptr<camera> make_camera(const SceneConfig &config) {
@@ -184,7 +225,9 @@ static std::string save_rendered_image(const RenderBuffer &render_buffer,
     mkdir("output", 0755);
 
     auto now = std::chrono::system_clock::now();
-    auto timestamp = std::chrono::system_clock::to_time_t(now);
+    auto timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
+                         now.time_since_epoch())
+                         .count();
     std::stringstream filename;
     filename << "output/scene" << std::setfill('0') << std::setw(2) << scene_id
              << "_integrator" << integrator_id << "_" << timestamp << ".png";
@@ -201,8 +244,7 @@ static std::string save_rendered_image(const RenderBuffer &render_buffer,
 static RenderStats render_once(const AppOptions &options,
                                RenderBuffer *external_buffer = nullptr) {
     apply_seed(options);
-    SceneConfig config =
-        select_scene(options.scene_id, make_scene_build_options(options));
+    SceneConfig config = select_scene(options.scene_id);
     apply_overrides(config, options);
 
     auto cam = make_camera(config);
@@ -213,9 +255,7 @@ static RenderStats render_once(const AppOptions &options,
         external_buffer != nullptr ? *external_buffer : *owned_buffer;
 
     Renderer renderer;
-    renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(make_integrator(options.integrator_id));
-    renderer.set_max_depth(options.max_depth);
+    configure_renderer(renderer, config, options);
 
     return renderer.render(config.world, cam, config.background, render_buffer,
                            config.lights);
@@ -229,8 +269,7 @@ static int run_benchmark(const AppOptions &options) {
 
     for (int run = 1; run <= options.runs; ++run) {
         apply_seed(options);
-        SceneConfig config =
-            select_scene(options.scene_id, make_scene_build_options(options));
+        SceneConfig config = select_scene(options.scene_id);
         apply_overrides(config, options);
         int width = config.image_width;
         int height = static_cast<int>(width / config.aspect_ratio);
@@ -238,9 +277,7 @@ static int run_benchmark(const AppOptions &options) {
 
         auto cam = make_camera(config);
         Renderer renderer;
-        renderer.set_samples(config.samples_per_pixel);
-        renderer.set_integrator(make_integrator(options.integrator_id));
-        renderer.set_max_depth(options.max_depth);
+        configure_renderer(renderer, config, options);
 
         last_stats = renderer.render(config.world, cam, config.background,
                                      *render_buffer, config.lights);
@@ -260,8 +297,8 @@ static int run_benchmark(const AppOptions &options) {
                   << " samples=" << last_stats.sample_count
                   << " seconds=" << last_stats.seconds
                   << " samples_per_second=" << samples_per_second
-                  << " accel=" << options.accel_mode
-                  << " mesh_flat=" << (options.mesh_flat ? 1 : 0)
+                  << " seed=" << last_stats.seed
+                  << " threads=" << last_stats.threads
                   << std::endl;
     }
 
@@ -278,8 +315,8 @@ static int run_benchmark(const AppOptions &options) {
               << " spp=" << last_stats.samples_per_pixel
               << " median_seconds=" << median
               << " median_samples_per_second=" << samples_per_second
-              << " accel=" << options.accel_mode
-              << " mesh_flat=" << (options.mesh_flat ? 1 : 0) << std::endl;
+              << " seed=" << last_stats.seed
+              << " threads=" << last_stats.threads << std::endl;
 
     if (options.save && saved_buffer) {
         save_rendered_image(*saved_buffer, options.scene_id,
@@ -291,8 +328,7 @@ static int run_benchmark(const AppOptions &options) {
 
 static int run_windowed(const AppOptions &options) {
     apply_seed(options);
-    SceneConfig config =
-        select_scene(options.scene_id, make_scene_build_options(options));
+    SceneConfig config = select_scene(options.scene_id);
     apply_overrides(config, options);
 
     auto cam = make_camera(config);
@@ -301,9 +337,7 @@ static int run_windowed(const AppOptions &options) {
     auto render_buffer = make_shared<RenderBuffer>(width, height);
 
     Renderer renderer;
-    renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(make_integrator(options.integrator_id));
-    renderer.set_max_depth(options.max_depth);
+    configure_renderer(renderer, config, options);
 
     WindowsApp::ptr winApp =
         WindowsApp::getInstance(width, height, "CGAssignment4: Ray Tracing");
@@ -336,6 +370,11 @@ static int run_windowed(const AppOptions &options) {
 
 int main(int argc, char *args[]) {
     AppOptions options = parse_options(argc, args);
+    if (!options.valid) {
+        std::cerr << "Error: " << options.error << std::endl;
+        print_usage();
+        return 1;
+    }
     if (options.bench) {
         return run_benchmark(options);
     }

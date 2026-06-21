@@ -21,12 +21,16 @@ struct RenderStats {
     int height = 0;
     int samples_per_pixel = 0;
     long long sample_count = 0;
+    unsigned seed = 1337;
+    int threads = 0;
 };
 
 class Renderer {
   public:
     struct Settings {
         int samples_per_pixel = 10;
+        unsigned seed = 1337;
+        int thread_count = 0;
     };
 
     Renderer() : m_is_rendering(false) {
@@ -55,10 +59,15 @@ class Renderer {
         std::atomic<int> next_tile_index(0);
 
         const int num_threads =
-            std::max(1u, std::thread::hardware_concurrency());
+            m_settings.thread_count > 0
+                ? m_settings.thread_count
+                : static_cast<int>(
+                      std::max(1u, std::thread::hardware_concurrency()));
         std::vector<std::thread> threads;
 
-        auto render_worker = [&]() {
+        auto render_worker = [&](int worker_id) {
+            RNG rng(mix_seed(m_settings.seed,
+                             static_cast<uint32_t>(worker_id + 1)));
             while (true) {
                 int tile_index = next_tile_index.fetch_add(1);
                 if (tile_index >= total_tiles) {
@@ -80,12 +89,12 @@ class Renderer {
                     for (int i = x_start; i < x_end; i++) {
                         color pixel_color(0, 0, 0);
                         for (int s = 0; s < m_settings.samples_per_pixel; ++s) {
-                            auto u = (i + random_double()) / (image_width - 1);
-                            auto v = (j + random_double()) / (image_height - 1);
-                            ray r = cam->get_ray(u, v);
+                            auto u = (i + rng.next()) / (image_width - 1);
+                            auto v = (j + rng.next()) / (image_height - 1);
+                            ray r = cam->get_ray(u, v, rng);
                             if (m_integrator) {
                                 pixel_color += m_integrator->Li(
-                                    r, *world, background, lights);
+                                    r, *world, background, lights, rng);
                             }
                         }
                         write_color_to_buffer(target_buffer, i, j, pixel_color,
@@ -96,7 +105,7 @@ class Renderer {
         };
 
         for (int t = 0; t < num_threads; t++) {
-            threads.emplace_back(render_worker);
+            threads.emplace_back(render_worker, t);
         }
 
         for (auto &t : threads) {
@@ -117,11 +126,19 @@ class Renderer {
         stats.samples_per_pixel = m_settings.samples_per_pixel;
         stats.sample_count = static_cast<long long>(image_width) * image_height *
                              m_settings.samples_per_pixel;
+        stats.seed = m_settings.seed;
+        stats.threads = num_threads;
         return stats;
     }
 
     void set_samples(int samples) {
         m_settings.samples_per_pixel = samples;
+    }
+    void set_seed(unsigned seed) {
+        m_settings.seed = seed == 0 ? 1 : seed;
+    }
+    void set_thread_count(int thread_count) {
+        m_settings.thread_count = thread_count;
     }
     void set_max_depth(int depth) {
         if (m_integrator) {

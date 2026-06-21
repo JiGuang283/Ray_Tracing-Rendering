@@ -27,6 +27,10 @@ class hittable {
     virtual ~hittable() = default;
     virtual bool hit(const ray &r, double t_min, double t_max,
                      hit_record &rec) const = 0;
+    virtual bool hit(const ray &r, double t_min, double t_max,
+                     hit_record &rec, RNG &rng) const {
+        return hit(r, t_min, t_max, rec);
+    }
     virtual bool bounding_box(double time0, double time1,
                               aabb &output_box) const = 0;
 };
@@ -39,6 +43,8 @@ class translate : public hittable {
 
     virtual bool hit(const ray &r, double t_min, double t_max,
                      hit_record &rec) const override;
+    virtual bool hit(const ray &r, double t_min, double t_max,
+                     hit_record &rec, RNG &rng) const override;
 
     virtual bool bounding_box(double time0, double time1,
                               aabb &output_box) const override;
@@ -50,8 +56,14 @@ class translate : public hittable {
 
 inline bool translate::hit(const ray &r, double t_min, double t_max,
                            hit_record &rec) const {
+    RNG rng(make_thread_seed());
+    return hit(r, t_min, t_max, rec, rng);
+}
+
+inline bool translate::hit(const ray &r, double t_min, double t_max,
+                           hit_record &rec, RNG &rng) const {
     ray moved_r(r.origin() - offset, r.direction(), r.time());
-    if (!ptr->hit(moved_r, t_min, t_max, rec)) {
+    if (!ptr->hit(moved_r, t_min, t_max, rec, rng)) {
         return false;
     }
 
@@ -77,6 +89,8 @@ class rotate_y : public hittable {
 
     virtual bool hit(const ray &r, double t_min, double t_max,
                      hit_record &rec) const override;
+    virtual bool hit(const ray &r, double t_min, double t_max,
+                     hit_record &rec, RNG &rng) const override;
 
     virtual bool bounding_box(double time0, double time1,
                               aabb &output_box) const override {
@@ -125,6 +139,12 @@ inline rotate_y::rotate_y(shared_ptr<hittable> p, double angle) : ptr(p) {
 
 inline bool rotate_y::hit(const ray &r, double t_min, double t_max,
                           hit_record &rec) const {
+    RNG rng(make_thread_seed());
+    return hit(r, t_min, t_max, rec, rng);
+}
+
+inline bool rotate_y::hit(const ray &r, double t_min, double t_max,
+                          hit_record &rec, RNG &rng) const {
     auto origin = r.origin();
     auto direction = r.direction();
 
@@ -136,7 +156,7 @@ inline bool rotate_y::hit(const ray &r, double t_min, double t_max,
 
     ray rotated_r(origin, direction, r.time());
 
-    if (!ptr->hit(rotated_r, t_min, t_max, rec))
+    if (!ptr->hit(rotated_r, t_min, t_max, rec, rng))
         return false;
 
     auto p = rec.p;
@@ -159,7 +179,13 @@ class flip_face : public hittable {
 
     virtual bool hit(const ray& r, double t_min, double t_max,
                      hit_record& rec) const override {
-        if (!ptr->hit(r, t_min, t_max, rec)) return false;
+        RNG rng(make_thread_seed());
+        return hit(r, t_min, t_max, rec, rng);
+    }
+
+    virtual bool hit(const ray& r, double t_min, double t_max,
+                     hit_record& rec, RNG &rng) const override {
+        if (!ptr->hit(r, t_min, t_max, rec, rng)) return false;
         rec.front_face = !rec.front_face;
         rec.normal = -rec.normal;
         return true;

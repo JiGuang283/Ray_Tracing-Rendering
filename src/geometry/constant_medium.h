@@ -18,7 +18,14 @@ class isotropic : public material {
 
     virtual bool scatter(const ray &r_in, const hit_record &rec,
                          color &attenuation, ray &scattered) const override {
-        scattered = ray(rec.p, random_in_unit_sphere(), r_in.time());
+        RNG rng(make_thread_seed());
+        return scatter(r_in, rec, attenuation, scattered, rng);
+    }
+
+    virtual bool scatter(const ray &r_in, const hit_record &rec,
+                         color &attenuation, ray &scattered,
+                         RNG &rng) const override {
+        scattered = ray(rec.p, random_in_unit_sphere(rng), r_in.time());
         attenuation = albedo->value(rec.u, rec.v, rec.p);
         return true;
     }
@@ -41,6 +48,8 @@ class constant_medium : public hittable {
 
     virtual bool hit(const ray &r, double t_min, double t_max,
                      hit_record &rec) const override;
+    virtual bool hit(const ray &r, double t_min, double t_max,
+                     hit_record &rec, RNG &rng) const override;
     virtual bool bounding_box(double time0, double time1,
                               aabb &output_box) const override {
         return boundary->bounding_box(time0, time1, output_box);
@@ -54,9 +63,15 @@ class constant_medium : public hittable {
 
 bool constant_medium::hit(const ray &r, double t_min, double t_max,
                           hit_record &rec) const {
+    RNG rng(make_thread_seed());
+    return hit(r, t_min, t_max, rec, rng);
+}
+
+bool constant_medium::hit(const ray &r, double t_min, double t_max,
+                          hit_record &rec, RNG &rng) const {
     // Print occasional samples when debugging. To enable, set enableDebug true.
     const bool enableDebug = false;
-    const bool debugging = enableDebug && random_double() < 0.00001;
+    const bool debugging = enableDebug && rng.next() < 0.00001;
 
     hit_record rec1, rec2;
 
@@ -82,7 +97,7 @@ bool constant_medium::hit(const ray &r, double t_min, double t_max,
 
     const auto ray_length = r.direction().length();
     const auto distance_inside_boundary = (rec2.t - rec1.t) * ray_length;
-    const auto hit_distance = neg_inv_density * log(random_double());
+    const auto hit_distance = neg_inv_density * log(rng.next());
 
     if (hit_distance > distance_inside_boundary)
         return false;

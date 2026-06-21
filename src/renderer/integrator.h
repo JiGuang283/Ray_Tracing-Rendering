@@ -10,12 +10,23 @@ class Integrator {
   public:
     virtual ~Integrator() = default;
     virtual color Li(const ray &r, const hittable &scene,
-                     const color &background) const = 0;
+                     const color &background) const {
+        RNG rng(make_thread_seed());
+        return Li(r, scene, background, rng);
+    }
     virtual color Li(const ray &r, const hittable &scene,
                      const color &background,
                      const std::vector<shared_ptr<Light>> &lights) const {
-        // 默认实现：调用旧接口，忽略光源
-        return Li(r, scene, background);
+        RNG rng(make_thread_seed());
+        return Li(r, scene, background, lights, rng);
+    }
+    virtual color Li(const ray &r, const hittable &scene,
+                     const color &background, RNG &rng) const = 0;
+    virtual color Li(const ray &r, const hittable &scene,
+                     const color &background,
+                     const std::vector<shared_ptr<Light>> &lights,
+                     RNG &rng) const {
+        return Li(r, scene, background, rng);
     }
     virtual void set_max_depth(int depth) = 0;
 };

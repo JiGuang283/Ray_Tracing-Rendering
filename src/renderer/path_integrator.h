@@ -15,19 +15,25 @@ class PathIntegrator : public Integrator {
 
     virtual color Li(const ray &r, const hittable &scene,
                      const color &background) const override {
-        return Li_internal(r, scene, background, m_max_depth);
+        RNG rng(make_thread_seed());
+        return Li(r, scene, background, rng);
+    }
+
+    virtual color Li(const ray &r, const hittable &scene,
+                     const color &background, RNG &rng) const override {
+        return Li_internal(r, scene, background, m_max_depth, rng);
     }
 
   private:
     color Li_internal(const ray &r, const hittable &scene,
-                      const color &background, int depth) const {
+                      const color &background, int depth, RNG &rng) const {
         hit_record rec;
 
         if (depth <= 0) {
             return color(0, 0, 0);
         }
 
-        if (!scene.hit(r, 0.001, infinity, rec)) {
+        if (!scene.hit(r, 0.001, infinity, rec, rng)) {
             return background;
         }
 
@@ -35,14 +41,14 @@ class PathIntegrator : public Integrator {
         color attenuation;
         color emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.p);
 
-        if (!rec.mat_ptr->scatter(r, rec, attenuation, scattered)) {
+        if (!rec.mat_ptr->scatter(r, rec, attenuation, scattered, rng)) {
             return emitted;
         }
 
         return emitted + attenuation * Li_internal(scattered, scene, background,
-                                                   depth - 1);
+                                                   depth - 1, rng);
     }
-    int m_max_depth;
+    int m_max_depth = 50;
 };
 
 #endif

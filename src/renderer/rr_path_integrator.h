@@ -20,6 +20,12 @@ class RRPathInterator : public Integrator {
 
     virtual color Li(const ray &r, const hittable &scene,
                      const color &background) const override {
+        RNG rng(make_thread_seed());
+        return Li(r, scene, background, rng);
+    }
+
+    virtual color Li(const ray &r, const hittable &scene,
+                     const color &background, RNG &rng) const override {
         color throughput(1.0, 1.0, 1.0);
         color L(0.0, 0.0, 0.0);
         ray current_ray = r;
@@ -27,7 +33,7 @@ class RRPathInterator : public Integrator {
         for (int depth = 0; depth < m_max_depth; ++depth) {
             hit_record rec;
 
-            if (!scene.hit(current_ray, 0.001, infinity, rec)) {
+            if (!scene.hit(current_ray, 0.001, infinity, rec, rng)) {
                 L += throughput * background;
                 break;
             }
@@ -37,8 +43,8 @@ class RRPathInterator : public Integrator {
 
             ray scattered;
             color attenuation;
-            if (!rec.mat_ptr->scatter(current_ray, rec, attenuation,
-                                      scattered)) {
+            if (!rec.mat_ptr->scatter(current_ray, rec, attenuation, scattered,
+                                      rng)) {
                 break;
             }
             throughput *= attenuation;
@@ -48,7 +54,7 @@ class RRPathInterator : public Integrator {
                     std::max({throughput.x(), throughput.y(), throughput.z()});
                 p_survive = clamp(p_survive, 0.005, 0.95);
 
-                if (random_double() > p_survive) {
+                if (rng.next() > p_survive) {
                     break;
                 }
                 throughput /= p_survive;

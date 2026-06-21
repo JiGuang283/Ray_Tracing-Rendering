@@ -15,6 +15,8 @@ class box : public hittable {
 
     virtual bool hit(const ray &r, double t_min, double t_max,
                      hit_record &rec) const override;
+    virtual bool hit(const ray &r, double t_min, double t_max,
+                     hit_record &rec, RNG &rng) const override;
 
     virtual bool bounding_box(double time0, double time1,
                               aabb &output_box) const override {
@@ -48,6 +50,11 @@ box::box(const point3 &p0, const point3 &p1, shared_ptr<material> ptr) {
 
 bool box::hit(const ray &r, double t_min, double t_max, hit_record &rec) const {
     return sides.hit(r, t_min, t_max, rec);
+}
+
+bool box::hit(const ray &r, double t_min, double t_max, hit_record &rec,
+              RNG &rng) const {
+    return sides.hit(r, t_min, t_max, rec, rng);
 }
 
 #endif

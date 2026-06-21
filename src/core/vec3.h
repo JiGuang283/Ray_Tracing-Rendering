@@ -73,9 +73,18 @@ class vec3 {
         return vec3(random_double(), random_double(), random_double());
     }
 
+    inline static vec3 random(RNG &rng) {
+        return vec3(rng.next(), rng.next(), rng.next());
+    }
+
     inline static vec3 random(double min, double max) {
         return vec3(random_double(min, max), random_double(min, max),
                     random_double(min, max));
+    }
+
+    inline static vec3 random(double min, double max, RNG &rng) {
+        return vec3(rng.next_double(min, max), rng.next_double(min, max),
+                    rng.next_double(min, max));
     }
 
     bool near_zero() const noexcept {
@@ -140,6 +149,10 @@ class vec2 {
     // 如果需要，可以添加 random() 静态方法，类似于 vec3
     inline static vec2 random() {
         return vec2(random_double(), random_double());
+    }
+
+    inline static vec2 random(RNG &rng) {
+        return vec2(rng.next(), rng.next());
     }
 
   public:
@@ -232,8 +245,21 @@ inline vec3 random_in_unit_sphere() {
     }
 }
 
+inline vec3 random_in_unit_sphere(RNG &rng) {
+    while (true) {
+        auto p = vec3::random(-1, 1, rng);
+        if (p.length_squared() >= 1)
+            continue;
+        return p;
+    }
+}
+
 inline vec3 random_unit_vector() {
     return unit_vector(random_in_unit_sphere());
+}
+
+inline vec3 random_unit_vector(RNG &rng) {
+    return unit_vector(random_in_unit_sphere(rng));
 }
 
 inline vec3 reflect(const vec3 &v, const vec3 &n) {
@@ -256,11 +282,30 @@ inline vec3 random_in_unit_disk() {
     }
 }
 
+inline vec3 random_in_unit_disk(RNG &rng) {
+    while (true) {
+        auto p = vec3(rng.next_double(-1, 1), rng.next_double(-1, 1), 0);
+        if (p.length_squared() >= 1)
+            continue;
+        return p;
+    }
+}
+
 // 余弦加权半球采样
 
 inline vec3 random_cosine_direction() {
     auto r1 = random_double();
     auto r2 = random_double();
+    auto z = sqrt(1 - r2);
+    auto phi = 2 * pi * r1;
+    auto x = cos(phi) * sqrt(r2);
+    auto y = sin(phi) * sqrt(r2);
+    return vec3(x, y, z);
+}
+
+inline vec3 random_cosine_direction(RNG &rng) {
+    auto r1 = rng.next();
+    auto r2 = rng.next();
     auto z = sqrt(1 - r2);
     auto phi = 2 * pi * r1;
     auto x = cos(phi) * sqrt(r2);

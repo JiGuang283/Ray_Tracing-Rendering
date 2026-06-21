@@ -60,6 +60,8 @@ class FlatMesh : public hittable {
 
     bool hit(const ray &r, double t_min, double t_max,
              hit_record &rec) const override;
+    bool hit(const ray &r, double t_min, double t_max, hit_record &rec,
+             RNG &rng) const override;
 
     bool bounding_box(double /*time0*/, double /*time1*/,
                       aabb &output_box) const override {
@@ -118,6 +120,10 @@ class mesh : public hittable {
              hit_record &rec) const override {
         return accelerator && accelerator->hit(r, t_min, t_max, rec);
     }
+    bool hit(const ray &r, double t_min, double t_max, hit_record &rec,
+             RNG &rng) const override {
+        return accelerator && accelerator->hit(r, t_min, t_max, rec, rng);
+    }
 
     bool bounding_box(double time0, double time1,
                       aabb &output_box) const override {
@@ -169,8 +175,10 @@ inline int FlatMesh::build_node(int start, int end) {
               });
 
     int mid = start + count / 2;
-    nodes[node_index].left = build_node(start, mid);
-    nodes[node_index].right = build_node(mid, end);
+    int left_index = build_node(start, mid);
+    int right_index = build_node(mid, end);
+    nodes[node_index].left = left_index;
+    nodes[node_index].right = right_index;
     return node_index;
 }
 
@@ -232,6 +240,12 @@ inline bool FlatMesh::hit_triangle(int triangle_index, const ray &r,
 
 inline bool FlatMesh::hit(const ray &r, double t_min, double t_max,
                           hit_record &rec) const {
+    RNG rng(make_thread_seed());
+    return hit(r, t_min, t_max, rec, rng);
+}
+
+inline bool FlatMesh::hit(const ray &r, double t_min, double t_max,
+                          hit_record &rec, RNG &/*rng*/) const {
     if (triangles.empty()) {
         return false;
     }
