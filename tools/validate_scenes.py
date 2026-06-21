@@ -21,12 +21,11 @@ OBJECT_TYPES = {
     "accel",
     "box",
     "constant_medium",
-    "final_scene_generator",
     "flip_face",
     "list",
     "moving_sphere",
     "obj",
-    "random_scene_generator",
+    "quad",
     "rotate_y",
     "sphere",
     "translate",
@@ -256,15 +255,14 @@ def validate_object(object_: Any, materials: Set[str], context: str,
         validate_material_ref(object_, materials, context, reporter)
     elif object_type == "obj":
         validate_material_ref(object_, materials, context, reporter)
+        if "implementation" in object_:
+            reporter.error(f"{context}.implementation",
+                           "field was removed; FlatMesh is the only OBJ path")
         path = object_.get("path")
         if not isinstance(path, str):
             reporter.error(context, "obj missing string 'path'")
         elif not resolve_asset(path).exists():
             reporter.error(context, f"OBJ path does not exist: {path}")
-        implementation = object_.get("implementation", "flat")
-        if implementation not in {"flat", "legacy"}:
-            reporter.error(f"{context}.implementation",
-                           "expected 'flat' or 'legacy'")
         for key in ("translate", "scale", "position"):
             if key in object_:
                 require_array(object_[key], 3, f"{context}.{key}", reporter)
@@ -292,13 +290,6 @@ def validate_object(object_: Any, materials: Set[str], context: str,
     elif object_type in {"list", "accel"}:
         validate_object_array(object_.get("objects"), materials,
                               f"{context}.objects", reporter)
-    elif object_type == "random_scene_generator":
-        if "emissive_variant" in object_ and not isinstance(
-                object_["emissive_variant"], bool):
-            reporter.error(f"{context}.emissive_variant", "expected bool")
-    elif object_type == "final_scene_generator":
-        if "nee" in object_ and not isinstance(object_["nee"], bool):
-            reporter.error(f"{context}.nee", "expected bool")
 
 
 def validate_object_array(objects: Any, materials: Set[str], context: str,

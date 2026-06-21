@@ -6,7 +6,6 @@
 #include "constant_medium.h"
 #include "mesh.h"
 #include "moving_sphere.h"
-#include "scene_procedural_loader.h"
 #include "sphere.h"
 #include "triangle.h"
 
@@ -18,14 +17,6 @@ shared_ptr<hittable> build_object(const json &object,
                                   const MaterialMap &materials,
                                   const TextureMap &textures) {
     std::string type = read_string(object, "type", "object");
-
-    if (type == "random_scene_generator") {
-        return build_random_scene_generator(
-            read_bool_or(object, "emissive_variant", false));
-    }
-    if (type == "final_scene_generator") {
-        return build_final_scene_generator(read_bool_or(object, "nee", false));
-    }
 
     if (type == "sphere") {
         auto mat = lookup_material(materials, object, "sphere");
@@ -117,30 +108,17 @@ shared_ptr<hittable> build_object(const json &object,
     }
     if (type == "obj") {
         auto mat = lookup_material(materials, object, "obj");
-        std::string implementation =
-            object.contains("implementation")
-                ? object["implementation"].get<std::string>()
-                : "flat";
-        shared_ptr<hittable> mesh_object;
-        if (implementation == "legacy") {
-            mesh_object = mesh::load_from_obj(
-                read_string(object, "path", "obj"), mat,
-                read_vec3_or(object, "translate", vec3(0, 0, 0), "obj"),
-                read_vec3_or(object, "scale", vec3(1, 1, 1), "obj"),
-                read_bool_or(object, "build_bvh", true),
-                read_bool_or(object, "use_vertex_normals", true));
-        } else if (implementation == "flat") {
-            mesh_object = FlatMesh::load_from_obj(
-                read_string(object, "path", "obj"), mat,
-                read_vec3_or(object, "translate", vec3(0, 0, 0), "obj"),
-                read_vec3_or(object, "scale", vec3(1, 1, 1), "obj"),
-                read_bool_or(object, "build_bvh", true),
-                read_bool_or(object, "use_vertex_normals", true));
-        } else {
+        if (object.contains("implementation")) {
             throw std::runtime_error(
-                "Scene file error: obj.implementation must be 'flat' or "
-                "'legacy'.");
+                "Scene file error: obj.implementation was removed; FlatMesh "
+                "is now the only OBJ path.");
         }
+        shared_ptr<hittable> mesh_object = FlatMesh::load_from_obj(
+            read_string(object, "path", "obj"), mat,
+            read_vec3_or(object, "translate", vec3(0, 0, 0), "obj"),
+            read_vec3_or(object, "scale", vec3(1, 1, 1), "obj"),
+            read_bool_or(object, "build_bvh", true),
+            read_bool_or(object, "use_vertex_normals", true));
         if (!mesh_object) {
             throw std::runtime_error(
                 "Scene file error: failed to load OBJ mesh.");

@@ -65,30 +65,5 @@ class FlatMesh : public hittable {
                       double t_max, hit_record &rec) const;
 };
 
-class mesh : public hittable {
-  public:
-    mesh() = default;
-
-    mesh(std::vector<shared_ptr<hittable>> faces, double time0 = 0.0,
-         double time1 = 1.0, bool build_bvh = true);
-
-    static shared_ptr<mesh>
-    load_from_obj(const std::string &filename, shared_ptr<material> mat,
-                  const vec3 &translation = vec3(0, 0, 0),
-                  const vec3 &scale = vec3(1, 1, 1),
-                  bool build_bvh = true, bool use_vertex_normals = true);
-
-    bool hit(const ray &r, double t_min, double t_max,
-             hit_record &rec) const override;
-    bool hit(const ray &r, double t_min, double t_max, hit_record &rec,
-             RNG &rng) const override;
-
-    bool bounding_box(double time0, double time1,
-                      aabb &output_box) const override;
-
-  private:
-    std::vector<shared_ptr<hittable>> triangles;
-    shared_ptr<hittable> accelerator;
-};
 
 #endif

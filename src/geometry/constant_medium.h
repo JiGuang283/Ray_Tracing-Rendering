@@ -42,19 +42,6 @@ class isotropic : public material {
         return 1.0 / (4.0 * pi);
     }
 
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered) const override {
-        RNG rng(make_thread_seed());
-        return scatter(r_in, rec, attenuation, scattered, rng);
-    }
-
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered,
-                         RNG &rng) const override {
-        scattered = ray(rec.p, random_in_unit_sphere(rng), r_in.time());
-        attenuation = albedo->value(rec.u, rec.v, rec.p);
-        return true;
-    }
 
   public:
     shared_ptr<texture> albedo;

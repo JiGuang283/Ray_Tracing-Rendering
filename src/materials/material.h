@@ -3,7 +3,6 @@
 
 #include "interaction.h"
 #include "onb.h"
-#include "ray.h"
 #include "rtweekend.h"
 #include "texture.h"
 #include <algorithm>
@@ -49,26 +48,6 @@ class material {
         return 0.0;
     }
 
-    // Legacy tutorial scatter interface; new renderer code should use
-    // sample/eval/pdf/emitted above.
-    virtual bool scatter(const ray &r_in, const hit_record &rec, color &albedo,
-                         ray &scattered, double &pdf_val) const {
-        return false;
-    }
-    virtual bool scatter(const ray &r_in, const hit_record &rec, color &albedo,
-                         ray &scattered, double &pdf_val, RNG &rng) const {
-        return scatter(r_in, rec, albedo, scattered, pdf_val);
-    }
-
-    // 保留旧接口
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered) const {
-        return false;
-    }
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered, RNG &rng) const {
-        return scatter(r_in, rec, attenuation, scattered);
-    }
 };
 
 class lambertian : public material {
@@ -108,23 +87,6 @@ class lambertian : public material {
         return albedo->value(rec.u, rec.v, rec.p) / pi;
     }
 
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered) const override {
-        RNG rng(make_thread_seed());
-        return scatter(r_in, rec, attenuation, scattered, rng);
-    }
-
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered,
-                         RNG &rng) const override {
-        auto scatter_direction = rec.normal + random_unit_vector(rng);
-        if (scatter_direction.near_zero()) {
-            scatter_direction = rec.normal;
-        }
-        scattered = ray(rec.p, scatter_direction, r_in.time());
-        attenuation = albedo->value(rec.u, rec.v, rec.p);
-        return true;
-    }
 
   public:
     shared_ptr<texture> albedo;
@@ -152,21 +114,6 @@ class metal : public material {
         return (dot(sampled.wi, rec.normal) > 0);
     }
 
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered) const override {
-        RNG rng(make_thread_seed());
-        return scatter(r_in, rec, attenuation, scattered, rng);
-    }
-
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered,
-                         RNG &rng) const override {
-        vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
-        scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(rng),
-                        r_in.time());
-        attenuation = albedo;
-        return (dot(scattered.direction(), rec.normal) > 0);
-    }
 
   public:
     color albedo;
@@ -208,31 +155,6 @@ class dielectric : public material {
         return true;
     }
 
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered) const override {
-        RNG rng(make_thread_seed());
-        return scatter(r_in, rec, attenuation, scattered, rng);
-    }
-
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered,
-                         RNG &rng) const override {
-        attenuation = color(1.0, 1.0, 1.0);
-        double refraction_ratio = rec.front_face ? (1.0 / ir) : ir;
-        vec3 unit_direction = unit_vector(r_in.direction());
-        double cos_theta = fmin(dot(-unit_direction, rec.normal), 1.0);
-        double sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-        bool cannot_refract = refraction_ratio * sin_theta > 1.0;
-        vec3 direction;
-        if (cannot_refract ||
-            reflectance(cos_theta, refraction_ratio) > rng.next()) {
-            direction = reflect(unit_direction, rec.normal);
-        } else {
-            direction = refract(unit_direction, rec.normal, refraction_ratio);
-        }
-        scattered = ray(rec.p, direction, r_in.time());
-        return true;
-    }
 
   public:
     double ir;
@@ -268,10 +190,6 @@ class diffuse_light : public material {
         return color(0, 0, 0);
     }
 
-    virtual bool scatter(const ray &r_in, const hit_record &rec,
-                         color &attenuation, ray &scattered) const override {
-        return false;
-    }
 
   public:
     shared_ptr<texture> emit;

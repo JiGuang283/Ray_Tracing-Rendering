@@ -88,7 +88,6 @@
     },
     {
       "type": "obj",
-      "implementation": "legacy",
       "path": "assets/sample_mesh.obj",
       "translate": [
         -2.5,
@@ -113,7 +112,6 @@
       ],
       "object": {
         "type": "obj",
-        "implementation": "legacy",
         "path": "assets/sample_mesh.obj",
         "translate": [
           -2.5,

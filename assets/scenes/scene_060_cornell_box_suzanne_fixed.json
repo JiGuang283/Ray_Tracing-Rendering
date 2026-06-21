@@ -140,7 +140,6 @@
     },
     {
       "type": "obj",
-      "implementation": "legacy",
       "path": "assets/Suzanne.obj",
       "scale": [
         90,
@@ -165,7 +164,6 @@
     },
     {
       "type": "obj",
-      "implementation": "legacy",
       "path": "assets/stanford bunny.obj",
       "scale": [
         800,
