@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
+#include <typeinfo>
 #include <vector>
 
 #include "hittable.h"
@@ -31,6 +32,56 @@ class bvh_node : public hittable {
     shared_ptr<hittable> left;
     shared_ptr<hittable> right;
     aabb box;
+};
+
+struct LinearBVHNode {
+    aabb bbox;
+    int second_child_offset = -1;
+    int primitives_offset = -1;
+    int n_primitives = 0;
+
+    bool is_leaf() const {
+        return n_primitives > 0;
+    }
+};
+
+class LinearBVH : public hittable {
+  public:
+    LinearBVH(const hittable_list &list, double time0, double time1)
+        : LinearBVH(make_shared<bvh_node>(list, time0, time1), time0, time1) {
+    }
+
+    LinearBVH(shared_ptr<bvh_node> root, double time0 = 0.0,
+              double time1 = 1.0) {
+        if (!root) {
+            return;
+        }
+        nodes.reserve(128);
+        primitives.reserve(128);
+        flatten_node(root, time0, time1);
+    }
+
+    bool hit(const ray &r, double t_min, double t_max,
+             hit_record &rec) const override;
+
+    bool bounding_box(double /*time0*/, double /*time1*/,
+                      aabb &output_box) const override {
+        if (nodes.empty()) {
+            return false;
+        }
+        output_box = nodes[0].bbox;
+        return true;
+    }
+
+  private:
+    std::vector<LinearBVHNode> nodes;
+    std::vector<shared_ptr<hittable>> primitives;
+
+    int flatten_node(const shared_ptr<hittable> &node, double time0,
+                     double time1);
+    void make_leaf(int node_index, const shared_ptr<hittable> &primitive);
+    void make_leaf(int node_index, const shared_ptr<hittable> &a,
+                   const shared_ptr<hittable> &b);
 };
 
 inline bool bvh_node::bounding_box(double /*time0*/, double /*time1*/,
@@ -140,6 +191,117 @@ inline bvh_node::bvh_node(const std::vector<shared_ptr<hittable>>& src_objects,
     }
 
     box = surrounding_box(box_left, box_right);
+}
+
+inline void LinearBVH::make_leaf(int node_index,
+                                 const shared_ptr<hittable> &primitive) {
+    nodes[node_index].primitives_offset = static_cast<int>(primitives.size());
+    nodes[node_index].n_primitives = 1;
+    primitives.push_back(primitive);
+}
+
+inline void LinearBVH::make_leaf(int node_index,
+                                 const shared_ptr<hittable> &a,
+                                 const shared_ptr<hittable> &b) {
+    nodes[node_index].primitives_offset = static_cast<int>(primitives.size());
+    primitives.push_back(a);
+    if (a != b) {
+        primitives.push_back(b);
+        nodes[node_index].n_primitives = 2;
+    } else {
+        nodes[node_index].n_primitives = 1;
+    }
+}
+
+inline int LinearBVH::flatten_node(const shared_ptr<hittable> &node,
+                                   double time0, double time1) {
+    int node_index = static_cast<int>(nodes.size());
+    nodes.emplace_back();
+
+    aabb node_box;
+    if (!node->bounding_box(time0, time1, node_box)) {
+        throw std::runtime_error("LinearBVH build error: node has no bbox.");
+    }
+    nodes[node_index].bbox = node_box;
+
+    auto bvh = std::dynamic_pointer_cast<bvh_node>(node);
+    if (!bvh) {
+        make_leaf(node_index, node);
+        return node_index;
+    }
+
+    auto left_bvh = std::dynamic_pointer_cast<bvh_node>(bvh->left);
+    auto right_bvh = std::dynamic_pointer_cast<bvh_node>(bvh->right);
+
+    if (bvh->left == bvh->right) {
+        make_leaf(node_index, bvh->left);
+        return node_index;
+    }
+
+    if (!left_bvh && !right_bvh) {
+        make_leaf(node_index, bvh->left, bvh->right);
+        return node_index;
+    }
+
+    int left_index = flatten_node(bvh->left, time0, time1);
+    if (left_index != node_index + 1) {
+        throw std::runtime_error(
+            "LinearBVH build error: left child is not contiguous.");
+    }
+    int right_index = flatten_node(bvh->right, time0, time1);
+    nodes[node_index].second_child_offset = right_index;
+    return node_index;
+}
+
+inline bool LinearBVH::hit(const ray &r, double t_min, double t_max,
+                           hit_record &rec) const {
+    if (nodes.empty()) {
+        return false;
+    }
+
+    bool hit_anything = false;
+    double closest_so_far = t_max;
+    hit_record temp_rec;
+
+    std::vector<int> stack;
+    stack.reserve(128);
+    int current = 0;
+
+    while (true) {
+        const LinearBVHNode &node = nodes[current];
+
+        if (node.bbox.hit(r, t_min, closest_so_far)) {
+            if (node.is_leaf()) {
+                int begin = node.primitives_offset;
+                int end = begin + node.n_primitives;
+                for (int i = begin; i < end; ++i) {
+                    if (primitives[i]->hit(r, t_min, closest_so_far,
+                                           temp_rec)) {
+                        hit_anything = true;
+                        closest_so_far = temp_rec.t;
+                        rec = temp_rec;
+                    }
+                }
+
+                if (stack.empty()) {
+                    break;
+                }
+                current = stack.back();
+                stack.pop_back();
+            } else {
+                stack.push_back(node.second_child_offset);
+                current = current + 1;
+            }
+        } else {
+            if (stack.empty()) {
+                break;
+            }
+            current = stack.back();
+            stack.pop_back();
+        }
+    }
+
+    return hit_anything;
 }
 
 #endif // BVH_H

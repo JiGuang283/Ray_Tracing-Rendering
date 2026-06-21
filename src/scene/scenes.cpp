@@ -13,6 +13,16 @@
 #include "sphere.h"
 #include "spot_light.h"
 
+shared_ptr<hittable> build_accel(const hittable_list &world, double time0,
+                                 double time1,
+                                 const SceneBuildOptions &options) {
+    if (options.accel_mode == AccelMode::LinearBVH) {
+        return make_shared<LinearBVH>(
+            make_shared<bvh_node>(world, time0, time1), time0, time1);
+    }
+    return make_shared<bvh_node>(world, time0, time1);
+}
+
 shared_ptr<hittable> random_scene() {
     hittable_list world;
 
@@ -157,7 +167,7 @@ shared_ptr<hittable> simple_light() {
     return make_shared<bvh_node>(objects, 0, 1);
 }
 
-shared_ptr<hittable> cornell_box() {
+shared_ptr<hittable> cornell_box(const SceneBuildOptions &options) {
     hittable_list objects;
 
     auto red = make_shared<lambertian>(color(.65, .05, .05));
@@ -184,7 +194,11 @@ shared_ptr<hittable> cornell_box() {
     box2 = make_shared<translate>(box2, vec3(130, 0, 65));
     objects.add(box2);
 
-    return make_shared<bvh_node>(objects, 0, 1);
+    return build_accel(objects, 0, 1, options);
+}
+
+shared_ptr<hittable> cornell_box() {
+    return cornell_box(SceneBuildOptions{});
 }
 
 shared_ptr<hittable> cornell_smoke() {
@@ -578,7 +592,7 @@ shared_ptr<hittable> mis_demo() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
-shared_ptr<hittable> mis_comparison_scene() {
+shared_ptr<hittable> mis_comparison_scene(const SceneBuildOptions &options) {
     hittable_list world;
 
     auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
@@ -623,7 +637,11 @@ shared_ptr<hittable> mis_comparison_scene() {
     world.add(make_shared<flip_face>(
         make_shared<yz_rect>(3.75, 4.25, 1.75, 2.25, 6, small_light_mat)));
 
-    return make_shared<bvh_node>(world, 0, 1);
+    return build_accel(world, 0, 1, options);
+}
+
+shared_ptr<hittable> mis_comparison_scene() {
+    return mis_comparison_scene(SceneBuildOptions{});
 }
 
 shared_ptr<hittable> soft_shadow_demo() {
@@ -1523,7 +1541,7 @@ shared_ptr<hittable> infinity_mirror_demo() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
-shared_ptr<hittable> mesh_demo_scene() {
+shared_ptr<hittable> mesh_demo_scene(const SceneBuildOptions &options) {
     hittable_list world;
 
     // Ground
@@ -1549,11 +1567,14 @@ shared_ptr<hittable> mesh_demo_scene() {
         world.add(bunny);
     }
 
-    // World BVH
-    return make_shared<bvh_node>(world, 0, 1);
+    return build_accel(world, 0, 1, options);
 }
 
-shared_ptr<hittable> mesh_monkey_scene() {
+shared_ptr<hittable> mesh_demo_scene() {
+    return mesh_demo_scene(SceneBuildOptions{});
+}
+
+shared_ptr<hittable> mesh_monkey_scene(const SceneBuildOptions &options) {
     hittable_list world;
 
     // Ground
@@ -1579,8 +1600,11 @@ shared_ptr<hittable> mesh_monkey_scene() {
         world.add(bunny);
     }
 
-    // World BVH
-    return make_shared<bvh_node>(world, 0, 1);
+    return build_accel(world, 0, 1, options);
+}
+
+shared_ptr<hittable> mesh_monkey_scene() {
+    return mesh_monkey_scene(SceneBuildOptions{});
 }
 
 shared_ptr<hittable> cornell_box_suzanne_fixed() {
@@ -2087,7 +2111,7 @@ shared_ptr<hittable> pyramid_pointlight_compare_scene() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
-SceneConfig select_scene(int scene_id) {
+SceneConfig select_scene(int scene_id, const SceneBuildOptions &options) {
     SceneConfig config;
 
     switch (scene_id) {
@@ -2137,7 +2161,7 @@ SceneConfig select_scene(int scene_id) {
         break;
 
     case 7:
-        config.world = cornell_box();
+        config.world = cornell_box(options);
         config.aspect_ratio = 1.0;
         config.image_width = 600;
         config.samples_per_pixel = 400;
@@ -2327,7 +2351,7 @@ SceneConfig select_scene(int scene_id) {
         break;
 
     case 23:
-        config.world = mis_comparison_scene();
+        config.world = mis_comparison_scene(options);
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
         config.samples_per_pixel = 64; // Low samples to highlight noise
@@ -2839,7 +2863,7 @@ SceneConfig select_scene(int scene_id) {
     }
 
     case 58:
-        config.world = mesh_demo_scene();
+        config.world = mesh_demo_scene(options);
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
         config.samples_per_pixel = 200;
@@ -2850,7 +2874,7 @@ SceneConfig select_scene(int scene_id) {
         break;
 
     case 59:
-        config.world = mesh_monkey_scene();
+        config.world = mesh_monkey_scene(options);
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
         config.samples_per_pixel = 200;
@@ -2874,4 +2898,8 @@ SceneConfig select_scene(int scene_id) {
     }
 
     return config;
+}
+
+SceneConfig select_scene(int scene_id) {
+    return select_scene(scene_id, SceneBuildOptions{});
 }

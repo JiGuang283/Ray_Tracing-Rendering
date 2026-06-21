@@ -8,6 +8,16 @@
 
 using std::shared_ptr;
 
+enum class AccelMode {
+    PointerBVH,
+    LinearBVH,
+};
+
+struct SceneBuildOptions {
+    AccelMode accel_mode = AccelMode::PointerBVH;
+    bool use_flat_mesh = false;
+};
+
 struct SceneConfig {
     shared_ptr<hittable> world;
     std::vector<shared_ptr<Light>> lights; // 新增光源列表，用于重要性采样
@@ -24,6 +34,7 @@ struct SceneConfig {
 };
 
 SceneConfig select_scene(int scene_id);
+SceneConfig select_scene(int scene_id, const SceneBuildOptions &options);
 // === Triangle intersection validation scenes ===
 shared_ptr<hittable> pyramid_pointlight_compare_scene();
 shared_ptr<hittable> triangle_vertex_normal_validation_scene();
@@ -38,6 +49,7 @@ shared_ptr<hittable> two_perlin_spheres();
 shared_ptr<hittable> earth();
 shared_ptr<hittable> simple_light();
 shared_ptr<hittable> cornell_box();
+shared_ptr<hittable> cornell_box(const SceneBuildOptions &options);
 shared_ptr<hittable> cornell_smoke();
 shared_ptr<hittable> final_scene();
 shared_ptr<hittable> pbr_test_scene();
@@ -53,6 +65,7 @@ shared_ptr<hittable> cornell_box_nee();
 shared_ptr<hittable> final_scene_nee();
 shared_ptr<hittable> mis_demo();
 shared_ptr<hittable> mis_comparison_scene();
+shared_ptr<hittable> mis_comparison_scene(const SceneBuildOptions &options);
 shared_ptr<hittable> soft_shadow_demo();
 shared_ptr<hittable> hdr_demo_scene();
 
@@ -76,5 +89,9 @@ shared_ptr<hittable> triangle_vertex_normal_validation_scene();
 shared_ptr<hittable> triangle_normal_interp_compare_scene();
 shared_ptr<hittable> triangle_hit_validation_scene();
 shared_ptr<hittable> triangle_occlusion_validation_scene();
+shared_ptr<hittable> mesh_demo_scene();
+shared_ptr<hittable> mesh_demo_scene(const SceneBuildOptions &options);
+shared_ptr<hittable> mesh_monkey_scene();
+shared_ptr<hittable> mesh_monkey_scene(const SceneBuildOptions &options);
 
 #endif

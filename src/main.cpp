@@ -150,6 +150,17 @@ static void apply_overrides(SceneConfig &config, const AppOptions &options) {
     }
 }
 
+static SceneBuildOptions make_scene_build_options(const AppOptions &options) {
+    SceneBuildOptions build_options;
+    if (options.accel_mode == "linear") {
+        build_options.accel_mode = AccelMode::LinearBVH;
+    } else {
+        build_options.accel_mode = AccelMode::PointerBVH;
+    }
+    build_options.use_flat_mesh = options.mesh_flat;
+    return build_options;
+}
+
 static shared_ptr<camera> make_camera(const SceneConfig &config) {
     return make_shared<camera>(
         config.lookfrom, config.lookat, config.vup, config.vfov,
@@ -178,7 +189,8 @@ static std::string save_rendered_image(const RenderBuffer &render_buffer,
 
 static RenderStats render_once(const AppOptions &options,
                                RenderBuffer *external_buffer = nullptr) {
-    SceneConfig config = select_scene(options.scene_id);
+    SceneConfig config =
+        select_scene(options.scene_id, make_scene_build_options(options));
     apply_overrides(config, options);
 
     auto cam = make_camera(config);
@@ -204,7 +216,8 @@ static int run_benchmark(const AppOptions &options) {
     shared_ptr<RenderBuffer> saved_buffer;
 
     for (int run = 1; run <= options.runs; ++run) {
-        SceneConfig config = select_scene(options.scene_id);
+        SceneConfig config =
+            select_scene(options.scene_id, make_scene_build_options(options));
         apply_overrides(config, options);
         int width = config.image_width;
         int height = static_cast<int>(width / config.aspect_ratio);
@@ -264,7 +277,8 @@ static int run_benchmark(const AppOptions &options) {
 }
 
 static int run_windowed(const AppOptions &options) {
-    SceneConfig config = select_scene(options.scene_id);
+    SceneConfig config =
+        select_scene(options.scene_id, make_scene_build_options(options));
     apply_overrides(config, options);
 
     auto cam = make_camera(config);
