@@ -1,84 +1,73 @@
-############################################################
-# Computer Graphics Assignment Configuration
-# Tested on Windows 10 and Ubuntu 16.04.1
-# By Wencong Yang, yangwc3@mail2.sysu.edu.cn
-############################################################
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 
-# You'd better build it in release mode for performance
-set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+project(CGAssignment4 LANGUAGES CXX)
 
-project(CGAssignment4)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
 
-# C++ 11 is required
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Include directories
-include_directories(${PROJECT_SOURCE_DIR}/include)
-include_directories(${PROJECT_SOURCE_DIR}/src)
-include_directories(${PROJECT_SOURCE_DIR}/src/core)
-include_directories(${PROJECT_SOURCE_DIR}/src/geometry)
-include_directories(${PROJECT_SOURCE_DIR}/src/materials)
-include_directories(${PROJECT_SOURCE_DIR}/src/lighting)
-include_directories(${PROJECT_SOURCE_DIR}/src/renderer)
-include_directories(${PROJECT_SOURCE_DIR}/src/scene)
-include_directories(${PROJECT_SOURCE_DIR}/src/external)
-include_directories(${PROJECT_SOURCE_DIR}/src/app)
+find_package(SDL2 REQUIRED)
+find_package(Threads REQUIRED)
 
-############################################################
-# Windows or Linux options
-############################################################
-IF (CMAKE_SYSTEM_NAME MATCHES "Windows")
-	link_directories(${PROJECT_SOURCE_DIR}/libs)
-ELSEIF (CMAKE_SYSTEM_NAME MATCHES "Linux")
-	find_package(SDL2 REQUIRED)
+set(PROJECT_INCLUDE_DIRS
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/src/app
+    ${PROJECT_SOURCE_DIR}/src/core
+    ${PROJECT_SOURCE_DIR}/src/external
+    ${PROJECT_SOURCE_DIR}/src/geometry
+    ${PROJECT_SOURCE_DIR}/src/lighting
+    ${PROJECT_SOURCE_DIR}/src/materials
+    ${PROJECT_SOURCE_DIR}/src/renderer
+    ${PROJECT_SOURCE_DIR}/src/scene
+    ${PROJECT_SOURCE_DIR}/src/shading
+)
 
-	# check if boost was found
-	if(SDL2_FOUND)
-	    message ("SDL2 found")
-	else()
-	    message (FATAL_ERROR "Cannot find SDL2")
-	endif()
-ENDIF()
+file(GLOB_RECURSE CORE_HEADERS CONFIGURE_DEPENDS
+    ${PROJECT_SOURCE_DIR}/src/*.h
+)
+file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+    ${PROJECT_SOURCE_DIR}/src/*.cpp
+)
+file(GLOB APP_SOURCES CONFIGURE_DEPENDS
+    ${PROJECT_SOURCE_DIR}/src/app/*.cpp
+)
 
-############################################################
+list(REMOVE_ITEM CORE_SOURCES
+    ${PROJECT_SOURCE_DIR}/src/main.cpp
+    ${APP_SOURCES}
+)
 
-############################################################
-# If SDL2 was not found, please install SDL2 according to
-# the following terminal commands:
-# sudo apt-get update
-# sudo apt-get install libsdl2-2.0
-# sudo apt-get install libsdl2-dev
-# sdl2-config --version
-###########################################################
+add_library(raytracer_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+target_include_directories(raytracer_core PUBLIC ${PROJECT_INCLUDE_DIRS})
+target_link_libraries(raytracer_core PUBLIC Threads::Threads)
 
-
-############################################################
-# Create an executable
-############################################################
-
-# Recursively find all header and source files in src and its subdirectories
-file(GLOB_RECURSE HEADERS ${PROJECT_SOURCE_DIR}/src/*.h)
-file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
-
-source_group("Header Files" FILES ${HEADERS})
-
-# Add an executable with the above sources
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
-
-# link the target with the SDL2
-target_link_libraries( ${PROJECT_NAME} 
-    PRIVATE 
+add_executable(${PROJECT_NAME}
+    ${PROJECT_SOURCE_DIR}/src/main.cpp
+    ${APP_SOURCES}
+)
+target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        raytracer_core
         SDL2
         SDL2main
 )
 
-# link the target with the pthread (only for ubuntu)
-IF (CMAKE_SYSTEM_NAME MATCHES "Linux")
-	target_link_libraries( ${PROJECT_NAME} 
-	    PRIVATE 
-		pthread
-	)
-ENDIF()
-
-# Force re-configure
+include(CTest)
+if(BUILD_TESTING)
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+        ${PROJECT_SOURCE_DIR}/tests/*.cpp
+    )
+    add_executable(raytracer_tests ${TEST_SOURCES})
+    target_include_directories(raytracer_tests PRIVATE
+        ${PROJECT_INCLUDE_DIRS}
+        ${PROJECT_SOURCE_DIR}/tests
+    )
+    target_link_libraries(raytracer_tests PRIVATE raytracer_core)
+    add_test(NAME raytracer_tests COMMAND raytracer_tests)
+endif()
