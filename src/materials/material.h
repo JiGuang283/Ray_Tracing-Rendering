@@ -2,6 +2,7 @@
 #define MATERIAL_H
 
 #include "shading/shading.h"
+#include "shading/normal_mapping.h"
 #include "texture.h"
 
 class material {
@@ -20,13 +21,13 @@ class material {
 class lambertian : public material {
   public:
     explicit lambertian(const color &a);
-    explicit lambertian(shared_ptr<texture> a);
+    explicit lambertian(TextureHandle a);
 
     void shade(const SurfaceInteraction &surface,
                ShadingResult &result) const override;
 
   private:
-    shared_ptr<texture> albedo;
+    TextureHandle albedo;
 };
 
 class metal : public material {
@@ -54,7 +55,7 @@ class dielectric : public material {
 
 class diffuse_light : public material {
   public:
-    explicit diffuse_light(shared_ptr<texture> a);
+    explicit diffuse_light(TextureHandle a);
     explicit diffuse_light(color c);
 
     void shade(const SurfaceInteraction &surface,
@@ -63,19 +64,20 @@ class diffuse_light : public material {
     color emission_estimate() const override;
 
   private:
-    shared_ptr<texture> emit;
+    TextureHandle emit;
 };
 
 class PrincipledMaterial : public material {
   public:
-    PrincipledMaterial(shared_ptr<texture> base_color,
-                       shared_ptr<texture> roughness,
-                       shared_ptr<texture> metallic,
-                       shared_ptr<texture> normal_map = nullptr,
-                       shared_ptr<texture> emission = nullptr,
+    PrincipledMaterial(TextureHandle base_color,
+                       TextureHandle roughness,
+                       TextureHandle metallic,
+                       TextureHandle normal_map = nullptr,
+                       TextureHandle emission = nullptr,
                        double emission_strength = 1.0,
-                       shared_ptr<texture> clearcoat = nullptr,
-                       shared_ptr<texture> clearcoat_roughness = nullptr);
+                       TextureHandle clearcoat = nullptr,
+                       TextureHandle clearcoat_roughness = nullptr,
+                       NormalMapSettings normal_settings = {});
 
     void shade(const SurfaceInteraction &surface,
                ShadingResult &result) const override;
@@ -83,14 +85,15 @@ class PrincipledMaterial : public material {
     color emission_estimate() const override;
 
   private:
-    shared_ptr<texture> base_color;
-    shared_ptr<texture> roughness;
-    shared_ptr<texture> metallic;
-    shared_ptr<texture> normal_map;
-    shared_ptr<texture> emission;
+    TextureHandle base_color;
+    TextureHandle roughness;
+    TextureHandle metallic;
+    TextureHandle normal_map;
+    TextureHandle emission;
     double emission_strength;
-    shared_ptr<texture> clearcoat;
-    shared_ptr<texture> clearcoat_roughness;
+    TextureHandle clearcoat;
+    TextureHandle clearcoat_roughness;
+    NormalMapSettings normal_settings;
 };
 
 using PBRMaterial = PrincipledMaterial;

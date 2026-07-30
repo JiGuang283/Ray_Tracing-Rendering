@@ -4,6 +4,7 @@
 #include <iostream>
 #include <utility>
 
+#include "geometry_transform.h"
 #include "tiny_obj_loader.h"
 
 FlatMesh::FlatMesh(std::vector<FlatTriangleData> faces,
@@ -328,9 +329,11 @@ FlatMesh::load_from_obj(const std::string &filename, shared_ptr<material> mat,
                     return vec3(0, 0, 0);
                 }
                 size_t n_base = static_cast<size_t>(3 * idx.normal_index);
-                return vec3(attrib.normals[n_base + 0],
-                            attrib.normals[n_base + 1],
-                            attrib.normals[n_base + 2]);
+                return transform_normal_by_inverse_scale(
+                    vec3(attrib.normals[n_base + 0],
+                         attrib.normals[n_base + 1],
+                         attrib.normals[n_base + 2]),
+                    scale);
             };
 
             auto fetch_texcoord = [&](const tinyobj::index_t &idx,

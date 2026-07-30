@@ -5,6 +5,7 @@
 #include "hittable_list.h"
 #include "json.hpp"
 #include "material.h"
+#include "resource_registry.h"
 #include "scene_config.h"
 #include "texture.h"
 #include "vec3.h"
@@ -16,7 +17,7 @@ namespace scene_loader_internal {
 
 using json = nlohmann::json;
 using MaterialMap = std::map<std::string, shared_ptr<material>>;
-using TextureMap = std::map<std::string, shared_ptr<texture>>;
+using TextureMap = std::map<std::string, TextureHandle>;
 
 struct SceneBuildContext {
     std::string source_path;
@@ -24,6 +25,7 @@ struct SceneBuildContext {
     std::map<std::string, json> material_specs;
     TextureMap textures;
     MaterialMap materials;
+    ResourceRegistry resources;
 };
 
 struct BuiltObject {
@@ -50,15 +52,15 @@ vec2 read_optional_uv(const json &object, const std::string &key,
 std::string resolve_asset_path(const SceneBuildContext &context,
                                const std::string &path);
 
-shared_ptr<texture> build_texture_value(const json &texture_json,
-                                        SceneBuildContext &context,
-                                        const std::string &context_name);
+TextureHandle build_texture_value(const json &texture_json,
+                                  SceneBuildContext &context,
+                                  const std::string &context_name);
 shared_ptr<material> build_material(const json &material_json,
                                     SceneBuildContext &context,
                                     const std::string &name);
-shared_ptr<texture> lookup_texture(SceneBuildContext &context,
-                                   const std::string &name,
-                                   const std::string &context_name);
+TextureHandle lookup_texture(SceneBuildContext &context,
+                             const std::string &name,
+                             const std::string &context_name);
 shared_ptr<material> lookup_material(SceneBuildContext &context,
                                      const json &object,
                                      const std::string &context_name);

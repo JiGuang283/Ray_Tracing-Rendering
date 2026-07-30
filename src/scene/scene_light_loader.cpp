@@ -45,7 +45,7 @@ void add_light(const json &light_json, SceneBuildContext &context,
         std::string path = resolve_asset_path(
             context, read_string(light_json, "path", "environment light"));
         config.scene.lights.push_back(
-            make_shared<EnvironmentLight>(path.c_str()));
+            make_shared<EnvironmentLight>(context.resources.load_image(path)));
         return;
     }
 

@@ -24,83 +24,123 @@
   "textures": {
     "bricks_color": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_Color.jpg"
+      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_Color.jpg",
+      "color_space": "srgb",
+      "channel": "rgb"
     },
     "bricks_roughness": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_Roughness.jpg"
+      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_Roughness.jpg",
+      "color_space": "linear",
+      "channel": "r"
     },
     "bricks_normal": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_NormalGL.jpg"
+      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_NormalGL.jpg",
+      "color_space": "linear",
+      "channel": "rgb"
     },
     "planks_color": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_Color.jpg"
+      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_Color.jpg",
+      "color_space": "srgb",
+      "channel": "rgb"
     },
     "planks_roughness": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_Roughness.jpg"
+      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_Roughness.jpg",
+      "color_space": "linear",
+      "channel": "r"
     },
     "planks_normal": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_NormalGL.jpg"
+      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_NormalGL.jpg",
+      "color_space": "linear",
+      "channel": "rgb"
     },
     "rock_color": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_Color.jpg"
+      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_Color.jpg",
+      "color_space": "srgb",
+      "channel": "rgb"
     },
     "rock_roughness": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_Roughness.jpg"
+      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_Roughness.jpg",
+      "color_space": "linear",
+      "channel": "r"
     },
     "rock_normal": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_NormalGL.jpg"
+      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_NormalGL.jpg",
+      "color_space": "linear",
+      "channel": "rgb"
     },
     "asphalt_color": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_Color.jpg"
+      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_Color.jpg",
+      "color_space": "srgb",
+      "channel": "rgb"
     },
     "asphalt_roughness": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_Roughness.jpg"
+      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_Roughness.jpg",
+      "color_space": "linear",
+      "channel": "r"
     },
     "asphalt_normal": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_NormalGL.jpg"
+      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_NormalGL.jpg",
+      "color_space": "linear",
+      "channel": "rgb"
     },
     "metal012_color": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Color.jpg"
+      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Color.jpg",
+      "color_space": "srgb",
+      "channel": "rgb"
     },
     "metal012_metalness": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Metalness.jpg"
+      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Metalness.jpg",
+      "color_space": "linear",
+      "channel": "r"
     },
     "metal012_roughness": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Roughness.jpg"
+      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Roughness.jpg",
+      "color_space": "linear",
+      "channel": "r"
     },
     "metal012_normal": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_NormalGL.jpg"
+      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_NormalGL.jpg",
+      "color_space": "linear",
+      "channel": "rgb"
     },
     "metal033_color": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Color.jpg"
+      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Color.jpg",
+      "color_space": "srgb",
+      "channel": "rgb"
     },
     "metal033_metalness": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Metalness.jpg"
+      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Metalness.jpg",
+      "color_space": "linear",
+      "channel": "r"
     },
     "metal033_roughness": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Roughness.jpg"
+      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Roughness.jpg",
+      "color_space": "linear",
+      "channel": "r"
     },
     "metal033_normal": {
       "type": "image",
-      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_NormalGL.jpg"
+      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_NormalGL.jpg",
+      "color_space": "linear",
+      "channel": "rgb"
     }
   },
   "materials": {

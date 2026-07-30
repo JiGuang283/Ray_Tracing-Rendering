@@ -2,9 +2,10 @@
 #ifndef ENVIRONMENT_LIGHT_H
 #define ENVIRONMENT_LIGHT_H
 
+#include "image_asset.h"
 #include "light.h"
-#include "rtw_stb_image.h"
 #include <algorithm>
+#include <memory>
 #include <numeric>
 
 // 1D 分布（用于条件分布和边缘分布）
@@ -119,20 +120,10 @@ class Distribution2D {
 
 class EnvironmentLight : public Light {
   public:
-    EnvironmentLight(const char *map_filename) {
-        int components_per_pixel = 3;
-        float *data =
-            stbi_loadf(map_filename, &width, &height, &components_per_pixel, 0);
-
-        if (!data) {
-            std::cerr << "ERROR: Could not load HDR environment map: "
-                      << map_filename << std::endl;
-            width = height = 0;
-            return;
-        }
-
-        hdr_data = std::vector<float>(data, data + width * height * 3);
-        stbi_image_free(data);
+    explicit EnvironmentLight(std::shared_ptr<const ImageAsset> image)
+        : image(image ? std::move(image) : ImageAsset::diagnostic()) {
+        width = this->image->width();
+        height = this->image->height();
 
         // Check if it's a light probe (square aspect ratio)
         if (width > 0 && height > 0 && width == height) {
@@ -156,12 +147,11 @@ class EnvironmentLight : public Light {
 
             for (int u = 0; u < width; ++u) {
                 int idx = v * width + u;
-                int pixel_idx = idx * 3;
 
                 // 计算亮度 (luminance)
-                double r = hdr_data[pixel_idx];
-                double g = hdr_data[pixel_idx + 1];
-                double b = hdr_data[pixel_idx + 2];
+                double r = component(u, v, 0);
+                double g = component(u, v, 1);
+                double b = component(u, v, 2);
                 double lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
                 // 乘以 sin(theta) 校正立体角
@@ -248,9 +238,6 @@ class EnvironmentLight : public Light {
     }
 
     virtual color Le(const ray &r) const override {
-        if (hdr_data.empty())
-            return color(1, 1, 1);
-
         vec3 unit_dir = unit_vector(r.direction());
         double u, v;
 
@@ -306,8 +293,8 @@ class EnvironmentLight : public Light {
         if (j >= height)
             j = height - 1;
 
-        int index = 3 * (j * width + i);
-        return color(hdr_data[index], hdr_data[index + 1], hdr_data[index + 2]);
+        return color(component(i, j, 0), component(i, j, 1),
+                     component(i, j, 2));
     }
 
     // PDF for a given direction
@@ -360,13 +347,22 @@ class EnvironmentLight : public Light {
     }
 
     virtual color power() const override {
-        if (hdr_data.empty())
-            return color(1, 1, 1);
         return color(total_power, total_power, total_power);
     }
 
   private:
-    std::vector<float> hdr_data;
+    double component(int x, int y, int channel) const {
+        double value = image->component(x, y, channel);
+        if (!image->is_hdr()) {
+            if (value <= 0.04045) {
+                return value / 12.92;
+            }
+            return pow((value + 0.055) / 1.055, 2.4);
+        }
+        return value;
+    }
+
+    std::shared_ptr<const ImageAsset> image;
     int width = 0, height = 0;
     bool is_light_probe = false;
     Distribution2D distribution;

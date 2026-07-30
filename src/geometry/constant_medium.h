@@ -11,25 +11,26 @@
 
 class isotropic : public material {
   public:
-    isotropic(color c) : albedo(make_shared<solid_color>(c)) {
+    isotropic(color c) : albedo(make_shared<SolidColorTexture>(c)) {
     }
-    isotropic(shared_ptr<texture> a) : albedo(a) {
+    isotropic(TextureHandle a) : albedo(std::move(a)) {
     }
 
     void shade(const SurfaceInteraction &surface,
                ShadingResult &result) const override {
         result.reset(surface.frame);
-        result.bsdf.add_isotropic_phase(
-            albedo->value(surface.u, surface.v, surface.p));
+        const ShaderEvalContext context =
+            ShaderEvalContext::from_surface(surface);
+        result.bsdf.add_isotropic_phase(albedo->evaluate(context).rgb);
     }
 
   public:
-    shared_ptr<texture> albedo;
+    TextureHandle albedo;
 };
 
 class constant_medium : public hittable {
   public:
-    constant_medium(shared_ptr<hittable> b, double d, shared_ptr<texture> a)
+    constant_medium(shared_ptr<hittable> b, double d, TextureHandle a)
         : boundary(b), neg_inv_density(-1 / d),
           phase_function(make_shared<isotropic>(a)) {
     }

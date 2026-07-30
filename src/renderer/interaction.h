@@ -45,8 +45,11 @@ struct ShadingFrame {
     vec3 tangent;
     vec3 bitangent;
     vec3 normal;
+    double handedness;
 
-    ShadingFrame() : tangent(1, 0, 0), bitangent(0, 1, 0), normal(0, 0, 1) {
+    ShadingFrame()
+        : tangent(1, 0, 0), bitangent(0, 1, 0), normal(0, 0, 1),
+          handedness(1.0) {
     }
 
     explicit ShadingFrame(const vec3 &n) {
@@ -59,6 +62,7 @@ struct ShadingFrame {
             (fabs(normal.x()) > 0.9) ? vec3(0, 1, 0) : vec3(1, 0, 0);
         bitangent = unit_vector(cross(normal, helper));
         tangent = cross(bitangent, normal);
+        handedness = 1.0;
     }
 
     void build_from_tangent_space(const vec3 &n, const vec3 &dpdu,
@@ -73,11 +77,11 @@ struct ShadingFrame {
             return;
         }
         tangent = unit_vector(tangent);
-        bitangent = cross(normal, tangent);
-        if (dot(bitangent, dpdv) < 0.0) {
-            tangent = -tangent;
-            bitangent = -bitangent;
-        }
+        const vec3 canonical_bitangent =
+            unit_vector(cross(normal, tangent));
+        handedness =
+            dot(canonical_bitangent, dpdv) < 0.0 ? -1.0 : 1.0;
+        bitangent = handedness * canonical_bitangent;
     }
 
     vec3 to_world(const vec3 &local) const {
