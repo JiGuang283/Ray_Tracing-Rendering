@@ -15860,7 +15860,9 @@
   "textures": {
     "earth": {
       "type": "image",
-      "path": "earthmap.jpg"
+      "path": "earthmap.jpg",
+      "color_space": "srgb",
+      "channel": "rgb"
     },
     "perlin": {
       "type": "noise",

@@ -1,28 +1,38 @@
 # Shading Architecture
 
-The renderer separates surface evaluation into four layers:
+The renderer keeps scene description, shader evaluation, scattering, and light
+transport as separate layers:
 
-1. Geometry writes a lightweight `hit_record`.
-2. The integrator converts it into `SurfaceInteraction`.
-3. A `material` acts as a surface shader and fills `ShadingResult`.
-4. The integrator samples/evaluates `ShadingResult::bsdf` and combines it with
-   light samples.
+1. JSON texture and material values are parsed into typed scene IR.
+2. Scene building compiles that IR into immutable `Texture` and
+   `MaterialInstance` resources.
+3. Geometry writes a lightweight `hit_record`; the integrator converts it into
+   `SurfaceInteraction` and `ShaderEvalContext`.
+4. `MaterialProgram::evaluate()` reads an indexed parameter block and writes a
+   stack-allocated `MaterialOutput`.
+5. Integrators consume only `MaterialOutput::emission` and the BSDF
+   `sample/eval/pdf` interface.
 
-`material` classes should own textures and user-facing parameters. They should
-not trace shadow rays, select lights, or implement MIS policy.
+`MaterialProgram` objects are stateless and shared. Per-material values live in
+`MaterialInstance`, while temporary shader values use worker-local
+`ShaderScratch`. A shader must not trace rays, select lights, or implement MIS.
 
-`BSDF` owns closure sampling and evaluation. New visual effects should usually
-enter as a new closure or as a new shader that combines existing closures.
-Per-closure sampling, evaluation, and PDF code lives in the shading closure
-helpers; `BSDF` itself stays a small fixed-capacity closure container.
+`BSDF` is a fixed-capacity container of typed closure variants. Physical
+contribution and lobe selection weight are separate. Continuous closures use a
+mixture PDF; delta closures retain both lobe-selection and Fresnel event
+probabilities. Integrators use the same `f * factor / pdf` throughput rule for
+both measures and treat delta events specially only for MIS.
 
-`LightSampler` owns light selection policy. Integrators should ask it for light
-samples and PDFs instead of manually selecting from the light array.
+Image files are immutable `ImageAsset` resources cached by normalized path.
+`ImageTexture` is a view that supplies color space, channel, wrapping, and
+filtering. sRGB decoding happens before interpolation. Material input semantics
+resolve legacy unspecified images as sRGB for color and linear for scalar or
+normal data.
 
-Texture graphs are the first shader graph layer. Materials consume texture
-parameters; nested texture nodes such as mix, multiply, scale, and color ramp
-belong in the texture system instead of in integrators or scene geometry.
+Normal maps perturb only the shading frame. Geometric normals remain the source
+of front-face classification and spawned-ray offsets. Tangent frames retain UV
+handedness, and normal maps may declare OpenGL or DirectX convention.
 
-Area emitters are scene-level lights derived from emissive geometry. Materials
-only expose an emission estimate; scene loading decides whether an emissive
-surface should be registered with the light sampler.
+Nested texture nodes (`mix`, `multiply`, `scale`, and `color_ramp`) are the
+current graph-like layer. A general shader graph compiler or VM is intentionally
+outside this foundation.

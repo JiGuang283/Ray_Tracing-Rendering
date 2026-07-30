@@ -167,42 +167,66 @@
       "base_color": "bricks_color",
       "roughness": "bricks_roughness",
       "metallic": 0.0,
-      "normal": "bricks_normal"
+      "normal_map": {
+        "texture": "bricks_normal",
+        "convention": "opengl",
+        "strength": 1.0
+      }
     },
     "planks": {
       "type": "principled",
       "base_color": "planks_color",
       "roughness": "planks_roughness",
       "metallic": 0.0,
-      "normal": "planks_normal"
+      "normal_map": {
+        "texture": "planks_normal",
+        "convention": "opengl",
+        "strength": 1.0
+      }
     },
     "rock": {
       "type": "principled",
       "base_color": "rock_color",
       "roughness": "rock_roughness",
       "metallic": 0.0,
-      "normal": "rock_normal"
+      "normal_map": {
+        "texture": "rock_normal",
+        "convention": "opengl",
+        "strength": 1.0
+      }
     },
     "asphalt": {
       "type": "principled",
       "base_color": "asphalt_color",
       "roughness": "asphalt_roughness",
       "metallic": 0.0,
-      "normal": "asphalt_normal"
+      "normal_map": {
+        "texture": "asphalt_normal",
+        "convention": "opengl",
+        "strength": 1.0
+      }
     },
     "metal012": {
       "type": "principled",
       "base_color": "metal012_color",
       "roughness": "metal012_roughness",
       "metallic": "metal012_metalness",
-      "normal": "metal012_normal"
+      "normal_map": {
+        "texture": "metal012_normal",
+        "convention": "opengl",
+        "strength": 1.0
+      }
     },
     "metal033": {
       "type": "principled",
       "base_color": "metal033_color",
       "roughness": "metal033_roughness",
       "metallic": "metal033_metalness",
-      "normal": "metal033_normal"
+      "normal_map": {
+        "texture": "metal033_normal",
+        "convention": "opengl",
+        "strength": 1.0
+      }
     },
     "key_emitter": {
       "type": "diffuse_light",

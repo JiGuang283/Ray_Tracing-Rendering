@@ -99,6 +99,9 @@ float ImageAsset::component(int x, int y, int channel) const {
 
     int source_channel = channel;
     if (m_channels == 1) {
+        if (channel == 3) {
+            return 1.0f;
+        }
         source_channel = 0;
     } else if (m_channels == 2) {
         source_channel = channel == 3 ? 1 : 0;

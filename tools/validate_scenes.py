@@ -54,6 +54,11 @@ TEXTURE_TYPES = {
 }
 LIGHT_TYPES = {"directional", "environment", "point", "quad", "spot"}
 TONE_MAPPING_MODES = {"linear", "reinhard", "aces", "ACES"}
+COLOR_SPACES = {"srgb", "linear"}
+TEXTURE_CHANNELS = {"rgb", "r", "g", "b", "a"}
+WRAP_MODES = {"repeat", "clamp", "mirror"}
+FILTER_MODES = {"nearest", "bilinear"}
+NORMAL_MAP_CONVENTIONS = {"opengl", "directx"}
 
 
 class Reporter:
@@ -167,6 +172,40 @@ def validate_texture_object(texture: Dict[str, Any], textures: Set[str],
             reporter.error(context, "image texture missing string 'path'")
         elif not resolve_asset(path).exists():
             reporter.warn(context, f"image texture path does not exist: {path}")
+        color_space = texture.get("color_space")
+        if color_space is None:
+            reporter.warn(
+                context,
+                "image texture omits color_space; runtime will infer it "
+                "from the material input")
+        elif not isinstance(color_space, str):
+            reporter.error(
+                f"{context}.color_space", "expected string")
+        elif color_space not in COLOR_SPACES:
+            reporter.error(
+                f"{context}.color_space",
+                f"unknown color space '{color_space}'")
+        channel = texture.get("channel")
+        if channel is not None and not isinstance(channel, str):
+            reporter.error(f"{context}.channel", "expected string")
+        elif channel is not None and channel not in TEXTURE_CHANNELS:
+            reporter.error(
+                f"{context}.channel",
+                f"unknown texture channel '{channel}'")
+        for field in ("wrap_u", "wrap_v"):
+            if field in texture and not isinstance(texture[field], str):
+                reporter.error(f"{context}.{field}", "expected string")
+            elif field in texture and texture[field] not in WRAP_MODES:
+                reporter.error(
+                    f"{context}.{field}",
+                    f"unknown wrap mode '{texture[field]}'")
+        if "filter" in texture and not isinstance(texture["filter"], str):
+            reporter.error(f"{context}.filter", "expected string")
+        elif ("filter" in texture and
+              texture["filter"] not in FILTER_MODES):
+            reporter.error(
+                f"{context}.filter",
+                f"unknown filter mode '{texture['filter']}'")
     elif texture_type == "scale":
         if "input" not in texture:
             reporter.error(context, "scale texture missing 'input'")
@@ -207,6 +246,57 @@ def validate_texture_object(texture: Dict[str, Any], textures: Set[str],
         for field in ("min", "max"):
             if field in texture and not is_number(texture[field]):
                 reporter.error(f"{context}.{field}", "expected number")
+
+
+def texture_references(texture: Dict[str, Any]) -> Set[str]:
+    if isinstance(texture.get("ref"), str):
+        return {texture["ref"]}
+
+    texture_type = texture.get("type")
+    fields: tuple[str, ...] = ()
+    if texture_type == "checker":
+        fields = ("even", "odd", "color1", "color2")
+    elif texture_type == "scale":
+        fields = ("input",)
+    elif texture_type == "multiply":
+        fields = ("a", "b")
+    elif texture_type == "mix":
+        fields = ("a", "b", "factor")
+    elif texture_type == "color_ramp":
+        fields = ("input",)
+
+    references: Set[str] = set()
+    for field in fields:
+        value = texture.get(field)
+        if isinstance(value, str):
+            references.add(value)
+        elif isinstance(value, dict):
+            references.update(texture_references(value))
+    return references
+
+
+def validate_texture_cycles(textures: Dict[str, Any], context: str,
+                            reporter: Reporter) -> None:
+    state: Dict[str, int] = {}
+
+    def visit(name: str) -> None:
+        if state.get(name) == 2:
+            return
+        if state.get(name) == 1:
+            reporter.error(
+                f"{context}.{name}",
+                f"texture reference cycle involving '{name}'")
+            return
+        state[name] = 1
+        texture = textures.get(name)
+        if isinstance(texture, dict):
+            for dependency in texture_references(texture):
+                if dependency in textures:
+                    visit(dependency)
+        state[name] = 2
+
+    for texture_name in textures:
+        visit(texture_name)
 
 
 def validate_material(material: Dict[str, Any], textures: Set[str], context: str,
@@ -253,6 +343,42 @@ def validate_material(material: Dict[str, Any], textures: Set[str], context: str
             if field in material:
                 validate_texture_value(material[field], textures,
                                        f"{context}.{field}", reporter)
+        if "normal_texture" in material:
+            validate_texture_value(
+                material["normal_texture"], textures,
+                f"{context}.normal_texture", reporter)
+            reporter.warn(
+                f"{context}.normal_texture",
+                "legacy field; use normal_map.texture")
+        if "normal_map" in material:
+            normal_map = material["normal_map"]
+            if not isinstance(normal_map, dict):
+                reporter.error(f"{context}.normal_map", "expected object")
+            elif "texture" not in normal_map:
+                reporter.error(
+                    f"{context}.normal_map", "missing 'texture'")
+            else:
+                validate_texture_value(
+                    normal_map["texture"], textures,
+                    f"{context}.normal_map.texture", reporter)
+                convention = normal_map.get("convention", "opengl")
+                if not isinstance(convention, str):
+                    reporter.error(
+                        f"{context}.normal_map.convention",
+                        "expected string")
+                elif convention not in NORMAL_MAP_CONVENTIONS:
+                    reporter.error(
+                        f"{context}.normal_map.convention",
+                        f"unknown convention '{convention}'")
+                if ("strength" in normal_map and
+                        not is_number(normal_map["strength"])):
+                    reporter.error(
+                        f"{context}.normal_map.strength",
+                        "expected number")
+                elif normal_map.get("strength", 1.0) < 0.0:
+                    reporter.error(
+                        f"{context}.normal_map.strength",
+                        "must be non-negative")
         if "emission_strength" in material and not is_number(
                 material["emission_strength"]):
             reporter.error(f"{context}.emission_strength", "expected number")
@@ -267,8 +393,8 @@ def validate_material_ref(object_: Dict[str, Any], materials: Set[str],
         reporter.error(context, f"unknown material reference '{material}'")
 
 
-def validate_object(object_: Any, materials: Set[str], context: str,
-                    reporter: Reporter) -> None:
+def validate_object(object_: Any, materials: Set[str], textures: Set[str],
+                    context: str, reporter: Reporter) -> None:
     if not require_object(object_, context, reporter):
         return
 
@@ -337,31 +463,39 @@ def validate_object(object_: Any, materials: Set[str], context: str,
         if "object" not in object_:
             reporter.error(context, "missing nested 'object'")
         else:
-            validate_object(object_["object"], materials,
+            validate_object(object_["object"], materials, textures,
                             f"{context}.object", reporter)
     elif object_type == "constant_medium":
         require_number(object_, "density", context, reporter)
-        if "color" not in object_:
-            reporter.error(context, "constant_medium missing 'color'")
-        else:
+        if "texture" in object_:
+            validate_texture_value(
+                object_["texture"], textures, f"{context}.texture", reporter)
+        elif "color" in object_:
             require_array(object_["color"], 3, f"{context}.color", reporter)
-        if "boundary" not in object_:
-            reporter.error(context, "constant_medium missing 'boundary'")
         else:
-            validate_object(object_["boundary"], materials,
-                            f"{context}.boundary", reporter)
+            reporter.error(
+                context, "constant_medium needs 'color' or 'texture'")
+        nested_key = "boundary" if "boundary" in object_ else "object"
+        if nested_key not in object_:
+            reporter.error(
+                context, "constant_medium missing 'boundary'/'object'")
+        else:
+            validate_object(object_[nested_key], materials, textures,
+                            f"{context}.{nested_key}", reporter)
     elif object_type in {"list", "accel"}:
-        validate_object_array(object_.get("objects"), materials,
+        validate_object_array(object_.get("objects"), materials, textures,
                               f"{context}.objects", reporter)
 
 
-def validate_object_array(objects: Any, materials: Set[str], context: str,
+def validate_object_array(objects: Any, materials: Set[str],
+                          textures: Set[str], context: str,
                           reporter: Reporter) -> None:
     if not isinstance(objects, list):
         reporter.error(context, "expected object array")
         return
     for index, object_ in enumerate(objects):
-        validate_object(object_, materials, f"{context}[{index}]", reporter)
+        validate_object(object_, materials, textures,
+                        f"{context}[{index}]", reporter)
 
 
 def validate_light(light: Dict[str, Any], context: str,
@@ -466,6 +600,7 @@ def validate_scene(path: Path, reporter: Reporter) -> None:
             continue
         validate_texture_object(texture, texture_names,
                                 f"{context}.textures.{name}", reporter)
+    validate_texture_cycles(textures_json, f"{context}.textures", reporter)
 
     materials_json = scene.get("materials", {})
     if materials_json is None:
@@ -481,7 +616,7 @@ def validate_scene(path: Path, reporter: Reporter) -> None:
         validate_material(material, texture_names,
                           f"{context}.materials.{name}", reporter)
 
-    validate_object_array(scene.get("objects"), material_names,
+    validate_object_array(scene.get("objects"), material_names, texture_names,
                           f"{context}.objects", reporter)
 
     lights = scene.get("lights", [])

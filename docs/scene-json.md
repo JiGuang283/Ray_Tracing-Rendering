@@ -18,11 +18,12 @@ procedural generator、legacy mesh 路径和旧 pointer BVH 都已经从默认�
 运行时加载分三步：
 
 - `SceneDescription`：外部 JSON 描述和来源路径。
-- `SceneIR`：强类型 camera/render/resource/object/light 描述；资源仍保留原
-  JSON payload 以兼容现有 schema。
+- `SceneIR`：camera/render 配置以及强类型 Texture/Material variant；
+  object/light 暂时保留 JSON payload。
 - `SceneConfig`：由 scene builder 构建出的运行时 camera、world、lights、render preset。
 
-这条边界用于避免文件 IO、JSON schema 和运行时对象构建继续混在一个层里。
+Texture IR 会把内联节点降成 ID 图并检查未知引用和循环引用。构建阶段再根据
+`Color`、`Scalar`、`Normal` 输入语义生成不可变纹理和材质实例。
 
 ## Scene 文件结构
 
@@ -76,6 +77,29 @@ Texture：
 - `mix`
 - `color_ramp`
 
+`image` 节点支持：
+
+```json
+{
+  "type": "image",
+  "path": "textures/base_color.png",
+  "color_space": "srgb",
+  "channel": "rgb",
+  "wrap_u": "repeat",
+  "wrap_v": "repeat",
+  "filter": "bilinear"
+}
+```
+
+- `color_space`：`srgb` 或 `linear`
+- `channel`：`rgb`、`r`、`g`、`b`、`a`
+- `wrap_u` / `wrap_v`：`repeat`、`clamp`、`mirror`
+- `filter`：`nearest`、`bilinear`
+
+旧文件省略 `color_space` 时仍可加载：颜色输入按 sRGB，标量和法线输入按
+linear；validator 会提示补全。图像缺失时运行时只报告一次，并使用共享的
+洋红/黑诊断纹理。
+
 Material：
 
 - `lambertian`
@@ -94,7 +118,15 @@ Material：
   "base_color": [0.8, 0.2, 0.1],
   "roughness": 0.4,
   "metallic": 0.0,
-  "normal": {"type": "image", "path": "normal.png"},
+  "normal_map": {
+    "texture": {
+      "type": "image",
+      "path": "normal.png",
+      "color_space": "linear"
+    },
+    "convention": "opengl",
+    "strength": 1.0
+  },
   "clearcoat": 0.25,
   "clearcoat_roughness": 0.08,
   "emission": [1.0, 0.8, 0.4],
@@ -102,9 +134,10 @@ Material：
 }
 ```
 
-材质在运行时作为 surface shader：它读取 texture 参数并生成 `ShadingResult`。
-`ShadingResult` 中包含 BSDF closure 和 emission；integrator 只通过 BSDF 的
-`sample/eval/pdf` 与材质交互，不直接读取具体材质类型。
+材质会编译为不可变 `MaterialInstance`。共享的 `MaterialProgram` 读取索引参数
+块并生成 `MaterialOutput`；integrator 只读取 emission 和 BSDF 的
+`sample/eval/pdf`，不依赖具体材质类型。`normal` 与 `normal_texture` 仍可兼容，
+新场景使用 `normal_map`。
 
 Texture 可以作为轻量 shader graph 节点嵌套使用，例如：
 
@@ -165,8 +198,8 @@ Light：
 - `mesh`
   - 已移除。OBJ 使用 `FlatMesh`。
 - `material::scatter`
-  - 已移除。renderer 调用 `Material::shade(...)` 获取 `ShadingResult`，再只通过
-    `BSDF::sample/eval/pdf` 完成散射计算。
+  - 已移除。renderer 调用 `MaterialProgram::evaluate(...)` 获取
+    `MaterialOutput`，再只通过 `BSDF::sample/eval/pdf` 完成散射计算。
 
 ## 验证命令
 
@@ -183,8 +216,8 @@ cmake --build build -j2
 python3 tools/validate_scenes.py
 ```
 
-当前缺失的 `earthmap.jpg` 和若干 HDR 环境贴图会以 warning 形式报告；运行时会使用
-现有 fallback 行为继续渲染。
+当前缺失的 `earthmap.jpg` 和若干 HDR 环境贴图会以 warning 形式报告；运行时会
+使用缓存的诊断图像继续渲染。
 
 低成本加载/渲染冒烟：
 

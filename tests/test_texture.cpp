@@ -65,6 +65,33 @@ TEST_CASE(image_texture_supports_wrap_and_channel_views) {
                  1e-6);
 }
 
+TEST_CASE(image_assets_preserve_luminance_alpha_and_hdr_channels) {
+    auto luminance = ImageAsset::from_pixels(1, 1, 1, {0.25f});
+    REQUIRE_NEAR(luminance->component(0, 0, 0), 0.25, 1e-6);
+    REQUIRE_NEAR(luminance->component(0, 0, 2), 0.25, 1e-6);
+    REQUIRE_NEAR(luminance->component(0, 0, 3), 1.0, 1e-12);
+
+    auto luminance_alpha =
+        ImageAsset::from_pixels(1, 1, 2, {0.4f, 0.75f});
+    REQUIRE_NEAR(luminance_alpha->component(0, 0, 1), 0.4, 1e-6);
+    REQUIRE_NEAR(luminance_alpha->component(0, 0, 3), 0.75, 1e-6);
+
+    auto rgba =
+        ImageAsset::from_pixels(1, 1, 4, {0.1f, 0.2f, 0.3f, 0.4f});
+    REQUIRE_NEAR(rgba->component(0, 0, 2), 0.3, 1e-6);
+    REQUIRE_NEAR(rgba->component(0, 0, 3), 0.4, 1e-6);
+
+    auto hdr = ImageAsset::from_pixels(1, 1, 3, {2.0f, 0.5f, 0.25f}, true);
+    SamplerState sampler;
+    sampler.wrap_u = WrapMode::Clamp;
+    sampler.wrap_v = WrapMode::Clamp;
+    sampler.filter = FilterMode::Nearest;
+    ImageTexture hdr_view(hdr, ColorSpace::SRGB, sampler);
+    const color value = hdr_view.evaluate(context_at(0.5, 0.5)).rgb;
+    REQUIRE_NEAR(value.x(), 2.0, 1e-12);
+    REQUIRE_NEAR(value.y(), 0.5, 1e-12);
+}
+
 TEST_CASE(resource_registry_deduplicates_and_caches_missing_images) {
     const auto path =
         std::filesystem::temp_directory_path() / "raytracer_texture_test.ppm";

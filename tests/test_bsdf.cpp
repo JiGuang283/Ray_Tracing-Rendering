@@ -110,3 +110,53 @@ TEST_CASE(ggx_samples_are_finite_and_nonnegative) {
         REQUIRE(sample->f.z() >= 0.0);
     }
 }
+
+TEST_CASE(mixed_diffuse_and_mirror_estimator_is_unbiased) {
+    BSDF bsdf(ShadingFrame(vec3(0, 0, 1)));
+    bsdf.add_lambertian(color(0.4, 0.4, 0.4), 1.0);
+    bsdf.add_specular_reflection(color(0.2, 0.2, 0.2), 1.0);
+    RNG rng(31337);
+
+    color estimate(0, 0, 0);
+    constexpr int sample_count = 200000;
+    for (int i = 0; i < sample_count; ++i) {
+        auto sample = bsdf.sample(vec3(0, 0, 1), rng);
+        REQUIRE(sample.has_value());
+        estimate += sample_weight(bsdf, *sample);
+    }
+    estimate /= static_cast<double>(sample_count);
+    REQUIRE_NEAR(estimate.x(), 0.6, 0.006);
+    REQUIRE_NEAR(estimate.y(), 0.6, 0.006);
+    REQUIRE_NEAR(estimate.z(), 0.6, 0.006);
+}
+
+TEST_CASE(individual_reflection_closures_pass_white_furnace_bound) {
+    BSDF diffuse(ShadingFrame(vec3(0, 0, 1)));
+    diffuse.add_lambertian(color(1, 1, 1));
+    BSDF ggx(ShadingFrame(vec3(0, 0, 1)));
+    ggx.add_microfacet_ggx(color(0.9, 0.7, 0.4), 0.3, 1.0);
+    RNG diffuse_rng(71);
+    RNG ggx_rng(72);
+
+    color diffuse_estimate(0, 0, 0);
+    color ggx_estimate(0, 0, 0);
+    constexpr int sample_count = 100000;
+    for (int i = 0; i < sample_count; ++i) {
+        auto diffuse_sample =
+            diffuse.sample(vec3(0, 0, 1), diffuse_rng);
+        REQUIRE(diffuse_sample.has_value());
+        diffuse_estimate += sample_weight(diffuse, *diffuse_sample);
+
+        auto ggx_sample = ggx.sample(vec3(0, 0, 1), ggx_rng);
+        if (ggx_sample) {
+            ggx_estimate += sample_weight(ggx, *ggx_sample);
+        }
+    }
+    diffuse_estimate /= static_cast<double>(sample_count);
+    ggx_estimate /= static_cast<double>(sample_count);
+
+    REQUIRE_NEAR(diffuse_estimate.x(), 1.0, 1e-12);
+    REQUIRE(ggx_estimate.x() >= 0.0 && ggx_estimate.x() <= 1.02);
+    REQUIRE(ggx_estimate.y() >= 0.0 && ggx_estimate.y() <= 1.02);
+    REQUIRE(ggx_estimate.z() >= 0.0 && ggx_estimate.z() <= 1.02);
+}
