@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 
 namespace bsdf_closures {
 namespace {
@@ -10,254 +11,359 @@ double saturate(double value) {
     return clamp(value, 0.0, 1.0);
 }
 
-color lerp(const color &a, const color &b, double t) {
-    return (1.0 - t) * a + t * b;
+color fresnel_schlick(double cosine, const color &f0) {
+    const double factor = std::pow(1.0 - saturate(cosine), 5.0);
+    return f0 + (color(1, 1, 1) - f0) * factor;
 }
 
-color fresnel_schlick(double cos_theta, const color &f0) {
-    double f = pow(1.0 - saturate(cos_theta), 5.0);
-    return f0 + (color(1.0, 1.0, 1.0) - f0) * f;
-}
-
-double distribution_ggx(const vec3 &n, const vec3 &h, double roughness) {
-    double alpha = roughness * roughness;
-    double alpha2 = alpha * alpha;
-    double n_dot_h = std::max(dot(n, h), 0.0);
-    double n_dot_h2 = n_dot_h * n_dot_h;
-    double denom = n_dot_h2 * (alpha2 - 1.0) + 1.0;
-    return alpha2 / std::max(pi * denom * denom, 1e-8);
-}
-
-double geometry_schlick_ggx(double n_dot_v, double roughness) {
-    double r = roughness + 1.0;
-    double k = (r * r) / 8.0;
-    return n_dot_v / std::max(n_dot_v * (1.0 - k) + k, 1e-8);
-}
-
-double geometry_smith(const vec3 &n, const vec3 &wo, const vec3 &wi,
-                      double roughness) {
-    double n_dot_o = std::max(dot(n, wo), 0.0);
-    double n_dot_i = std::max(dot(n, wi), 0.0);
-    return geometry_schlick_ggx(n_dot_o, roughness) *
-           geometry_schlick_ggx(n_dot_i, roughness);
-}
-
-double dielectric_reflectance(double cosine, double ref_idx) {
-    double r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
-    r0 = r0 * r0;
-    return r0 + (1.0 - r0) * pow((1.0 - cosine), 5.0);
-}
-
-color microfacet_f0(const BSDFClosure &closure) {
-    if (closure.type == BSDFClosureType::ClearcoatGGX) {
-        return color(0.04, 0.04, 0.04) * closure.tint;
+double fresnel_dielectric(double cosine_i, double eta_i, double eta_t) {
+    cosine_i = clamp(cosine_i, 0.0, 1.0);
+    const double sin_i =
+        std::sqrt(std::max(0.0, 1.0 - cosine_i * cosine_i));
+    const double sin_t = eta_i / eta_t * sin_i;
+    if (sin_t >= 1.0) {
+        return 1.0;
     }
-    color dielectric_f0(0.04, 0.04, 0.04);
-    return lerp(dielectric_f0, closure.base_color, closure.metallic);
+
+    const double cosine_t =
+        std::sqrt(std::max(0.0, 1.0 - sin_t * sin_t));
+    const double parallel =
+        ((eta_t * cosine_i) - (eta_i * cosine_t)) /
+        ((eta_t * cosine_i) + (eta_i * cosine_t));
+    const double perpendicular =
+        ((eta_i * cosine_i) - (eta_t * cosine_t)) /
+        ((eta_i * cosine_i) + (eta_t * cosine_t));
+    return 0.5 *
+           (parallel * parallel + perpendicular * perpendicular);
 }
 
-bool sample_lambertian(const BSDFClosure &closure,
-                       const ShadingFrame &frame, const vec3 &wo,
-                       BSDFSample &sampled, RNG &rng) {
-    const vec3 &n = frame.normal;
-    if (dot(n, wo) <= 0.0) {
-        return false;
-    }
-    sampled.wi = unit_vector(frame.to_world(random_cosine_direction(rng)));
-    sampled.f = closure.base_color / pi;
-    sampled.pdf = std::max(dot(n, sampled.wi), 0.0) / pi;
-    sampled.flags = BSDF_DIFFUSE | BSDF_REFLECTION;
-    return sampled.pdf > 0.0;
+double ggx_alpha(double roughness) {
+    return std::max(roughness * roughness, 1e-4);
 }
 
-bool sample_specular_reflection(const BSDFClosure &closure,
-                                const ShadingFrame &frame, const vec3 &wo,
-                                BSDFSample &sampled) {
-    const vec3 &n = frame.normal;
-    if (dot(n, wo) <= 0.0) {
-        return false;
-    }
-    sampled.wi = unit_vector(reflect(-wo, n));
-    if (dot(n, sampled.wi) <= 0.0) {
-        return false;
-    }
-    sampled.f = closure.base_color;
-    sampled.pdf = 1.0;
-    sampled.flags = BSDF_DELTA | BSDF_REFLECTION;
-    return true;
+double distribution_ggx(double n_dot_h, double alpha) {
+    const double alpha2 = alpha * alpha;
+    const double cosine2 = n_dot_h * n_dot_h;
+    const double denominator = cosine2 * (alpha2 - 1.0) + 1.0;
+    return alpha2 /
+           std::max(pi * denominator * denominator, 1e-12);
 }
 
-bool sample_specular_dielectric(const BSDFClosure &closure,
-                                const ShadingFrame &frame, const vec3 &wo,
-                                BSDFSample &sampled, RNG &rng) {
-    vec3 normal = frame.normal;
-    double eta = closure.front_face ? (1.0 / closure.ior) : closure.ior;
-    vec3 incident = -wo;
-    double cos_theta = fmin(dot(-incident, normal), 1.0);
-    double sin_theta = sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta));
-    bool cannot_refract = eta * sin_theta > 1.0;
+double smith_g1(double n_dot_v, double alpha) {
+    if (n_dot_v <= 0.0) {
+        return 0.0;
+    }
+    const double cosine2 = n_dot_v * n_dot_v;
+    const double tangent2 =
+        std::max(0.0, 1.0 - cosine2) / std::max(cosine2, 1e-12);
+    return 2.0 /
+           (1.0 + std::sqrt(1.0 + alpha * alpha * tangent2));
+}
 
-    if (cannot_refract ||
-        dielectric_reflectance(cos_theta, eta) > rng.next()) {
-        sampled.wi = unit_vector(reflect(incident, normal));
-        sampled.flags = BSDF_DELTA | BSDF_REFLECTION;
+template <typename Closure>
+std::optional<BSDFSample> sample_impl(const Closure &, const ShadingFrame &,
+                                      const vec3 &, RNG &) {
+    return std::nullopt;
+}
+
+template <>
+std::optional<BSDFSample>
+sample_impl(const LambertianClosure &closure, const ShadingFrame &frame,
+            const vec3 &wo, RNG &rng) {
+    if (dot(frame.normal, wo) <= 0.0) {
+        return std::nullopt;
+    }
+
+    BSDFSample sample;
+    sample.wi = unit_vector(frame.to_world(random_cosine_direction(rng)));
+    sample.f = closure.albedo / pi;
+    sample.pdf = std::max(dot(frame.normal, sample.wi), 0.0) / pi;
+    sample.flags = BSDF_DIFFUSE | BSDF_REFLECTION;
+    return sample.pdf > 0.0 ? std::optional<BSDFSample>(sample)
+                            : std::nullopt;
+}
+
+template <>
+std::optional<BSDFSample>
+sample_impl(const SpecularReflectionClosure &closure,
+            const ShadingFrame &frame, const vec3 &wo, RNG &) {
+    const double cosine_o = dot(frame.normal, wo);
+    if (cosine_o <= 0.0) {
+        return std::nullopt;
+    }
+
+    BSDFSample sample;
+    sample.wi = unit_vector(reflect(-wo, frame.normal));
+    const double cosine_i = std::abs(dot(frame.normal, sample.wi));
+    if (cosine_i <= 0.0) {
+        return std::nullopt;
+    }
+    sample.f = closure.reflectance / cosine_i;
+    sample.pdf = 1.0;
+    sample.flags = BSDF_DELTA | BSDF_REFLECTION;
+    return sample;
+}
+
+template <>
+std::optional<BSDFSample>
+sample_impl(const SpecularDielectricClosure &closure,
+            const ShadingFrame &frame, const vec3 &wo, RNG &rng) {
+    const double cosine_o = dot(frame.normal, wo);
+    if (cosine_o <= 0.0) {
+        return std::nullopt;
+    }
+
+    const double eta_i = closure.front_face ? 1.0 : closure.ior;
+    const double eta_t = closure.front_face ? closure.ior : 1.0;
+    const double eta_ratio = eta_i / eta_t;
+    const double reflectance =
+        fresnel_dielectric(cosine_o, eta_i, eta_t);
+    const bool reflect_event = rng.next() < reflectance;
+
+    BSDFSample sample;
+    if (reflect_event) {
+        sample.wi = unit_vector(reflect(-wo, frame.normal));
+        const double cosine_i = std::abs(dot(frame.normal, sample.wi));
+        sample.f = color(reflectance, reflectance, reflectance) /
+                   std::max(cosine_i, 1e-12);
+        sample.pdf = reflectance;
+        sample.flags = BSDF_DELTA | BSDF_REFLECTION;
     } else {
-        sampled.wi = unit_vector(refract(incident, normal, eta));
-        sampled.flags = BSDF_DELTA | BSDF_TRANSMISSION;
+        sample.wi =
+            unit_vector(refract(-wo, frame.normal, eta_ratio));
+        const double cosine_i = std::abs(dot(frame.normal, sample.wi));
+        const double transmittance = 1.0 - reflectance;
+        const double radiance_scale = eta_ratio * eta_ratio;
+        sample.f =
+            color(transmittance, transmittance, transmittance) *
+            radiance_scale / std::max(cosine_i, 1e-12);
+        sample.pdf = transmittance;
+        sample.flags = BSDF_DELTA | BSDF_TRANSMISSION;
+        sample.eta = eta_t / eta_i;
     }
-    sampled.f = color(1.0, 1.0, 1.0);
-    sampled.pdf = 1.0;
-    return true;
+    return sample.pdf > 0.0 ? std::optional<BSDFSample>(sample)
+                            : std::nullopt;
 }
 
-bool sample_microfacet(const BSDFClosure &closure, const ShadingFrame &frame,
-                       const vec3 &wo, BSDFSample &sampled, RNG &rng) {
-    const vec3 &n = frame.normal;
-    if (dot(n, wo) <= 0.0) {
-        return false;
+template <typename Closure>
+std::optional<BSDFSample>
+sample_ggx(const Closure &closure, const color &f0,
+           const ShadingFrame &frame, const vec3 &wo, RNG &rng) {
+    if (dot(frame.normal, wo) <= 0.0) {
+        return std::nullopt;
     }
 
-    double r1 = rng.next();
-    double r2 = rng.next();
-    double alpha = closure.roughness * closure.roughness;
-    double phi = 2.0 * pi * r1;
-    double cos_theta =
-        sqrt((1.0 - r2) / (1.0 + (alpha * alpha - 1.0) * r2));
-    double sin_theta = sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta));
-
-    vec3 h_local(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
-    vec3 h = unit_vector(frame.to_world(h_local));
-    if (dot(h, wo) < 0.0) {
-        h = -h;
+    const double alpha = ggx_alpha(closure.roughness);
+    const double phi = 2.0 * pi * rng.next();
+    const double u = rng.next();
+    const double cosine =
+        std::sqrt((1.0 - u) / (1.0 + (alpha * alpha - 1.0) * u));
+    const double sine = std::sqrt(std::max(0.0, 1.0 - cosine * cosine));
+    vec3 half_vector = unit_vector(frame.to_world(
+        vec3(sine * std::cos(phi), sine * std::sin(phi), cosine)));
+    if (dot(half_vector, wo) < 0.0) {
+        half_vector = -half_vector;
     }
 
-    sampled.wi = unit_vector(reflect(-wo, h));
-    if (dot(n, sampled.wi) <= 0.0) {
-        return false;
+    BSDFSample sample;
+    sample.wi = unit_vector(reflect(-wo, half_vector));
+    if (dot(frame.normal, sample.wi) <= 0.0) {
+        return std::nullopt;
     }
-    sampled.flags = BSDF_GLOSSY | BSDF_REFLECTION;
-    sampled.f = eval(closure, frame, wo, sampled.wi);
-    sampled.pdf = pdf(closure, frame, wo, sampled.wi);
-    return sampled.pdf > 0.0;
+
+    const double n_dot_o = dot(frame.normal, wo);
+    const double n_dot_i = dot(frame.normal, sample.wi);
+    const double n_dot_h = std::max(dot(frame.normal, half_vector), 0.0);
+    const double o_dot_h = std::max(dot(wo, half_vector), 0.0);
+    const double d = distribution_ggx(n_dot_h, alpha);
+    const double g =
+        smith_g1(n_dot_o, alpha) * smith_g1(n_dot_i, alpha);
+    sample.f = fresnel_schlick(o_dot_h, f0) * d * g /
+               std::max(4.0 * n_dot_o * n_dot_i, 1e-12);
+    sample.pdf = d * n_dot_h / std::max(4.0 * o_dot_h, 1e-12);
+    sample.flags = BSDF_GLOSSY | BSDF_REFLECTION;
+    return sample.pdf > 0.0 ? std::optional<BSDFSample>(sample)
+                            : std::nullopt;
 }
 
-bool sample_isotropic_phase(const BSDFClosure &closure, BSDFSample &sampled,
-                            RNG &rng) {
-    sampled.wi = random_unit_vector(rng);
-    sampled.f = closure.base_color / (4.0 * pi);
-    sampled.pdf = 1.0 / (4.0 * pi);
-    sampled.flags = BSDF_PHASE;
-    return true;
+template <>
+std::optional<BSDFSample>
+sample_impl(const GGXReflectionClosure &closure,
+            const ShadingFrame &frame, const vec3 &wo, RNG &rng) {
+    return sample_ggx(closure, closure.f0, frame, wo, rng);
 }
 
-color eval_lambertian(const BSDFClosure &closure, const ShadingFrame &frame,
-                      const vec3 &wo, const vec3 &wi) {
-    const vec3 &n = frame.normal;
-    if (dot(n, wo) <= 0.0 || dot(n, wi) <= 0.0) {
+template <>
+std::optional<BSDFSample>
+sample_impl(const ClearcoatGGXClosure &closure,
+            const ShadingFrame &frame, const vec3 &wo, RNG &rng) {
+    return sample_ggx(closure, color(0.04, 0.04, 0.04), frame, wo, rng);
+}
+
+template <>
+std::optional<BSDFSample>
+sample_impl(const IsotropicPhaseClosure &closure, const ShadingFrame &,
+            const vec3 &, RNG &rng) {
+    BSDFSample sample;
+    sample.wi = random_unit_vector(rng);
+    sample.f = closure.albedo / (4.0 * pi);
+    sample.pdf = 1.0 / (4.0 * pi);
+    sample.flags = BSDF_PHASE;
+    return sample;
+}
+
+template <typename Closure>
+color eval_impl(const Closure &, const ShadingFrame &, const vec3 &,
+                const vec3 &) {
+    return color(0, 0, 0);
+}
+
+template <>
+color eval_impl(const LambertianClosure &closure,
+                const ShadingFrame &frame, const vec3 &wo,
+                const vec3 &wi) {
+    if (dot(frame.normal, wo) <= 0.0 || dot(frame.normal, wi) <= 0.0) {
         return color(0, 0, 0);
     }
-    return closure.base_color / pi;
+    return closure.albedo / pi;
 }
 
-color eval_microfacet(const BSDFClosure &closure, const ShadingFrame &frame,
-                      const vec3 &wo, const vec3 &wi) {
-    const vec3 &n = frame.normal;
-    double n_dot_o = dot(n, wo);
-    double n_dot_i = dot(n, wi);
-    if (n_dot_o <= 0.0 || n_dot_i <= 0.0) {
+template <typename Closure>
+color eval_ggx(const Closure &closure, const color &f0,
+               const ShadingFrame &frame, const vec3 &wo,
+               const vec3 &wi) {
+    const double n_dot_o = dot(frame.normal, wo);
+    const double n_dot_i = dot(frame.normal, wi);
+    if (n_dot_o <= 0.0 || n_dot_i <= 0.0 || (wo + wi).near_zero()) {
         return color(0, 0, 0);
     }
 
-    vec3 h = unit_vector(wo + wi);
-    color f = fresnel_schlick(std::max(dot(h, wo), 0.0),
-                              microfacet_f0(closure));
-    double d = distribution_ggx(n, h, closure.roughness);
-    double g = geometry_smith(n, wo, wi, closure.roughness);
-    double denom = std::max(4.0 * n_dot_o * n_dot_i, 1e-8);
-    return (d * g / denom) * f;
+    const vec3 half_vector = unit_vector(wo + wi);
+    const double n_dot_h = std::max(dot(frame.normal, half_vector), 0.0);
+    const double o_dot_h = std::max(dot(wo, half_vector), 0.0);
+    const double alpha = ggx_alpha(closure.roughness);
+    const double d = distribution_ggx(n_dot_h, alpha);
+    const double g =
+        smith_g1(n_dot_o, alpha) * smith_g1(n_dot_i, alpha);
+    return fresnel_schlick(o_dot_h, f0) * d * g /
+           std::max(4.0 * n_dot_o * n_dot_i, 1e-12);
 }
 
-double pdf_lambertian(const ShadingFrame &frame, const vec3 &wo,
-                      const vec3 &wi) {
-    const vec3 &n = frame.normal;
-    if (dot(n, wo) <= 0.0 || dot(n, wi) <= 0.0) {
-        return 0.0;
-    }
-    return std::max(dot(n, wi), 0.0) / pi;
+template <>
+color eval_impl(const GGXReflectionClosure &closure,
+                const ShadingFrame &frame, const vec3 &wo,
+                const vec3 &wi) {
+    return eval_ggx(closure, closure.f0, frame, wo, wi);
 }
 
-double pdf_microfacet(const BSDFClosure &closure, const ShadingFrame &frame,
-                      const vec3 &wo, const vec3 &wi) {
-    const vec3 &n = frame.normal;
-    if (dot(n, wo) <= 0.0 || dot(n, wi) <= 0.0) {
+template <>
+color eval_impl(const ClearcoatGGXClosure &closure,
+                const ShadingFrame &frame, const vec3 &wo,
+                const vec3 &wi) {
+    return eval_ggx(closure, color(0.04, 0.04, 0.04), frame, wo, wi);
+}
+
+template <>
+color eval_impl(const IsotropicPhaseClosure &closure,
+                const ShadingFrame &, const vec3 &, const vec3 &) {
+    return closure.albedo / (4.0 * pi);
+}
+
+template <typename Closure>
+double pdf_impl(const Closure &, const ShadingFrame &, const vec3 &,
+                const vec3 &) {
+    return 0.0;
+}
+
+template <>
+double pdf_impl(const LambertianClosure &, const ShadingFrame &frame,
+                const vec3 &wo, const vec3 &wi) {
+    if (dot(frame.normal, wo) <= 0.0 || dot(frame.normal, wi) <= 0.0) {
         return 0.0;
     }
-    vec3 h = unit_vector(wo + wi);
-    double h_dot_o = std::max(dot(h, wo), 0.0);
-    if (h_dot_o <= 0.0) {
+    return dot(frame.normal, wi) / pi;
+}
+
+template <typename Closure>
+double pdf_ggx(const Closure &closure, const ShadingFrame &frame,
+               const vec3 &wo, const vec3 &wi) {
+    if (dot(frame.normal, wo) <= 0.0 || dot(frame.normal, wi) <= 0.0 ||
+        (wo + wi).near_zero()) {
         return 0.0;
     }
-    double d = distribution_ggx(n, h, closure.roughness);
-    double n_dot_h = std::max(dot(n, h), 0.0);
-    return d * n_dot_h / std::max(4.0 * h_dot_o, 1e-8);
+    const vec3 half_vector = unit_vector(wo + wi);
+    const double o_dot_h = std::max(dot(wo, half_vector), 0.0);
+    if (o_dot_h <= 0.0) {
+        return 0.0;
+    }
+    const double n_dot_h = std::max(dot(frame.normal, half_vector), 0.0);
+    const double d =
+        distribution_ggx(n_dot_h, ggx_alpha(closure.roughness));
+    return d * n_dot_h / std::max(4.0 * o_dot_h, 1e-12);
+}
+
+template <>
+double pdf_impl(const GGXReflectionClosure &closure,
+                const ShadingFrame &frame, const vec3 &wo,
+                const vec3 &wi) {
+    return pdf_ggx(closure, frame, wo, wi);
+}
+
+template <>
+double pdf_impl(const ClearcoatGGXClosure &closure,
+                const ShadingFrame &frame, const vec3 &wo,
+                const vec3 &wi) {
+    return pdf_ggx(closure, frame, wo, wi);
+}
+
+template <>
+double pdf_impl(const IsotropicPhaseClosure &, const ShadingFrame &,
+                const vec3 &, const vec3 &) {
+    return 1.0 / (4.0 * pi);
 }
 
 } // namespace
 
-double luminance(const color &c) {
-    return 0.2126 * c.x() + 0.7152 * c.y() + 0.0722 * c.z();
+double luminance(const color &value) {
+    return 0.2126 * value.x() + 0.7152 * value.y() +
+           0.0722 * value.z();
 }
 
-bool sample(const BSDFClosure &closure, const ShadingFrame &frame,
-            const vec3 &wo, BSDFSample &sampled, RNG &rng) {
-    switch (closure.type) {
-    case BSDFClosureType::Lambertian:
-        return sample_lambertian(closure, frame, wo, sampled, rng);
-    case BSDFClosureType::SpecularReflection:
-        return sample_specular_reflection(closure, frame, wo, sampled);
-    case BSDFClosureType::SpecularDielectric:
-        return sample_specular_dielectric(closure, frame, wo, sampled, rng);
-    case BSDFClosureType::MicrofacetGGX:
-    case BSDFClosureType::ClearcoatGGX:
-        return sample_microfacet(closure, frame, wo, sampled, rng);
-    case BSDFClosureType::IsotropicPhase:
-        return sample_isotropic_phase(closure, sampled, rng);
-    }
-    return false;
+bool is_delta(const ClosureVariant &closure) {
+    return std::holds_alternative<SpecularReflectionClosure>(closure) ||
+           std::holds_alternative<SpecularDielectricClosure>(closure);
 }
 
-color eval(const BSDFClosure &closure, const ShadingFrame &frame,
+bool is_phase(const ClosureVariant &closure) {
+    return std::holds_alternative<IsotropicPhaseClosure>(closure);
+}
+
+std::optional<BSDFSample> sample(const ClosureVariant &closure,
+                                 const ShadingFrame &frame, const vec3 &wo,
+                                 RNG &rng) {
+    return std::visit(
+        [&](const auto &typed_closure) {
+            return sample_impl(typed_closure, frame, wo, rng);
+        },
+        closure);
+}
+
+color eval(const ClosureVariant &closure, const ShadingFrame &frame,
            const vec3 &wo, const vec3 &wi) {
-    switch (closure.type) {
-    case BSDFClosureType::Lambertian:
-        return eval_lambertian(closure, frame, wo, wi);
-    case BSDFClosureType::MicrofacetGGX:
-    case BSDFClosureType::ClearcoatGGX:
-        return eval_microfacet(closure, frame, wo, wi);
-    case BSDFClosureType::IsotropicPhase:
-        return closure.base_color / (4.0 * pi);
-    case BSDFClosureType::SpecularReflection:
-    case BSDFClosureType::SpecularDielectric:
-        return color(0, 0, 0);
-    }
-    return color(0, 0, 0);
+    return std::visit(
+        [&](const auto &typed_closure) {
+            return eval_impl(typed_closure, frame, wo, wi);
+        },
+        closure);
 }
 
-double pdf(const BSDFClosure &closure, const ShadingFrame &frame,
+double pdf(const ClosureVariant &closure, const ShadingFrame &frame,
            const vec3 &wo, const vec3 &wi) {
-    switch (closure.type) {
-    case BSDFClosureType::Lambertian:
-        return pdf_lambertian(frame, wo, wi);
-    case BSDFClosureType::MicrofacetGGX:
-    case BSDFClosureType::ClearcoatGGX:
-        return pdf_microfacet(closure, frame, wo, wi);
-    case BSDFClosureType::IsotropicPhase:
-        return 1.0 / (4.0 * pi);
-    case BSDFClosureType::SpecularReflection:
-    case BSDFClosureType::SpecularDielectric:
-        return 0.0;
-    }
-    return 0.0;
+    return std::visit(
+        [&](const auto &typed_closure) {
+            return pdf_impl(typed_closure, frame, wo, wi);
+        },
+        closure);
 }
 
 } // namespace bsdf_closures

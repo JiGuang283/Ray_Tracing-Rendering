@@ -44,6 +44,7 @@ color MISPathIntegrator::Li(
     ray current_ray = r;
     bool delta_bounce = false;
     double prev_bsdf_pdf = 0.0;
+    double eta_scale = 1.0;
     LightSampler light_sampler(lights);
 
     for (int depth = 0; depth < m_max_depth; ++depth) {
@@ -101,26 +102,32 @@ color MISPathIntegrator::Li(
             L += integrator_common::clamp_radiance(L_direct);
         }
 
-        BSDFSample bs;
-        if (shaded.shading.bsdf.empty() ||
-            !shaded.shading.bsdf.sample(shaded.wo, bs, rng)) {
+        auto bs = shaded.shading.bsdf.sample(shaded.wo, rng);
+        if (!bs) {
             break;
         }
 
-        if (bs.pdf < 1e-8 && !bs.is_delta()) {
+        if (bs->pdf < 1e-8) {
             break;
         }
 
-        delta_bounce = bs.is_delta();
-        prev_bsdf_pdf = bs.is_delta() ? 0.0 : bs.pdf;
+        delta_bounce = bs->is_delta();
+        prev_bsdf_pdf = bs->is_delta() ? 0.0 : bs->pdf;
 
-        throughput *= integrator_common::scattering_weight(shaded.shading, bs);
+        throughput *=
+            integrator_common::scattering_weight(shaded.shading, *bs);
+        if (bs->is_transmission()) {
+            eta_scale *= bs->eta * bs->eta;
+        }
 
-        current_ray = shaded.surface.spawn_ray(bs.wi, current_ray.time());
+        current_ray =
+            shaded.surface.spawn_ray(bs->wi, current_ray.time());
 
         if (depth >= m_rr_start_depth) {
+            const color rr_throughput = eta_scale * throughput;
             double p_survive =
-                std::max({throughput.x(), throughput.y(), throughput.z()});
+                std::max({rr_throughput.x(), rr_throughput.y(),
+                          rr_throughput.z()});
             p_survive = clamp(p_survive, 0.05, 0.95);
 
             if (rng.next() > p_survive) {

@@ -39,18 +39,18 @@ color PathIntegrator::Li_internal(const ray &r, const hittable &scene,
     auto shaded = integrator_common::shade_surface(rec, r);
     color emitted = shaded.shading.emission;
 
-    BSDFSample bs;
-    if (shaded.shading.bsdf.empty() ||
-        !shaded.shading.bsdf.sample(shaded.wo, bs, rng)) {
+    auto bs = shaded.shading.bsdf.sample(shaded.wo, rng);
+    if (!bs) {
         return emitted;
     }
-    if (bs.pdf < 1e-8 && !bs.is_delta()) {
+    if (bs->pdf < 1e-8) {
         return emitted;
     }
 
-    color throughput = integrator_common::scattering_weight(shaded.shading, bs);
+    color throughput =
+        integrator_common::scattering_weight(shaded.shading, *bs);
 
-    ray scattered = shaded.surface.spawn_ray(bs.wi, r.time());
+    ray scattered = shaded.surface.spawn_ray(bs->wi, r.time());
     return emitted + throughput * Li_internal(scattered, scene, background,
                                               depth - 1, rng);
 }

@@ -149,10 +149,12 @@ struct BSDFSample {
     vec3 wi;
     color f;
     double pdf;
+    double eta;
     int flags;
 
     BSDFSample()
-        : wi(0, 0, 0), f(0, 0, 0), pdf(0.0), flags(BSDF_NONE) {
+        : wi(0, 0, 0), f(0, 0, 0), pdf(0.0), eta(1.0),
+          flags(BSDF_NONE) {
     }
 
     bool is_delta() const {

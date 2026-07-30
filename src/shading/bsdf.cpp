@@ -1,8 +1,20 @@
 #include "shading/bsdf.h"
 
-#include "shading/bsdf_closures.h"
-
 #include <algorithm>
+#include <stdexcept>
+#include <utility>
+
+namespace {
+
+color lerp(const color &a, const color &b, double t) {
+    return (1.0 - t) * a + t * b;
+}
+
+bool is_black(const color &value) {
+    return value.x() <= 0.0 && value.y() <= 0.0 && value.z() <= 0.0;
+}
+
+} // namespace
 
 BSDF::BSDF() : m_frame(vec3(0, 0, 1)) {
 }
@@ -19,129 +31,125 @@ bool BSDF::empty() const {
     return m_count == 0;
 }
 
-void BSDF::add_lambertian(const color &albedo, double sample_weight) {
-    BSDFClosure closure;
-    closure.type = BSDFClosureType::Lambertian;
-    closure.base_color = albedo;
-    closure.sample_weight =
-        std::max(sample_weight,
-                 std::max(0.0, bsdf_closures::luminance(albedo)));
-    add_closure(closure);
+std::size_t BSDF::size() const {
+    return m_count;
 }
 
-void BSDF::add_specular_reflection(const color &albedo, double sample_weight) {
-    BSDFClosure closure;
-    closure.type = BSDFClosureType::SpecularReflection;
-    closure.base_color = albedo;
-    closure.sample_weight =
-        std::max(sample_weight,
-                 std::max(0.0, bsdf_closures::luminance(albedo)));
-    add_closure(closure);
+void BSDF::add_lambertian(const color &albedo, double sample_weight) {
+    if (is_black(albedo)) {
+        return;
+    }
+    add_closure(LambertianClosure{albedo}, color(1, 1, 1), sample_weight);
+}
+
+void BSDF::add_specular_reflection(const color &reflectance,
+                                   double sample_weight) {
+    if (is_black(reflectance)) {
+        return;
+    }
+    add_closure(SpecularReflectionClosure{reflectance}, color(1, 1, 1),
+                sample_weight);
 }
 
 void BSDF::add_specular_dielectric(double ior, bool front_face,
                                    double sample_weight) {
-    BSDFClosure closure;
-    closure.type = BSDFClosureType::SpecularDielectric;
-    closure.ior = std::max(ior, 1e-4);
-    closure.front_face = front_face;
-    closure.sample_weight = std::max(sample_weight, 1e-4);
-    add_closure(closure);
+    add_closure(SpecularDielectricClosure{std::max(ior, 1.0001), front_face},
+                color(1, 1, 1), sample_weight);
 }
 
 void BSDF::add_microfacet_ggx(const color &base_color, double roughness,
                               double metallic, double sample_weight) {
-    BSDFClosure closure;
-    closure.type = BSDFClosureType::MicrofacetGGX;
-    closure.base_color = base_color;
-    closure.roughness = clamp(roughness, 0.01, 1.0);
-    closure.metallic = clamp(metallic, 0.0, 1.0);
-    closure.sample_weight =
-        std::max(sample_weight,
-                 std::max(0.0, bsdf_closures::luminance(base_color)));
-    add_closure(closure);
+    const double metalness = clamp(metallic, 0.0, 1.0);
+    const color f0 =
+        lerp(color(0.04, 0.04, 0.04), base_color, metalness);
+    add_closure(GGXReflectionClosure{f0, clamp(roughness, 0.01, 1.0)},
+                color(1, 1, 1), sample_weight);
 }
 
-void BSDF::add_clearcoat_ggx(double roughness, double sample_weight) {
-    BSDFClosure closure;
-    closure.type = BSDFClosureType::ClearcoatGGX;
-    closure.base_color = color(1.0, 1.0, 1.0);
-    closure.tint = color(1.0, 1.0, 1.0);
-    closure.roughness = clamp(roughness, 0.01, 1.0);
-    closure.metallic = 0.0;
-    closure.sample_weight = std::max(sample_weight, 1e-4);
-    add_closure(closure);
+void BSDF::add_clearcoat_ggx(double roughness, double strength) {
+    const double coat = clamp(strength, 0.0, 1.0);
+    if (coat <= 0.0) {
+        return;
+    }
+    add_closure(ClearcoatGGXClosure{clamp(roughness, 0.01, 1.0)},
+                color(coat, coat, coat), coat);
 }
 
 void BSDF::add_isotropic_phase(const color &albedo, double sample_weight) {
-    BSDFClosure closure;
-    closure.type = BSDFClosureType::IsotropicPhase;
-    closure.base_color = albedo;
-    closure.sample_weight =
-        std::max(sample_weight,
-                 std::max(0.0, bsdf_closures::luminance(albedo)));
-    add_closure(closure);
+    if (is_black(albedo)) {
+        return;
+    }
+    add_closure(IsotropicPhaseClosure{albedo}, color(1, 1, 1),
+                sample_weight);
 }
 
-bool BSDF::sample(const vec3 &wo, BSDFSample &sampled, RNG &rng) const {
+std::optional<BSDFSample> BSDF::sample(const vec3 &wo, RNG &rng) const {
     if (empty()) {
-        return false;
+        return std::nullopt;
     }
 
-    int start = choose_closure(rng.next());
-    for (int attempt = 0; attempt < m_count; ++attempt) {
-        int index = (start + attempt) % m_count;
-        BSDFSample candidate;
-        if (!sample_closure(m_closures[index], unit_vector(wo), candidate,
-                            rng)) {
-            continue;
-        }
-
-        if (candidate.is_delta()) {
-            sampled = candidate;
-            sampled.pdf = 1.0;
-            return true;
-        }
-
-        sampled = candidate;
-        sampled.f = eval(wo, sampled.wi);
-        sampled.pdf = pdf(wo, sampled.wi);
-        return sampled.pdf > 1e-8 || sampled.is_phase();
+    const double total_weight = total_sample_weight();
+    if (total_weight <= 0.0) {
+        return std::nullopt;
     }
 
-    return false;
+    const std::size_t index = choose_closure(rng.next());
+    const ClosureEntry &entry = m_closures[index];
+    const double selection_pdf = entry.sample_weight / total_weight;
+    auto candidate =
+        bsdf_closures::sample(entry.closure, m_frame, unit_vector(wo), rng);
+    if (!candidate || candidate->pdf <= 0.0) {
+        return std::nullopt;
+    }
+
+    if (candidate->is_delta()) {
+        candidate->f *= entry.weight;
+        candidate->pdf *= selection_pdf;
+        return candidate;
+    }
+
+    candidate->f = eval(wo, candidate->wi);
+    candidate->pdf = pdf(wo, candidate->wi);
+    if (candidate->pdf <= 0.0) {
+        return std::nullopt;
+    }
+    return candidate;
 }
 
 color BSDF::eval(const vec3 &wo, const vec3 &wi) const {
     color result(0, 0, 0);
-    vec3 unit_wo = unit_vector(wo);
-    vec3 unit_wi = unit_vector(wi);
-    for (int i = 0; i < m_count; ++i) {
-        result += eval_closure(m_closures[i], unit_wo, unit_wi);
+    const vec3 unit_wo = unit_vector(wo);
+    const vec3 unit_wi = unit_vector(wi);
+    for (std::size_t i = 0; i < m_count; ++i) {
+        const ClosureEntry &entry = m_closures[i];
+        result += entry.weight *
+                  bsdf_closures::eval(entry.closure, m_frame, unit_wo,
+                                      unit_wi);
     }
     return result;
 }
 
 double BSDF::pdf(const vec3 &wo, const vec3 &wi) const {
-    double total_weight = total_sample_weight();
+    const double total_weight = total_sample_weight();
     if (total_weight <= 0.0) {
         return 0.0;
     }
 
     double result = 0.0;
-    vec3 unit_wo = unit_vector(wo);
-    vec3 unit_wi = unit_vector(wi);
-    for (int i = 0; i < m_count; ++i) {
-        const auto &closure = m_closures[i];
-        double selection_pdf = closure.sample_weight / total_weight;
-        result += selection_pdf * pdf_closure(closure, unit_wo, unit_wi);
+    const vec3 unit_wo = unit_vector(wo);
+    const vec3 unit_wi = unit_vector(wi);
+    for (std::size_t i = 0; i < m_count; ++i) {
+        const ClosureEntry &entry = m_closures[i];
+        const double selection_pdf = entry.sample_weight / total_weight;
+        result += selection_pdf *
+                  bsdf_closures::pdf(entry.closure, m_frame, unit_wo,
+                                     unit_wi);
     }
     return result;
 }
 
 bool BSDF::is_phase() const {
-    return m_count == 1 &&
-           m_closures[0].type == BSDFClosureType::IsotropicPhase;
+    return m_count == 1 && bsdf_closures::is_phase(m_closures[0].closure);
 }
 
 double BSDF::abs_cos_theta(const vec3 &w) const {
@@ -152,59 +160,34 @@ const ShadingFrame &BSDF::frame() const {
     return m_frame;
 }
 
-bool BSDF::add_closure(const BSDFClosure &closure) {
+void BSDF::add_closure(ClosureVariant closure, const color &weight,
+                       double sample_weight) {
+    if (sample_weight <= 0.0 || is_black(weight)) {
+        return;
+    }
     if (m_count >= kMaxClosures) {
-        return false;
+        throw std::overflow_error("BSDF closure capacity exceeded");
     }
-    if (closure.sample_weight <= 0.0) {
-        return false;
-    }
-    if (closure.base_color.length_squared() <= 0.0 &&
-        (closure.type == BSDFClosureType::Lambertian ||
-         closure.type == BSDFClosureType::SpecularReflection ||
-         closure.type == BSDFClosureType::IsotropicPhase)) {
-        return false;
-    }
-    m_closures[m_count++] = closure;
-    return true;
+    m_closures[m_count++] =
+        ClosureEntry{std::move(closure), weight, sample_weight};
 }
 
 double BSDF::total_sample_weight() const {
     double total = 0.0;
-    for (int i = 0; i < m_count; ++i) {
+    for (std::size_t i = 0; i < m_count; ++i) {
         total += std::max(m_closures[i].sample_weight, 0.0);
     }
     return total;
 }
 
-int BSDF::choose_closure(double u) const {
-    double total = total_sample_weight();
-    if (total <= 0.0) {
-        return 0;
-    }
-
-    double target = u * total;
-    double accum = 0.0;
-    for (int i = 0; i < m_count; ++i) {
-        accum += std::max(m_closures[i].sample_weight, 0.0);
-        if (target <= accum) {
+std::size_t BSDF::choose_closure(double u) const {
+    const double target = u * total_sample_weight();
+    double accumulated = 0.0;
+    for (std::size_t i = 0; i < m_count; ++i) {
+        accumulated += std::max(m_closures[i].sample_weight, 0.0);
+        if (target < accumulated) {
             return i;
         }
     }
     return m_count - 1;
-}
-
-bool BSDF::sample_closure(const BSDFClosure &closure, const vec3 &wo,
-                          BSDFSample &sampled, RNG &rng) const {
-    return bsdf_closures::sample(closure, m_frame, wo, sampled, rng);
-}
-
-color BSDF::eval_closure(const BSDFClosure &closure, const vec3 &wo,
-                         const vec3 &wi) const {
-    return bsdf_closures::eval(closure, m_frame, wo, wi);
-}
-
-double BSDF::pdf_closure(const BSDFClosure &closure, const vec3 &wo,
-                         const vec3 &wi) const {
-    return bsdf_closures::pdf(closure, m_frame, wo, wi);
 }

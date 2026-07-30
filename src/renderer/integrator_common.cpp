@@ -39,8 +39,8 @@ double scattering_cos_factor(const ShadingResult &shading,
 
 color scattering_weight(const ShadingResult &shading,
                         const BSDFSample &sample) {
-    if (sample.is_delta()) {
-        return sample.f;
+    if (sample.pdf <= 0.0) {
+        return color(0, 0, 0);
     }
     return sample.f * scattering_cos_factor(shading, sample) / sample.pdf;
 }

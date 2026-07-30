@@ -28,6 +28,7 @@ color RRPathInterator::Li(const ray &r, const hittable &scene,
     color throughput(1.0, 1.0, 1.0);
     color L(0.0, 0.0, 0.0);
     ray current_ray = r;
+    double eta_scale = 1.0;
 
     for (int depth = 0; depth < m_max_depth; ++depth) {
         hit_record rec;
@@ -40,20 +41,25 @@ color RRPathInterator::Li(const ray &r, const hittable &scene,
         auto shaded = integrator_common::shade_surface(rec, current_ray);
         L += throughput * shaded.shading.emission;
 
-        BSDFSample bs;
-        if (shaded.shading.bsdf.empty() ||
-            !shaded.shading.bsdf.sample(shaded.wo, bs, rng)) {
+        auto bs = shaded.shading.bsdf.sample(shaded.wo, rng);
+        if (!bs) {
             break;
         }
-        if (bs.pdf < 1e-8 && !bs.is_delta()) {
+        if (bs->pdf < 1e-8) {
             break;
         }
 
-        throughput *= integrator_common::scattering_weight(shaded.shading, bs);
+        throughput *=
+            integrator_common::scattering_weight(shaded.shading, *bs);
+        if (bs->is_transmission()) {
+            eta_scale *= bs->eta * bs->eta;
+        }
 
         if (depth >= m_rr_start_depth) {
+            const color rr_throughput = eta_scale * throughput;
             double p_survive =
-                std::max({throughput.x(), throughput.y(), throughput.z()});
+                std::max({rr_throughput.x(), rr_throughput.y(),
+                          rr_throughput.z()});
             p_survive = clamp(p_survive, 0.005, 0.95);
 
             if (rng.next() > p_survive) {
@@ -61,7 +67,8 @@ color RRPathInterator::Li(const ray &r, const hittable &scene,
             }
             throughput /= p_survive;
         }
-        current_ray = shaded.surface.spawn_ray(bs.wi, current_ray.time());
+        current_ray =
+            shaded.surface.spawn_ray(bs->wi, current_ray.time());
     }
     return L;
 }
