@@ -281,6 +281,11 @@
       "id": 60,
       "name": "cornell_box_suzanne_fixed",
       "path": "assets/scenes/scene_060_cornell_box_suzanne_fixed.json"
+    },
+    {
+      "id": 62,
+      "name": "pbr_texture_gallery",
+      "path": "assets/scenes/scene_062_pbr_texture_gallery.json"
     }
   ]
 }

@@ -1,0 +1,278 @@
+{
+  "name": "pbr_texture_gallery",
+  "camera": {
+    "lookfrom": [0.0, 5.6, 15.0],
+    "lookat": [0.0, 1.7, 0.0],
+    "vup": [0.0, 1.0, 0.0],
+    "vfov": 34.0,
+    "aperture": 0.0,
+    "focus_dist": 15.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1200,
+    "spp": 256,
+    "background": [0.01, 0.012, 0.018],
+    "color_pipeline": {
+      "tone_mapping": "aces",
+      "exposure": 0.0,
+      "gamma": 2.2
+    }
+  },
+  "world_accel": true,
+  "auto_emitters": false,
+  "textures": {
+    "bricks_color": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_Color.jpg"
+    },
+    "bricks_roughness": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_Roughness.jpg"
+    },
+    "bricks_normal": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Bricks001/Bricks001_1K-JPG_NormalGL.jpg"
+    },
+    "planks_color": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_Color.jpg"
+    },
+    "planks_roughness": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_Roughness.jpg"
+    },
+    "planks_normal": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Planks021/Planks021_1K-JPG_NormalGL.jpg"
+    },
+    "rock_color": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_Color.jpg"
+    },
+    "rock_roughness": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_Roughness.jpg"
+    },
+    "rock_normal": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Rock027/Rock027_1K-JPG_NormalGL.jpg"
+    },
+    "asphalt_color": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_Color.jpg"
+    },
+    "asphalt_roughness": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_Roughness.jpg"
+    },
+    "asphalt_normal": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Asphalt011/Asphalt011_1K-JPG_NormalGL.jpg"
+    },
+    "metal012_color": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Color.jpg"
+    },
+    "metal012_metalness": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Metalness.jpg"
+    },
+    "metal012_roughness": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_Roughness.jpg"
+    },
+    "metal012_normal": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Metal012/Metal012_1K-JPG_NormalGL.jpg"
+    },
+    "metal033_color": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Color.jpg"
+    },
+    "metal033_metalness": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Metalness.jpg"
+    },
+    "metal033_roughness": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_Roughness.jpg"
+    },
+    "metal033_normal": {
+      "type": "image",
+      "path": "assets/materials/ambientcg/Metal033/Metal033_1K-JPG_NormalGL.jpg"
+    }
+  },
+  "materials": {
+    "studio_floor": {
+      "type": "principled",
+      "base_color": [0.12, 0.13, 0.16],
+      "roughness": 0.3,
+      "metallic": 0.0
+    },
+    "studio_wall": {
+      "type": "lambertian",
+      "albedo": [0.16, 0.17, 0.21]
+    },
+    "pedestal": {
+      "type": "principled",
+      "base_color": [0.055, 0.06, 0.075],
+      "roughness": 0.22,
+      "metallic": 0.0,
+      "clearcoat": 0.25,
+      "clearcoat_roughness": 0.08
+    },
+    "bricks": {
+      "type": "principled",
+      "base_color": "bricks_color",
+      "roughness": "bricks_roughness",
+      "metallic": 0.0,
+      "normal": "bricks_normal"
+    },
+    "planks": {
+      "type": "principled",
+      "base_color": "planks_color",
+      "roughness": "planks_roughness",
+      "metallic": 0.0,
+      "normal": "planks_normal"
+    },
+    "rock": {
+      "type": "principled",
+      "base_color": "rock_color",
+      "roughness": "rock_roughness",
+      "metallic": 0.0,
+      "normal": "rock_normal"
+    },
+    "asphalt": {
+      "type": "principled",
+      "base_color": "asphalt_color",
+      "roughness": "asphalt_roughness",
+      "metallic": 0.0,
+      "normal": "asphalt_normal"
+    },
+    "metal012": {
+      "type": "principled",
+      "base_color": "metal012_color",
+      "roughness": "metal012_roughness",
+      "metallic": "metal012_metalness",
+      "normal": "metal012_normal"
+    },
+    "metal033": {
+      "type": "principled",
+      "base_color": "metal033_color",
+      "roughness": "metal033_roughness",
+      "metallic": "metal033_metalness",
+      "normal": "metal033_normal"
+    },
+    "key_emitter": {
+      "type": "diffuse_light",
+      "color": [14.0, 13.0, 12.0]
+    }
+  },
+  "objects": [
+    {
+      "type": "xz_rect",
+      "x0": -10.0,
+      "x1": 10.0,
+      "z0": -5.0,
+      "z1": 8.0,
+      "k": 0.0,
+      "material": "studio_floor"
+    },
+    {
+      "type": "xy_rect",
+      "x0": -10.0,
+      "x1": 10.0,
+      "y0": 0.0,
+      "y1": 9.0,
+      "k": -5.0,
+      "material": "studio_wall"
+    },
+    {
+      "type": "box",
+      "min": [-5.1, 0.0, -3.2],
+      "max": [-2.9, 1.1, -1.2],
+      "material": "pedestal"
+    },
+    {
+      "type": "box",
+      "min": [-1.1, 0.0, -3.2],
+      "max": [1.1, 1.1, -1.2],
+      "material": "pedestal"
+    },
+    {
+      "type": "box",
+      "min": [2.9, 0.0, -3.2],
+      "max": [5.1, 1.1, -1.2],
+      "material": "pedestal"
+    },
+    {
+      "type": "obj",
+      "path": "assets/Suzanne.obj",
+      "translate": [-4.0, 2.15, -2.2],
+      "scale": [1.05, 1.05, 1.05],
+      "build_bvh": true,
+      "use_vertex_normals": true,
+      "material": "bricks"
+    },
+    {
+      "type": "obj",
+      "path": "assets/Suzanne.obj",
+      "translate": [0.0, 2.15, -2.2],
+      "scale": [1.05, 1.05, 1.05],
+      "build_bvh": true,
+      "use_vertex_normals": true,
+      "material": "planks"
+    },
+    {
+      "type": "obj",
+      "path": "assets/Suzanne.obj",
+      "translate": [4.0, 2.15, -2.2],
+      "scale": [1.05, 1.05, 1.05],
+      "build_bvh": true,
+      "use_vertex_normals": true,
+      "material": "metal012"
+    },
+    {
+      "type": "sphere",
+      "center": [-4.0, 1.15, 2.1],
+      "radius": 1.15,
+      "material": "rock"
+    },
+    {
+      "type": "sphere",
+      "center": [0.0, 1.15, 2.1],
+      "radius": 1.15,
+      "material": "asphalt"
+    },
+    {
+      "type": "sphere",
+      "center": [4.0, 1.15, 2.1],
+      "radius": 1.15,
+      "material": "metal033"
+    },
+    {
+      "type": "quad",
+      "Q": [-6.0, 7.0, -3.0],
+      "u": [7.0, 0.0, 0.0],
+      "v": [0.0, 0.0, 7.0],
+      "material": "key_emitter"
+    }
+  ],
+  "lights": [
+    {
+      "type": "quad",
+      "Q": [-6.0, 7.0, -3.0],
+      "u": [7.0, 0.0, 0.0],
+      "v": [0.0, 0.0, 7.0],
+      "intensity": [14.0, 13.0, 12.0]
+    },
+    {
+      "type": "quad",
+      "Q": [7.0, 1.0, 3.0],
+      "u": [0.0, 5.0, 0.0],
+      "v": [0.0, 0.0, -7.0],
+      "intensity": [5.0, 7.0, 10.0]
+    }
+  ]
+}

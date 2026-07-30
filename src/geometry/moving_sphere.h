@@ -56,6 +56,21 @@ inline bool moving_sphere::hit(const ray &r, double t_min, double t_max,
     rec.p = r.at(rec.t);
     auto outward_normal = (rec.p - center(r.time())) / radius;
     rec.set_face_normal(r, outward_normal);
+    auto theta = acos(-outward_normal.y());
+    auto phi = atan2(-outward_normal.z(), outward_normal.x()) + pi;
+    rec.u = phi / (2 * pi);
+    rec.v = theta / pi;
+    double alpha = rec.u * 2.0 * pi - pi;
+    double sin_theta = sin(theta);
+    double cos_theta = cos(theta);
+    double sin_alpha = sin(alpha);
+    double cos_alpha = cos(alpha);
+    rec.dpdu =
+        2.0 * pi * radius *
+        vec3(-sin_alpha * sin_theta, 0.0, -cos_alpha * sin_theta);
+    rec.dpdv =
+        pi * radius *
+        vec3(cos_alpha * cos_theta, sin_theta, -sin_alpha * cos_theta);
     rec.mat_ptr = mat_ptr.get();
 
     return true;

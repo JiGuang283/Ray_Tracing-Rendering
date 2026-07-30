@@ -85,10 +85,12 @@ class triangle : public hittable {
 
         // 1) 先用几何法线决定 front_face（稳定，不会在三角形内乱跳）
         rec.front_face = dot(r.direction(), face_normal) < 0;
+        rec.geometric_normal = rec.front_face ? face_normal : -face_normal;
 
         // 2) shading_normal 仍然用插值法线（你原来的逻辑是对的），但朝向要跟
         // front_face 一致
         rec.normal = rec.front_face ? shading_normal : -shading_normal;
+        set_surface_derivatives(rec);
 
         return true;
     }
@@ -128,6 +130,27 @@ class triangle : public hittable {
     bool has_texcoords = false;
 
     shared_ptr<material> mat_ptr;
+
+    void set_surface_derivatives(hit_record &rec) const {
+        if (!has_texcoords) {
+            rec.dpdu = edge1;
+            rec.dpdv = edge2;
+            return;
+        }
+
+        vec2 duv1 = uv1 - uv0;
+        vec2 duv2 = uv2 - uv0;
+        double determinant = duv1.x() * duv2.y() - duv1.y() * duv2.x();
+        if (fabs(determinant) < 1e-10) {
+            rec.dpdu = edge1;
+            rec.dpdv = edge2;
+            return;
+        }
+
+        double inv_det = 1.0 / determinant;
+        rec.dpdu = (duv2.y() * edge1 - duv1.y() * edge2) * inv_det;
+        rec.dpdv = (-duv2.x() * edge1 + duv1.x() * edge2) * inv_det;
+    }
 };
 
 #endif

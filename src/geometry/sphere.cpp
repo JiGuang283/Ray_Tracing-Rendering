@@ -1,5 +1,26 @@
 #include "sphere.h"
 
+namespace {
+
+void set_sphere_derivatives(double radius, double u, double v,
+                            hit_record &rec) {
+    double theta = v * pi;
+    double alpha = u * 2.0 * pi - pi;
+    double sin_theta = sin(theta);
+    double cos_theta = cos(theta);
+    double sin_alpha = sin(alpha);
+    double cos_alpha = cos(alpha);
+
+    rec.dpdu =
+        2.0 * pi * radius *
+        vec3(-sin_alpha * sin_theta, 0.0, -cos_alpha * sin_theta);
+    rec.dpdv =
+        pi * radius *
+        vec3(cos_alpha * cos_theta, sin_theta, -sin_alpha * cos_theta);
+}
+
+} // namespace
+
 bool sphere::hit(const ray &r, double t_min, double t_max,
                  hit_record &rec) const {
     vec3 oc = r.origin() - center;
@@ -26,6 +47,7 @@ bool sphere::hit(const ray &r, double t_min, double t_max,
     vec3 outward_normal = (rec.p - center) / radius;
     rec.set_face_normal(r, outward_normal);
     get_sphere_uv(outward_normal, rec.u, rec.v);
+    set_sphere_derivatives(radius, rec.u, rec.v, rec);
     rec.mat_ptr = mat_ptr.get();
 
     return true;

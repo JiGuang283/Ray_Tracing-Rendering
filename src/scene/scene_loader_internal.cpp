@@ -1,8 +1,30 @@
 #include "scene_loader_internal.h"
 
+#include <fstream>
 #include <stdexcept>
 
 namespace scene_loader_internal {
+namespace {
+
+bool file_exists(const std::string &path) {
+    std::ifstream input(path);
+    return input.good();
+}
+
+std::string parent_path(const std::string &path) {
+    size_t slash = path.find_last_of("/\\");
+    if (slash == std::string::npos) {
+        return "";
+    }
+    return path.substr(0, slash);
+}
+
+bool is_absolute_path(const std::string &path) {
+    return !path.empty() && (path[0] == '/' || path[0] == '\\' ||
+                             (path.size() > 1 && path[1] == ':'));
+}
+
+} // namespace
 
 const json &require_key(const json &object, const std::string &key,
                         const std::string &context) {
@@ -76,6 +98,21 @@ vec2 read_optional_uv(const json &object, const std::string &key,
     }
     present = true;
     return read_vec2_value(*found, context + "." + key);
+}
+
+std::string resolve_asset_path(const SceneBuildContext &context,
+                               const std::string &path) {
+    if (path.empty() || is_absolute_path(path) || file_exists(path)) {
+        return path;
+    }
+
+    std::string base = parent_path(context.source_path);
+    if (base.empty()) {
+        return path;
+    }
+
+    std::string candidate = base + "/" + path;
+    return file_exists(candidate) ? candidate : path;
 }
 
 

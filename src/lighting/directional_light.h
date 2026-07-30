@@ -24,6 +24,10 @@ public:
         return true;
     }
 
+    virtual color power() const override {
+        return L;
+    }
+
 private:
     vec3 direction;
     color L;

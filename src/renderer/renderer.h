@@ -2,6 +2,7 @@
 #define RENDERER_H
 
 #include "camera.h"
+#include "color_pipeline.h"
 #include "hittable.h"
 #include "integrator.h"
 #include "material.h"
@@ -27,6 +28,7 @@ class Renderer {
         int samples_per_pixel = 10;
         unsigned seed = 1337;
         int thread_count = 0;
+        ColorPipelineSettings color_pipeline;
     };
 
     Renderer();
@@ -48,6 +50,9 @@ class Renderer {
     void set_thread_count(int thread_count) {
         m_settings.thread_count = thread_count;
     }
+    void set_color_pipeline(const ColorPipelineSettings &settings) {
+        m_settings.color_pipeline = settings;
+    }
     void set_max_depth(int depth) {
         if (m_integrator) {
             m_integrator->set_max_depth(depth);
@@ -66,9 +71,6 @@ class Renderer {
     std::atomic<bool> m_is_rendering;
 
     std::shared_ptr<Integrator> m_integrator;
-
-    void write_color_to_buffer(RenderBuffer &buffer, int x, int y,
-                               color pixel_color, int samples);
 };
 
 #endif

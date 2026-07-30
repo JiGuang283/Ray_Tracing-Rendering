@@ -33,6 +33,8 @@ public:
 
     virtual bool is_delta() const override { return true; }
 
+    virtual color power() const override { return intensity; }
+
 private:
     point3 position;
     vec3 direction;

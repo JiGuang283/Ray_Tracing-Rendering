@@ -34,9 +34,26 @@ OBJECT_TYPES = {
     "xz_rect",
     "yz_rect",
 }
-MATERIAL_TYPES = {"lambertian", "metal", "dielectric", "diffuse_light", "pbr"}
-TEXTURE_TYPES = {"solid", "checker", "noise", "image"}
+MATERIAL_TYPES = {
+    "lambertian",
+    "metal",
+    "dielectric",
+    "diffuse_light",
+    "pbr",
+    "principled",
+}
+TEXTURE_TYPES = {
+    "solid",
+    "checker",
+    "noise",
+    "image",
+    "scale",
+    "multiply",
+    "mix",
+    "color_ramp",
+}
 LIGHT_TYPES = {"directional", "environment", "point", "quad", "spot"}
+TONE_MAPPING_MODES = {"linear", "reinhard", "aces", "ACES"}
 
 
 class Reporter:
@@ -150,6 +167,46 @@ def validate_texture_object(texture: Dict[str, Any], textures: Set[str],
             reporter.error(context, "image texture missing string 'path'")
         elif not resolve_asset(path).exists():
             reporter.warn(context, f"image texture path does not exist: {path}")
+    elif texture_type == "scale":
+        if "input" not in texture:
+            reporter.error(context, "scale texture missing 'input'")
+        else:
+            validate_texture_value(texture["input"], textures,
+                                   f"{context}.input", reporter)
+        if "scale" in texture and not is_number(texture["scale"]):
+            reporter.error(f"{context}.scale", "expected number")
+    elif texture_type == "multiply":
+        for field in ("a", "b"):
+            if field not in texture:
+                reporter.error(context, f"multiply texture missing '{field}'")
+            else:
+                validate_texture_value(texture[field], textures,
+                                       f"{context}.{field}", reporter)
+    elif texture_type == "mix":
+        for field in ("a", "b"):
+            if field not in texture:
+                reporter.error(context, f"mix texture missing '{field}'")
+            else:
+                validate_texture_value(texture[field], textures,
+                                       f"{context}.{field}", reporter)
+        if "factor" in texture:
+            validate_texture_value(texture["factor"], textures,
+                                   f"{context}.factor", reporter)
+    elif texture_type == "color_ramp":
+        if "input" not in texture:
+            reporter.error(context, "color_ramp texture missing 'input'")
+        else:
+            validate_texture_value(texture["input"], textures,
+                                   f"{context}.input", reporter)
+        for field in ("low", "high"):
+            if field not in texture:
+                reporter.error(context, f"color_ramp texture missing '{field}'")
+            else:
+                require_array(texture[field], 3, f"{context}.{field}",
+                              reporter)
+        for field in ("min", "max"):
+            if field in texture and not is_number(texture[field]):
+                reporter.error(f"{context}.{field}", "expected number")
 
 
 def validate_material(material: Dict[str, Any], textures: Set[str], context: str,
@@ -183,16 +240,22 @@ def validate_material(material: Dict[str, Any], textures: Set[str], context: str
         else:
             validate_texture_value(material[field], textures,
                                    f"{context}.{field}", reporter)
-    elif material_type == "pbr":
-        if "albedo" not in material:
-            reporter.error(context, "pbr material missing 'albedo'")
+    elif material_type in {"pbr", "principled"}:
+        base_field = "base_color" if "base_color" in material else "albedo"
+        if base_field not in material:
+            reporter.error(context,
+                           f"{material_type} material missing base_color/albedo")
         else:
-            validate_texture_value(material["albedo"], textures,
-                                   f"{context}.albedo", reporter)
-        for field in ("roughness", "metallic", "normal"):
+            validate_texture_value(material[base_field], textures,
+                                   f"{context}.{base_field}", reporter)
+        for field in ("roughness", "metallic", "normal", "emission",
+                      "clearcoat", "clearcoat_roughness"):
             if field in material:
                 validate_texture_value(material[field], textures,
                                        f"{context}.{field}", reporter)
+        if "emission_strength" in material and not is_number(
+                material["emission_strength"]):
+            reporter.error(f"{context}.emission_strength", "expected number")
 
 
 def validate_material_ref(object_: Dict[str, Any], materials: Set[str],
@@ -329,6 +392,20 @@ def validate_light(light: Dict[str, Any], context: str,
             reporter.warn(context, f"environment map path does not exist: {path}")
 
 
+def validate_color_pipeline(value: Dict[str, Any], context: str,
+                            reporter: Reporter) -> None:
+    for key in ("exposure", "gamma"):
+        if key in value:
+            require_number(value, key, context, reporter)
+    tone_mapping = value.get("tone_mapping")
+    if tone_mapping is not None:
+        if not isinstance(tone_mapping, str):
+            reporter.error(f"{context}.tone_mapping", "expected string")
+        elif tone_mapping not in TONE_MAPPING_MODES:
+            reporter.error(f"{context}.tone_mapping",
+                           f"unknown tone mapping '{tone_mapping}'")
+
+
 def resolve_asset(path: str) -> Path:
     candidate = Path(path)
     if candidate.is_absolute():
@@ -347,6 +424,9 @@ def validate_scene(path: Path, reporter: Reporter) -> None:
     if not require_object(scene, context, reporter):
         return
 
+    if "auto_emitters" in scene and not isinstance(scene["auto_emitters"], bool):
+        reporter.error(f"{context}.auto_emitters", "expected boolean")
+
     camera = scene.get("camera")
     if not isinstance(camera, dict):
         reporter.error(context, "missing object 'camera'")
@@ -363,6 +443,15 @@ def validate_scene(path: Path, reporter: Reporter) -> None:
         for key in ("width", "spp"):
             require_number(render, key, f"{context}.render", reporter)
         require_vec(render, "background", 3, f"{context}.render", reporter)
+        validate_color_pipeline(render, f"{context}.render", reporter)
+        if "color_pipeline" in render:
+            pipeline = render["color_pipeline"]
+            if not isinstance(pipeline, dict):
+                reporter.error(f"{context}.render.color_pipeline",
+                               "expected object")
+            else:
+                validate_color_pipeline(
+                    pipeline, f"{context}.render.color_pipeline", reporter)
 
     textures_json = scene.get("textures", {})
     if textures_json is None:

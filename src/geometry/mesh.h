@@ -8,11 +8,13 @@
 
 #include "hittable.h"
 #include "material.h"
+#include "triangle_surface.h"
 
 struct FlatTriangleData {
     point3 v0, v1, v2;
     vec3 edge1, edge2;
     vec3 face_normal;
+    vec3 dpdu{1, 0, 0}, dpdv{0, 1, 0};
     vec3 n0{0, 0, 0}, n1{0, 0, 0}, n2{0, 0, 0};
     vec2 uv0{0, 0}, uv1{0, 0}, uv2{0, 0};
     bool has_vertex_normals = false;
@@ -52,6 +54,7 @@ class FlatMesh : public hittable {
 
     bool bounding_box(double time0, double time1,
                       aabb &output_box) const override;
+    std::vector<TriangleSurface> light_triangles() const;
 
   private:
     static constexpr int kLeafSize = 4;

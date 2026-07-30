@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "integrator_common.h"
 #include "material.h"
 #include "rtweekend.h"
 
@@ -35,24 +36,21 @@ color PathIntegrator::Li_internal(const ray &r, const hittable &scene,
         return background;
     }
 
-    vec3 wo = -unit_vector(r.direction());
-    color emitted = rec.mat_ptr->emitted(rec, wo);
+    auto shaded = integrator_common::shade_surface(rec, r);
+    color emitted = shaded.shading.emission;
 
     BSDFSample bs;
-    if (!rec.mat_ptr->sample(rec, wo, bs, rng)) {
+    if (shaded.shading.bsdf.empty() ||
+        !shaded.shading.bsdf.sample(shaded.wo, bs, rng)) {
         return emitted;
     }
-    if (bs.pdf < 1e-8 && !bs.is_specular) {
+    if (bs.pdf < 1e-8 && !bs.is_delta()) {
         return emitted;
     }
 
-    color throughput = bs.f;
-    if (!bs.is_specular) {
-        double cos_theta = std::abs(dot(bs.wi, rec.normal));
-        throughput *= cos_theta / bs.pdf;
-    }
+    color throughput = integrator_common::scattering_weight(shaded.shading, bs);
 
-    ray scattered(rec.p, bs.wi, r.time());
+    ray scattered = shaded.surface.spawn_ray(bs.wi, r.time());
     return emitted + throughput * Li_internal(scattered, scene, background,
                                               depth - 1, rng);
 }

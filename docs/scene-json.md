@@ -15,6 +15,15 @@ procedural generator、legacy mesh 路径和旧 pointer BVH 都已经从默认�
   - 不允许同时传 positional scene id。
 - catalog 中的 `default_scene_id` 用于未知 scene id 的 fallback。
 
+运行时加载分三步：
+
+- `SceneDescription`：外部 JSON 描述和来源路径。
+- `SceneIR`：强类型 camera/render/resource/object/light 描述；资源仍保留原
+  JSON payload 以兼容现有 schema。
+- `SceneConfig`：由 scene builder 构建出的运行时 camera、world、lights、render preset。
+
+这条边界用于避免文件 IO、JSON schema 和运行时对象构建继续混在一个层里。
+
 ## Scene 文件结构
 
 顶层字段：
@@ -23,6 +32,7 @@ procedural generator、legacy mesh 路径和旧 pointer BVH 都已经从默认�
 {
   "name": "scene_name",
   "world_accel": true,
+  "auto_emitters": true,
   "camera": {},
   "render": {},
   "textures": {},
@@ -47,6 +57,11 @@ procedural generator、legacy mesh 路径和旧 pointer BVH 都已经从默认�
 - `width`
 - `spp`
 - `background`
+- `exposure`
+- `gamma`
+- `tone_mapping`：`linear`、`reinhard`、`aces`
+- `color_pipeline`：可选嵌套对象，支持同样的 `exposure`、`gamma`、
+  `tone_mapping` 字段
 
 ## 支持的资源类型
 
@@ -56,6 +71,10 @@ Texture：
 - `checker`
 - `noise`
 - `image`
+- `scale`
+- `multiply`
+- `mix`
+- `color_ramp`
 
 Material：
 
@@ -63,7 +82,47 @@ Material：
 - `metal`
 - `dielectric`
 - `diffuse_light`
+- `principled`
 - `pbr`
+
+`pbr` 是兼容旧场景的别名，内部映射到 `principled`。新场景推荐使用
+`principled`：
+
+```json
+{
+  "type": "principled",
+  "base_color": [0.8, 0.2, 0.1],
+  "roughness": 0.4,
+  "metallic": 0.0,
+  "normal": {"type": "image", "path": "normal.png"},
+  "clearcoat": 0.25,
+  "clearcoat_roughness": 0.08,
+  "emission": [1.0, 0.8, 0.4],
+  "emission_strength": 2.0
+}
+```
+
+材质在运行时作为 surface shader：它读取 texture 参数并生成 `ShadingResult`。
+`ShadingResult` 中包含 BSDF closure 和 emission；integrator 只通过 BSDF 的
+`sample/eval/pdf` 与材质交互，不直接读取具体材质类型。
+
+Texture 可以作为轻量 shader graph 节点嵌套使用，例如：
+
+```json
+{
+  "type": "mix",
+  "a": [0.1, 0.1, 0.1],
+  "b": {"type": "noise", "scale": 3.0},
+  "factor": 0.35
+}
+```
+
+`auto_emitters` 控制是否把 emissive geometry 自动加入 light sampler。默认规则：
+没有显式 `lights` 时开启，有显式 `lights` 时关闭，以避免旧场景重复采样同一盏灯。
+当前自动 emitter 支持 `xy_rect`、`xz_rect`、`yz_rect`、`quad`、`triangle`、
+`sphere`、`obj` mesh，并支持 `translate` / `rotate_y` / `flip_face` / `list` /
+`accel` 包裹。`flip_face` 会翻转矩形、三角形和 mesh emitter 的发光朝向；
+flip sphere 不生成 inward sphere emitter。
 
 Object：
 
@@ -106,7 +165,8 @@ Light：
 - `mesh`
   - 已移除。OBJ 使用 `FlatMesh`。
 - `material::scatter`
-  - 已移除。renderer 使用 `sample/eval/pdf/emitted`。
+  - 已移除。renderer 调用 `Material::shade(...)` 获取 `ShadingResult`，再只通过
+    `BSDF::sample/eval/pdf` 完成散射计算。
 
 ## 验证命令
 

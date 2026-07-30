@@ -34,6 +34,15 @@ bool FlatMesh::bounding_box(double /*time0*/, double /*time1*/,
     return true;
 }
 
+std::vector<TriangleSurface> FlatMesh::light_triangles() const {
+    std::vector<TriangleSurface> result;
+    result.reserve(triangles.size());
+    for (const auto &triangle : triangles) {
+        result.push_back({triangle.v0, triangle.v1, triangle.v2});
+    }
+    return result;
+}
+
 int FlatMesh::build_node(int start, int end) {
     int node_index = static_cast<int>(nodes.size());
     nodes.emplace_back();
@@ -110,6 +119,7 @@ bool FlatMesh::hit_triangle(int triangle_index, const ray &r, double t_min,
     rec.t = t;
     rec.p = r.at(t);
     rec.mat_ptr = mat_ptr.get();
+    rec.primitive_id = triangle_index;
 
     double w = 1.0 - bary_u - bary_v;
     if (tri.has_texcoords) {
@@ -129,7 +139,10 @@ bool FlatMesh::hit_triangle(int triangle_index, const ray &r, double t_min,
     }
 
     rec.front_face = dot(r.direction(), tri.face_normal) < 0;
+    rec.geometric_normal = rec.front_face ? tri.face_normal : -tri.face_normal;
     rec.normal = rec.front_face ? shading_normal : -shading_normal;
+    rec.dpdu = tri.dpdu;
+    rec.dpdv = tri.dpdv;
     return true;
 }
 
@@ -239,6 +252,25 @@ FlatMesh::load_from_obj(const std::string &filename, shared_ptr<material> mat,
         tri.uv1 = uv1;
         tri.uv2 = uv2;
         tri.has_texcoords = has_uvs;
+        if (has_uvs) {
+            vec2 duv1 = uv1 - uv0;
+            vec2 duv2 = uv2 - uv0;
+            double determinant =
+                duv1.x() * duv2.y() - duv1.y() * duv2.x();
+            if (fabs(determinant) > 1e-10) {
+                double inv_det = 1.0 / determinant;
+                tri.dpdu =
+                    (duv2.y() * tri.edge1 - duv1.y() * tri.edge2) * inv_det;
+                tri.dpdv =
+                    (-duv2.x() * tri.edge1 + duv1.x() * tri.edge2) * inv_det;
+            } else {
+                tri.dpdu = tri.edge1;
+                tri.dpdv = tri.edge2;
+            }
+        } else {
+            tri.dpdu = tri.edge1;
+            tri.dpdv = tri.edge2;
+        }
 
         double min_x = fmin(p0.x(), fmin(p1.x(), p2.x()));
         double min_y = fmin(p0.y(), fmin(p1.y(), p2.y()));

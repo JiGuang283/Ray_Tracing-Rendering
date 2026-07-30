@@ -65,6 +65,7 @@ void configure_renderer(Renderer &renderer, const SceneConfig &config,
     renderer.set_samples(config.preset.samples_per_pixel);
     renderer.set_seed(options.render.seed);
     renderer.set_thread_count(options.render.threads);
+    renderer.set_color_pipeline(config.preset.color_pipeline);
     renderer.set_integrator(make_integrator(options.integrator_id));
     renderer.set_max_depth(options.render.max_depth);
 }

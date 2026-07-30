@@ -16,32 +16,12 @@ class isotropic : public material {
     isotropic(shared_ptr<texture> a) : albedo(a) {
     }
 
-    virtual bool sample(const hit_record &rec, const vec3 &wo,
-                        BSDFSample &sampled) const override {
-        RNG rng(make_thread_seed());
-        return sample(rec, wo, sampled, rng);
+    void shade(const SurfaceInteraction &surface,
+               ShadingResult &result) const override {
+        result.reset(surface.frame);
+        result.bsdf.add_isotropic_phase(
+            albedo->value(surface.u, surface.v, surface.p));
     }
-
-    virtual bool sample(const hit_record &rec, const vec3 &wo,
-                        BSDFSample &sampled, RNG &rng) const override {
-        sampled.wi = random_unit_vector(rng);
-        sampled.f = albedo->value(rec.u, rec.v, rec.p) / (4.0 * pi);
-        sampled.pdf = 1.0 / (4.0 * pi);
-        sampled.is_specular = false;
-        sampled.is_transmission = false;
-        return true;
-    }
-
-    virtual color eval(const hit_record &rec, const vec3 &wo,
-                       const vec3 &wi) const override {
-        return albedo->value(rec.u, rec.v, rec.p) / (4.0 * pi);
-    }
-
-    virtual double pdf(const hit_record &rec, const vec3 &wo,
-                       const vec3 &wi) const override {
-        return 1.0 / (4.0 * pi);
-    }
-
 
   public:
     shared_ptr<texture> albedo;
@@ -125,6 +105,9 @@ inline bool constant_medium::hit(const ray &r, double t_min, double t_max,
     }
 
     rec.normal = vec3(1, 0, 0); // arbitrary
+    rec.geometric_normal = rec.normal;
+    rec.dpdu = vec3(0, 1, 0);
+    rec.dpdv = vec3(0, 0, 1);
     rec.front_face = true;      // also arbitrary
     rec.mat_ptr = phase_function.get();
 

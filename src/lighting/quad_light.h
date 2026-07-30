@@ -83,6 +83,10 @@ class QuadLight : public Light {
         return false;
     }
 
+    virtual color power() const override {
+        return pi * area * intensity;
+    }
+
   private:
     point3 Q;
     vec3 u, v;

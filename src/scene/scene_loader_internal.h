@@ -18,6 +18,19 @@ using json = nlohmann::json;
 using MaterialMap = std::map<std::string, shared_ptr<material>>;
 using TextureMap = std::map<std::string, shared_ptr<texture>>;
 
+struct SceneBuildContext {
+    std::string source_path;
+    std::map<std::string, json> texture_specs;
+    std::map<std::string, json> material_specs;
+    TextureMap textures;
+    MaterialMap materials;
+};
+
+struct BuiltObject {
+    shared_ptr<hittable> object;
+    std::vector<shared_ptr<Light>> emitters;
+};
+
 const json &require_key(const json &object, const std::string &key,
                         const std::string &context);
 vec3 read_vec3_value(const json &value, const std::string &context);
@@ -34,23 +47,33 @@ std::string read_string(const json &object, const std::string &key,
                         const std::string &context);
 vec2 read_optional_uv(const json &object, const std::string &key,
                       bool &present, const std::string &context);
+std::string resolve_asset_path(const SceneBuildContext &context,
+                               const std::string &path);
 
 shared_ptr<texture> build_texture_value(const json &texture_json,
-                                        const TextureMap &textures,
-                                        const std::string &context);
+                                        SceneBuildContext &context,
+                                        const std::string &context_name);
 shared_ptr<material> build_material(const json &material_json,
-                                    const TextureMap &textures,
+                                    SceneBuildContext &context,
                                     const std::string &name);
-shared_ptr<material> lookup_material(const MaterialMap &materials,
+shared_ptr<texture> lookup_texture(SceneBuildContext &context,
+                                   const std::string &name,
+                                   const std::string &context_name);
+shared_ptr<material> lookup_material(SceneBuildContext &context,
                                      const json &object,
-                                     const std::string &context);
+                                     const std::string &context_name);
 
 shared_ptr<hittable> build_object(const json &object,
-                                  const MaterialMap &materials,
-                                  const TextureMap &textures);
-void add_object(const json &object, const MaterialMap &materials,
-                const TextureMap &textures, hittable_list &world);
-void add_light(const json &light_json, SceneConfig &config);
+                                  SceneBuildContext &context);
+BuiltObject build_object_with_emitters(const json &object,
+                                       SceneBuildContext &context,
+                                       bool auto_emitters);
+void add_object(const json &object, SceneBuildContext &context,
+                hittable_list &world,
+                std::vector<shared_ptr<Light>> &emitters,
+                bool auto_emitters);
+void add_light(const json &light_json, SceneBuildContext &context,
+               SceneConfig &config);
 
 } // namespace scene_loader_internal
 

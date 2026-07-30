@@ -28,12 +28,6 @@ class DirectLightIntegrator : public Integrator {
        RNG &rng) const override;
 
   private:
-    color
-    sample_lights_direct(const hit_record &rec, const vec3 &wo,
-                         const hittable &scene,
-                         const std::vector<shared_ptr<Light>> &lights,
-                         RNG &rng) const;
-
     int m_max_depth = 50;
     int m_rr_start_depth = 3;
 };

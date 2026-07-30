@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "integrator_common.h"
 #include "material.h"
 #include "rtweekend.h"
 
@@ -36,24 +37,19 @@ color RRPathInterator::Li(const ray &r, const hittable &scene,
             break;
         }
 
-        vec3 wo = -unit_vector(current_ray.direction());
-        color emitted = rec.mat_ptr->emitted(rec, wo);
-        L += throughput * emitted;
+        auto shaded = integrator_common::shade_surface(rec, current_ray);
+        L += throughput * shaded.shading.emission;
 
         BSDFSample bs;
-        if (!rec.mat_ptr->sample(rec, wo, bs, rng)) {
+        if (shaded.shading.bsdf.empty() ||
+            !shaded.shading.bsdf.sample(shaded.wo, bs, rng)) {
             break;
         }
-        if (bs.pdf < 1e-8 && !bs.is_specular) {
+        if (bs.pdf < 1e-8 && !bs.is_delta()) {
             break;
         }
 
-        if (bs.is_specular) {
-            throughput *= bs.f;
-        } else {
-            double cos_theta = std::abs(dot(bs.wi, rec.normal));
-            throughput *= bs.f * cos_theta / bs.pdf;
-        }
+        throughput *= integrator_common::scattering_weight(shaded.shading, bs);
 
         if (depth >= m_rr_start_depth) {
             double p_survive =
@@ -65,7 +61,7 @@ color RRPathInterator::Li(const ray &r, const hittable &scene,
             }
             throughput /= p_survive;
         }
-        current_ray = ray(rec.p, bs.wi, current_ray.time());
+        current_ray = shaded.surface.spawn_ray(bs.wi, current_ray.time());
     }
     return L;
 }

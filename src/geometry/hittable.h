@@ -143,17 +143,18 @@ inline bool rotate_y::hit(const ray &r, double t_min, double t_max,
     if (!ptr->hit(rotated_r, t_min, t_max, rec, rng))
         return false;
 
-    auto p = rec.p;
-    auto normal = rec.normal;
+    auto rotate_to_world = [&](const vec3 &value) {
+        vec3 rotated = value;
+        rotated[0] = cos_theta * value[0] + sin_theta * value[2];
+        rotated[2] = -sin_theta * value[0] + cos_theta * value[2];
+        return rotated;
+    };
 
-    p[0] = cos_theta * rec.p[0] + sin_theta * rec.p[2];
-    p[2] = -sin_theta * rec.p[0] + cos_theta * rec.p[2];
-
-    normal[0] = cos_theta * rec.normal[0] + sin_theta * rec.normal[2];
-    normal[2] = -sin_theta * rec.normal[0] + cos_theta * rec.normal[2];
-
-    rec.p = p;
-    rec.set_face_normal(r, normal);
+    rec.p = rotate_to_world(rec.p);
+    rec.normal = rotate_to_world(rec.normal);
+    rec.geometric_normal = rotate_to_world(rec.geometric_normal);
+    rec.dpdu = rotate_to_world(rec.dpdu);
+    rec.dpdv = rotate_to_world(rec.dpdv);
     return true;
 }
 
@@ -172,6 +173,7 @@ class flip_face : public hittable {
         if (!ptr->hit(r, t_min, t_max, rec, rng)) return false;
         rec.front_face = !rec.front_face;
         rec.normal = -rec.normal;
+        rec.geometric_normal = -rec.geometric_normal;
         return true;
     }
 

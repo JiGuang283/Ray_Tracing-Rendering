@@ -162,4 +162,77 @@ class noise_texture : public texture {
     double scale;
 };
 
+class scale_texture : public texture {
+  public:
+    scale_texture(shared_ptr<texture> input, double scale)
+        : input(input), scale(scale) {
+    }
+
+    color value(double u, double v, const point3 &p) const override {
+        return scale * input->value(u, v, p);
+    }
+
+  private:
+    shared_ptr<texture> input;
+    double scale;
+};
+
+class multiply_texture : public texture {
+  public:
+    multiply_texture(shared_ptr<texture> a, shared_ptr<texture> b)
+        : a(a), b(b) {
+    }
+
+    color value(double u, double v, const point3 &p) const override {
+        return a->value(u, v, p) * b->value(u, v, p);
+    }
+
+  private:
+    shared_ptr<texture> a;
+    shared_ptr<texture> b;
+};
+
+class mix_texture : public texture {
+  public:
+    mix_texture(shared_ptr<texture> a, shared_ptr<texture> b,
+                shared_ptr<texture> factor)
+        : a(a), b(b), factor(factor) {
+    }
+
+    color value(double u, double v, const point3 &p) const override {
+        double t = clamp(factor->value_scalar(u, v, p), 0.0, 1.0);
+        return (1.0 - t) * a->value(u, v, p) + t * b->value(u, v, p);
+    }
+
+  private:
+    shared_ptr<texture> a;
+    shared_ptr<texture> b;
+    shared_ptr<texture> factor;
+};
+
+class color_ramp_texture : public texture {
+  public:
+    color_ramp_texture(shared_ptr<texture> input, color low, color high,
+                       double min_value = 0.0, double max_value = 1.0)
+        : input(input), low(low), high(high), min_value(min_value),
+          max_value(max_value) {
+    }
+
+    color value(double u, double v, const point3 &p) const override {
+        double denom = max_value - min_value;
+        double t = denom == 0.0 ? 0.0
+                                : (input->value_scalar(u, v, p) - min_value) /
+                                      denom;
+        t = clamp(t, 0.0, 1.0);
+        return (1.0 - t) * low + t * high;
+    }
+
+  private:
+    shared_ptr<texture> input;
+    color low;
+    color high;
+    double min_value;
+    double max_value;
+};
+
 #endif

@@ -10,7 +10,8 @@
 
 namespace scene_loader_internal {
 
-void add_light(const json &light_json, SceneConfig &config) {
+void add_light(const json &light_json, SceneBuildContext &context,
+               SceneConfig &config) {
     std::string type = read_string(light_json, "type", "light");
     if (type == "point") {
         config.scene.lights.push_back(make_shared<PointLight>(
@@ -41,7 +42,8 @@ void add_light(const json &light_json, SceneConfig &config) {
         return;
     }
     if (type == "environment") {
-        std::string path = read_string(light_json, "path", "environment light");
+        std::string path = resolve_asset_path(
+            context, read_string(light_json, "path", "environment light"));
         config.scene.lights.push_back(
             make_shared<EnvironmentLight>(path.c_str()));
         return;

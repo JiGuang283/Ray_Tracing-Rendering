@@ -3,6 +3,7 @@
 
 #include "hittable.h"
 #include "light.h"
+#include "color_pipeline.h"
 #include "vec3.h"
 #include <memory>
 #include <vector>
@@ -28,6 +29,7 @@ struct RenderPreset {
     int image_width = 1280;
     int samples_per_pixel = 100;
     color background{0, 0, 0};
+    ColorPipelineSettings color_pipeline;
 };
 
 struct SceneConfig {
