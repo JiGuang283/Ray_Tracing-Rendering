@@ -34,20 +34,10 @@ SceneConfig build_scene_config(const SceneIR &ir) {
 
     SceneBuildContext context;
     context.source_path = ir.source_path;
-    for (const auto &texture : ir.textures) {
-        context.texture_specs[texture.name] = texture.data;
-    }
-    for (const auto &material : ir.materials) {
-        context.material_specs[material.name] = material.data;
-    }
-
-    for (const auto &texture : ir.textures) {
-        lookup_texture(context, texture.name, "texture '" + texture.name +
-                                              "'");
-    }
+    context.scene_ir = &ir;
     for (const auto &material : ir.materials) {
         context.materials[material.name] =
-            build_material(material.data, context, material.name);
+            build_material(material, context);
     }
 
     std::vector<shared_ptr<Light>> auto_lights;

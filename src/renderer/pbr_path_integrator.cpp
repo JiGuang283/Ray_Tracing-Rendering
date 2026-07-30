@@ -18,13 +18,9 @@ void PBRPathIntegrator::set_rr_start_depth(int depth) {
 }
 
 color PBRPathIntegrator::Li(const ray &r, const hittable &scene,
-                            const color &background) const {
-    RNG rng(make_thread_seed());
-    return Li(r, scene, background, rng);
-}
-
-color PBRPathIntegrator::Li(const ray &r, const hittable &scene,
-                            const color &background, RNG &rng) const {
+                            const color &background,
+                            IntegratorContext &context) const {
+    RNG &rng = context.rng;
     color throughput(1.0, 1.0, 1.0);
     color L(0.0, 0.0, 0.0);
     ray current_ray = r;
@@ -38,7 +34,8 @@ color PBRPathIntegrator::Li(const ray &r, const hittable &scene,
             break;
         }
 
-        auto shaded = integrator_common::shade_surface(rec, current_ray);
+        auto shaded = integrator_common::shade_surface(
+            rec, current_ray, context.shader_scratch);
         L += throughput * shaded.shading.emission;
 
         auto bs = shaded.shading.bsdf.sample(shaded.wo, rng);

@@ -11,7 +11,7 @@ class box : public hittable {
   public:
     box() {
     }
-    box(const point3 &p0, const point3 &p1, shared_ptr<material> ptr);
+    box(const point3 &p0, const point3 &p1, MaterialHandle ptr);
 
     virtual bool hit(const ray &r, double t_min, double t_max,
                      hit_record &rec) const override;

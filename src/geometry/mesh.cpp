@@ -8,7 +8,7 @@
 #include "tiny_obj_loader.h"
 
 FlatMesh::FlatMesh(std::vector<FlatTriangleData> faces,
-                   shared_ptr<material> mat, bool build_bvh)
+                   MaterialHandle mat, bool build_bvh)
     : triangles(std::move(faces)), mat_ptr(std::move(mat)) {
     indices.resize(triangles.size());
     for (size_t i = 0; i < indices.size(); ++i) {
@@ -214,7 +214,7 @@ bool FlatMesh::hit(const ray &r, double t_min, double t_max, hit_record &rec,
 
 
 shared_ptr<FlatMesh>
-FlatMesh::load_from_obj(const std::string &filename, shared_ptr<material> mat,
+FlatMesh::load_from_obj(const std::string &filename, MaterialHandle mat,
                         const vec3 &translation, const vec3 &scale,
                         bool build_bvh, bool use_vertex_normals) {
     tinyobj::ObjReaderConfig reader_config;

@@ -3,6 +3,7 @@
 
 #include "aabb.h"
 #include "hittable.h"
+#include "material.h"
 #include "ray.h"
 #include "rtweekend.h"
 #include "vec3.h"
@@ -12,7 +13,7 @@ class moving_sphere : public hittable {
     moving_sphere() {
     }
     moving_sphere(point3 cen0, point3 cen1, double _time0, double _time1,
-                  double r, shared_ptr<material> m)
+                  double r, MaterialHandle m)
         : center0(cen0), center1(cen1), time0(_time0), time1(_time1), radius(r),
           mat_ptr(m) {};
 
@@ -26,7 +27,7 @@ class moving_sphere : public hittable {
     point3 center0, center1;
     double time0, time1;
     double radius;
-    shared_ptr<material> mat_ptr;
+    MaterialHandle mat_ptr;
 };
 
 inline point3 moving_sphere::center(double time) const {

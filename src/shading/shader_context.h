@@ -17,7 +17,21 @@ struct ShaderEvalContext {
 
     static ShaderEvalContext from_surface(const SurfaceInteraction &surface,
                                           const vec3 &wo = vec3(0, 0, 0),
-                                          double time = 0.0);
+                                          double time = 0.0) {
+        ShaderEvalContext context;
+        context.position = surface.p;
+        context.uv0 = vec2(surface.u, surface.v);
+        context.geometry_normal = surface.geometry_normal;
+        context.shading_normal = surface.shading_normal;
+        context.frame = surface.frame;
+        context.wo =
+            wo.near_zero() ? surface.frame.normal : unit_vector(wo);
+        context.time = time;
+        context.front_face = surface.front_face;
+        context.primitive_id = surface.primitive_id;
+        context.material_id = surface.material_id;
+        return context;
+    }
 };
 
 #endif

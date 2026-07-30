@@ -5,19 +5,19 @@
 
 class PathIntegrator : public Integrator {
   public:
+    using Integrator::Li;
+
     PathIntegrator();
 
     void set_max_depth(int depth = 50) override;
 
-    color Li(const ray &r, const hittable &scene,
-             const color &background) const override;
-
     color Li(const ray &r, const hittable &scene, const color &background,
-             RNG &rng) const override;
+             IntegratorContext &context) const override;
 
   private:
     color Li_internal(const ray &r, const hittable &scene,
-                      const color &background, int depth, RNG &rng) const;
+                      const color &background, int depth,
+                      IntegratorContext &context) const;
 
     int m_max_depth = 50;
 };

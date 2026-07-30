@@ -4,7 +4,7 @@
 #include "ray.h"
 #include "vec3.h"
 
-class material;
+class MaterialInstance;
 
 enum BSDFSampleFlags {
     BSDF_NONE = 0,
@@ -26,7 +26,7 @@ struct hit_record {
     vec3 normal;
     vec3 dpdu{1, 0, 0};
     vec3 dpdv{0, 1, 0};
-    material *mat_ptr;
+    const MaterialInstance *mat_ptr;
     double t;
     double u;
     double v;
@@ -102,7 +102,7 @@ struct SurfaceInteraction {
     vec3 dpdu;
     vec3 dpdv;
     ShadingFrame frame;
-    material *mat_ptr;
+    const MaterialInstance *mat_ptr;
     double t;
     double u;
     double v;

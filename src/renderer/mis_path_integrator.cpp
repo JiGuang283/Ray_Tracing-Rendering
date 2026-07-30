@@ -19,26 +19,16 @@ void MISPathIntegrator::set_rr_start_depth(int depth) {
 }
 
 color MISPathIntegrator::Li(const ray &r, const hittable &scene,
-                            const color &background) const {
-    RNG rng(make_thread_seed());
-    return Li(r, scene, background, {}, rng);
+                            const color &background,
+                            IntegratorContext &context) const {
+    return Li(r, scene, background, {}, context);
 }
 
 color MISPathIntegrator::Li(
     const ray &r, const hittable &scene, const color &background,
-    const std::vector<shared_ptr<Light>> &lights) const {
-    RNG rng(make_thread_seed());
-    return Li(r, scene, background, lights, rng);
-}
-
-color MISPathIntegrator::Li(const ray &r, const hittable &scene,
-                            const color &background, RNG &rng) const {
-    return Li(r, scene, background, {}, rng);
-}
-
-color MISPathIntegrator::Li(
-    const ray &r, const hittable &scene, const color &background,
-    const std::vector<shared_ptr<Light>> &lights, RNG &rng) const {
+    const std::vector<shared_ptr<Light>> &lights,
+    IntegratorContext &context) const {
+    RNG &rng = context.rng;
     color throughput(1.0, 1.0, 1.0);
     color L(0.0, 0.0, 0.0);
     ray current_ray = r;
@@ -72,7 +62,8 @@ color MISPathIntegrator::Li(
             break;
         }
 
-        auto shaded = integrator_common::shade_surface(rec, current_ray);
+        auto shaded = integrator_common::shade_surface(
+            rec, current_ray, context.shader_scratch);
 
         if (shaded.shading.has_emission) {
             color L_emit(0, 0, 0);

@@ -31,7 +31,7 @@ flip_triangles(const std::vector<TriangleSurface> &triangles) {
 }
 
 void add_area_emitter_if_needed(BuiltObject &built, const json &object,
-                                const shared_ptr<material> &mat,
+                                const MaterialHandle &mat,
                                 bool flip_emitters) {
     if (!mat || !mat->is_emissive()) {
         return;
@@ -372,11 +372,11 @@ shared_ptr<hittable> build_object(const json &object,
                                            "constant_medium"),
                          context);
         double density = read_double_or(object, "density", 1.0);
-        if (object.contains("texture")) {
+        if (object.contains("_texture_ir_id")) {
             return make_shared<constant_medium>(
                 boundary, density,
-                build_texture_value(object["texture"], context,
-                                    "constant_medium.texture"));
+                build_texture(object["_texture_ir_id"].get<TextureIRId>(),
+                              TextureSemantic::Color, context));
         }
         return make_shared<constant_medium>(
             boundary, density,

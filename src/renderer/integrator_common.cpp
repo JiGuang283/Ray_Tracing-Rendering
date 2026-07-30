@@ -4,13 +4,16 @@
 
 namespace integrator_common {
 
-ShadedSurface shade_surface(const hit_record &rec, const ray &r) {
+ShadedSurface shade_surface(const hit_record &rec, const ray &r,
+                            ShaderScratch &scratch) {
     ShadedSurface shaded;
     shaded.surface = SurfaceInteraction(rec);
     shaded.wo = -unit_vector(r.direction());
     shaded.time = r.time();
     if (rec.mat_ptr) {
-        rec.mat_ptr->shade(shaded.surface, shaded.shading);
+        const ShaderEvalContext context = ShaderEvalContext::from_surface(
+            shaded.surface, shaded.wo, shaded.time);
+        rec.mat_ptr->evaluate(context, scratch, shaded.shading);
     }
     return shaded;
 }
@@ -32,12 +35,12 @@ color clamp_radiance(const color &L, double max_value) {
     return L;
 }
 
-double scattering_cos_factor(const ShadingResult &shading,
+double scattering_cos_factor(const MaterialOutput &shading,
                              const BSDFSample &sample) {
     return sample.is_phase() ? 1.0 : shading.bsdf.abs_cos_theta(sample.wi);
 }
 
-color scattering_weight(const ShadingResult &shading,
+color scattering_weight(const MaterialOutput &shading,
                         const BSDFSample &sample) {
     if (sample.pdf <= 0.0) {
         return color(0, 0, 0);

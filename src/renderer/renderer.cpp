@@ -41,6 +41,8 @@ Renderer::render(shared_ptr<hittable> world, shared_ptr<camera> cam,
     auto render_worker = [&](int worker_id) {
         Sampler sampler(
             mix_seed(m_settings.seed, static_cast<uint32_t>(worker_id + 1)));
+        ShaderScratch shader_scratch;
+        IntegratorContext integrator_context{sampler.rng(), shader_scratch};
         while (true) {
             int tile_index = next_tile_index.fetch_add(1);
             if (tile_index >= total_tiles) {
@@ -69,7 +71,8 @@ Renderer::render(shared_ptr<hittable> world, shared_ptr<camera> cam,
                             film.add_sample(
                                 i, j,
                                 m_integrator->Li(r, *world, background,
-                                                 lights, sampler.rng()));
+                                                 lights,
+                                                 integrator_context));
                         }
                     }
                     film.finalize_pixel(i, j);

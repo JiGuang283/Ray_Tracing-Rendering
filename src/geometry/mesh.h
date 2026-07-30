@@ -38,11 +38,11 @@ struct FlatMeshBVHNode {
 class FlatMesh : public hittable {
   public:
     FlatMesh() = default;
-    FlatMesh(std::vector<FlatTriangleData> faces, shared_ptr<material> mat,
+    FlatMesh(std::vector<FlatTriangleData> faces, MaterialHandle mat,
              bool build_bvh = true);
 
     static shared_ptr<FlatMesh>
-    load_from_obj(const std::string &filename, shared_ptr<material> mat,
+    load_from_obj(const std::string &filename, MaterialHandle mat,
                   const vec3 &translation = vec3(0, 0, 0),
                   const vec3 &scale = vec3(1, 1, 1),
                   bool build_bvh = true, bool use_vertex_normals = true);
@@ -61,7 +61,7 @@ class FlatMesh : public hittable {
     std::vector<FlatTriangleData> triangles;
     std::vector<int> indices;
     std::vector<FlatMeshBVHNode> nodes;
-    shared_ptr<material> mat_ptr;
+    MaterialHandle mat_ptr;
 
     int build_node(int start, int end);
     bool hit_triangle(int triangle_index, const ray &r, double t_min,

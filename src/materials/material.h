@@ -1,101 +1,78 @@
 #ifndef MATERIAL_H
 #define MATERIAL_H
 
+#include "shading/shader_context.h"
 #include "shading/shading.h"
-#include "shading/normal_mapping.h"
 #include "texture.h"
 
-class material {
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <variant>
+#include <vector>
+
+using MaterialParameterValue =
+    std::variant<double, color, TextureHandle, bool, std::uint32_t>;
+
+class MaterialParameterBlock {
   public:
-    virtual ~material() = default;
-    virtual void shade(const SurfaceInteraction &surface,
-                       ShadingResult &result) const = 0;
-    virtual bool is_emissive() const {
-        return false;
+    template <typename T> std::size_t add(T value) {
+        m_values.emplace_back(std::move(value));
+        return m_values.size() - 1;
     }
-    virtual color emission_estimate() const {
-        return color(0, 0, 0);
+
+    template <typename T> const T &get(std::size_t index) const {
+        return std::get<T>(m_values[index]);
     }
-};
 
-class lambertian : public material {
-  public:
-    explicit lambertian(const color &a);
-    explicit lambertian(TextureHandle a);
-
-    void shade(const SurfaceInteraction &surface,
-               ShadingResult &result) const override;
+    std::size_t size() const;
+    const MaterialParameterValue &operator[](std::size_t index) const;
 
   private:
-    TextureHandle albedo;
+    std::vector<MaterialParameterValue> m_values;
 };
 
-class metal : public material {
-  public:
-    metal(const color &a, double f);
+struct MaterialMetadata {
+    bool emissive = false;
+    color emission_estimate{0, 0, 0};
+};
 
-    void shade(const SurfaceInteraction &surface,
-               ShadingResult &result) const override;
+class MaterialProgram {
+  public:
+    virtual ~MaterialProgram() = default;
+
+    virtual void evaluate(const ShaderEvalContext &context,
+                          const MaterialParameterBlock &parameters,
+                          ShaderScratch &scratch,
+                          MaterialOutput &output) const = 0;
+    virtual void validate(const MaterialParameterBlock &parameters) const = 0;
+    virtual std::size_t max_closures() const = 0;
+};
+
+class MaterialInstance {
+  public:
+    MaterialInstance(std::shared_ptr<const MaterialProgram> program,
+                     MaterialParameterBlock parameters,
+                     MaterialMetadata metadata = {});
+
+    void evaluate(const ShaderEvalContext &context, ShaderScratch &scratch,
+                  MaterialOutput &output) const {
+        scratch.reset();
+        m_program->evaluate(context, m_parameters, scratch, output);
+    }
+
+    bool is_emissive() const;
+    const color &emission_estimate() const;
+    const MaterialParameterBlock &parameters() const;
+    const std::shared_ptr<const MaterialProgram> &program() const;
 
   private:
-    color albedo;
-    double fuzz;
+    std::shared_ptr<const MaterialProgram> m_program;
+    MaterialParameterBlock m_parameters;
+    MaterialMetadata m_metadata;
 };
 
-class dielectric : public material {
-  public:
-    explicit dielectric(double index_of_refraction);
-
-    void shade(const SurfaceInteraction &surface,
-               ShadingResult &result) const override;
-
-  private:
-    double ir;
-};
-
-class diffuse_light : public material {
-  public:
-    explicit diffuse_light(TextureHandle a);
-    explicit diffuse_light(color c);
-
-    void shade(const SurfaceInteraction &surface,
-               ShadingResult &result) const override;
-    bool is_emissive() const override;
-    color emission_estimate() const override;
-
-  private:
-    TextureHandle emit;
-};
-
-class PrincipledMaterial : public material {
-  public:
-    PrincipledMaterial(TextureHandle base_color,
-                       TextureHandle roughness,
-                       TextureHandle metallic,
-                       TextureHandle normal_map = nullptr,
-                       TextureHandle emission = nullptr,
-                       double emission_strength = 1.0,
-                       TextureHandle clearcoat = nullptr,
-                       TextureHandle clearcoat_roughness = nullptr,
-                       NormalMapSettings normal_settings = {});
-
-    void shade(const SurfaceInteraction &surface,
-               ShadingResult &result) const override;
-    bool is_emissive() const override;
-    color emission_estimate() const override;
-
-  private:
-    TextureHandle base_color;
-    TextureHandle roughness;
-    TextureHandle metallic;
-    TextureHandle normal_map;
-    TextureHandle emission;
-    double emission_strength;
-    TextureHandle clearcoat;
-    TextureHandle clearcoat_roughness;
-    NormalMapSettings normal_settings;
-};
-
-using PBRMaterial = PrincipledMaterial;
+using MaterialHandle = std::shared_ptr<const MaterialInstance>;
 
 #endif

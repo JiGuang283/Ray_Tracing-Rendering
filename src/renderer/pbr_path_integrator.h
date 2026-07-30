@@ -5,17 +5,16 @@
 
 class PBRPathIntegrator : public Integrator {
   public:
+    using Integrator::Li;
+
     PBRPathIntegrator();
 
     void set_max_depth(int depth = 50) override;
 
     void set_rr_start_depth(int depth);
 
-    color Li(const ray &r, const hittable &scene,
-             const color &background) const override;
-
     color Li(const ray &r, const hittable &scene, const color &background,
-             RNG &rng) const override;
+             IntegratorContext &context) const override;
 
   private:
     int m_max_depth = 50;

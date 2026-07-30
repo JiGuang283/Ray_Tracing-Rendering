@@ -2,11 +2,12 @@
 #define SPHERE_H
 
 #include "hittable.h"
+#include "material.h"
 #include "vec3.h"
 
 class sphere : public hittable {
   public:
-    sphere(point3 cen, double r, shared_ptr<material> m)
+    sphere(point3 cen, double r, MaterialHandle m)
         : center(cen), radius(r), mat_ptr(std::move(m)) {};
 
     virtual bool hit(const ray &r, double t_min, double t_max,
@@ -18,7 +19,7 @@ class sphere : public hittable {
   public:
     point3 center;
     double radius;
-    shared_ptr<material> mat_ptr;
+    MaterialHandle mat_ptr;
 
   private:
     static void get_sphere_uv(const point3 &p, double &u, double &v);

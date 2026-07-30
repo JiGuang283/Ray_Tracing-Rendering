@@ -13,19 +13,15 @@ void PathIntegrator::set_max_depth(int depth) {
 }
 
 color PathIntegrator::Li(const ray &r, const hittable &scene,
-                         const color &background) const {
-    RNG rng(make_thread_seed());
-    return Li(r, scene, background, rng);
-}
-
-color PathIntegrator::Li(const ray &r, const hittable &scene,
-                         const color &background, RNG &rng) const {
-    return Li_internal(r, scene, background, m_max_depth, rng);
+                         const color &background,
+                         IntegratorContext &context) const {
+    return Li_internal(r, scene, background, m_max_depth, context);
 }
 
 color PathIntegrator::Li_internal(const ray &r, const hittable &scene,
                                   const color &background, int depth,
-                                  RNG &rng) const {
+                                  IntegratorContext &context) const {
+    RNG &rng = context.rng;
     hit_record rec;
 
     if (depth <= 0) {
@@ -36,7 +32,8 @@ color PathIntegrator::Li_internal(const ray &r, const hittable &scene,
         return background;
     }
 
-    auto shaded = integrator_common::shade_surface(rec, r);
+    auto shaded =
+        integrator_common::shade_surface(rec, r, context.shader_scratch);
     color emitted = shaded.shading.emission;
 
     auto bs = shaded.shading.bsdf.sample(shaded.wo, rng);
@@ -52,5 +49,5 @@ color PathIntegrator::Li_internal(const ray &r, const hittable &scene,
 
     ray scattered = shaded.surface.spawn_ray(bs->wi, r.time());
     return emitted + throughput * Li_internal(scattered, scene, background,
-                                              depth - 1, rng);
+                                              depth - 1, context);
 }

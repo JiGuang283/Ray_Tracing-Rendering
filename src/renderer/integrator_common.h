@@ -10,17 +10,18 @@ namespace integrator_common {
 
 struct ShadedSurface {
     SurfaceInteraction surface;
-    ShadingResult shading;
+    MaterialOutput shading;
     vec3 wo;
     double time = 0.0;
 };
 
-ShadedSurface shade_surface(const hit_record &rec, const ray &r);
+ShadedSurface shade_surface(const hit_record &rec, const ray &r,
+                            ShaderScratch &scratch);
 double power_heuristic(double pdf_a, double pdf_b);
 color clamp_radiance(const color &L, double max_value = 100.0);
-double scattering_cos_factor(const ShadingResult &shading,
+double scattering_cos_factor(const MaterialOutput &shading,
                              const BSDFSample &sample);
-color scattering_weight(const ShadingResult &shading,
+color scattering_weight(const MaterialOutput &shading,
                         const BSDFSample &sample);
 bool visible(const hittable &scene, const ray &shadow_ray,
              double max_distance, RNG &rng);

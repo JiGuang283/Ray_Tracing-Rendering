@@ -5,39 +5,21 @@
 
 #include "hittable.h"
 #include "material.h"
+#include "material_programs.h"
 #include "ray.h"
 #include "texture.h"
 #include "vec3.h"
-
-class isotropic : public material {
-  public:
-    isotropic(color c) : albedo(make_shared<SolidColorTexture>(c)) {
-    }
-    isotropic(TextureHandle a) : albedo(std::move(a)) {
-    }
-
-    void shade(const SurfaceInteraction &surface,
-               ShadingResult &result) const override {
-        result.reset(surface.frame);
-        const ShaderEvalContext context =
-            ShaderEvalContext::from_surface(surface);
-        result.bsdf.add_isotropic_phase(albedo->evaluate(context).rgb);
-    }
-
-  public:
-    TextureHandle albedo;
-};
 
 class constant_medium : public hittable {
   public:
     constant_medium(shared_ptr<hittable> b, double d, TextureHandle a)
         : boundary(b), neg_inv_density(-1 / d),
-          phase_function(make_shared<isotropic>(a)) {
+          phase_function(make_isotropic_material(std::move(a))) {
     }
 
     constant_medium(shared_ptr<hittable> b, double d, color c)
         : boundary(b), neg_inv_density(-1 / d),
-          phase_function(make_shared<isotropic>(c)) {
+          phase_function(make_isotropic_material(c)) {
     }
 
     virtual bool hit(const ray &r, double t_min, double t_max,
@@ -51,7 +33,7 @@ class constant_medium : public hittable {
 
   public:
     shared_ptr<hittable> boundary;
-    shared_ptr<material> phase_function;
+    MaterialHandle phase_function;
     double neg_inv_density;
 };
 

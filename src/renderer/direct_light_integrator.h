@@ -6,26 +6,21 @@
 
 class DirectLightIntegrator : public Integrator {
   public:
+    using Integrator::Li;
+
     DirectLightIntegrator();
 
     void set_max_depth(int depth = 50) override;
 
     void set_rr_start_depth(int depth);
 
-    color Li(const ray &r, const hittable &scene,
-             const color &background) const override;
-
-    color
-    Li(const ray &r, const hittable &scene, const color &background,
-       const std::vector<shared_ptr<Light>> &lights) const override;
-
     color Li(const ray &r, const hittable &scene, const color &background,
-             RNG &rng) const override;
+             IntegratorContext &context) const override;
 
     color
     Li(const ray &r, const hittable &scene, const color &background,
        const std::vector<shared_ptr<Light>> &lights,
-       RNG &rng) const override;
+       IntegratorContext &context) const override;
 
   private:
     int m_max_depth = 50;

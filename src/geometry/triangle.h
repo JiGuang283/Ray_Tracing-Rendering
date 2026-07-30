@@ -10,7 +10,7 @@
 class triangle : public hittable {
   public:
     triangle(const point3 &p0, const point3 &p1, const point3 &p2,
-             shared_ptr<material> m, const vec2 &uv0 = vec2(0, 0),
+             MaterialHandle m, const vec2 &uv0 = vec2(0, 0),
              const vec2 &uv1 = vec2(0, 0), const vec2 &uv2 = vec2(0, 0),
              bool has_uvs = false)
         : v0(p0), v1(p1), v2(p2), uv0(uv0), uv1(uv1), uv2(uv2),
@@ -22,7 +22,7 @@ class triangle : public hittable {
 
     triangle(const point3 &p0, const point3 &p1, const point3 &p2,
              const vec3 &n0, const vec3 &n1, const vec3 &n2,
-             shared_ptr<material> m, const vec2 &uv0 = vec2(0, 0),
+             MaterialHandle m, const vec2 &uv0 = vec2(0, 0),
              const vec2 &uv1 = vec2(0, 0), const vec2 &uv2 = vec2(0, 0),
              bool has_uvs = false)
         : v0(p0), v1(p1), v2(p2), n0(n0), n1(n1), n2(n2), uv0(uv0), uv1(uv1),
@@ -129,7 +129,7 @@ class triangle : public hittable {
     vec2 uv2{0, 0};
     bool has_texcoords = false;
 
-    shared_ptr<material> mat_ptr;
+    MaterialHandle mat_ptr;
 
     void set_surface_derivatives(hit_record &rec) const {
         if (!has_texcoords) {

@@ -1,6 +1,6 @@
 #include "box.h"
 
-box::box(const point3 &p0, const point3 &p1, shared_ptr<material> ptr) {
+box::box(const point3 &p0, const point3 &p1, MaterialHandle ptr) {
     box_min = p0;
     box_max = p1;
 
