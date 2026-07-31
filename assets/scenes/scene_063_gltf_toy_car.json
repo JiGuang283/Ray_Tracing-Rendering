@@ -1,0 +1,77 @@
+{
+  "name": "gltf_toy_car",
+  "camera": {
+    "lookfrom": [3.2, 2.0, 4.2],
+    "lookat": [0.0, 0.72, 0.0],
+    "vup": [0.0, 1.0, 0.0],
+    "vfov": 27.0,
+    "aperture": 0.0,
+    "focus_dist": 5.4,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1200,
+    "spp": 256,
+    "background": [0.012, 0.016, 0.024],
+    "color_pipeline": {
+      "tone_mapping": "aces",
+      "exposure": -0.35,
+      "gamma": 2.2
+    }
+  },
+  "world_accel": true,
+  "auto_emitters": false,
+  "materials": {
+    "floor": {
+      "type": "principled",
+      "base_color": [0.09, 0.11, 0.14],
+      "roughness": 0.24,
+      "metallic": 0.0,
+      "clearcoat": 0.16,
+      "clearcoat_roughness": 0.12
+    },
+    "glass_override": {
+      "type": "dielectric",
+      "index_of_refraction": 1.5
+    }
+  },
+  "objects": [
+    {
+      "type": "xz_rect",
+      "x0": -7.0,
+      "x1": 7.0,
+      "z0": -6.0,
+      "z1": 6.0,
+      "k": 0.0,
+      "material": "floor"
+    },
+    {
+      "type": "model",
+      "path": "assets/models/ToyCar/ToyCar.glb",
+      "transform": {
+        "translation": [0.0, 0.48, 0.0],
+        "rotation": [0.0, -0.2164396139, 0.0, 0.9762960071],
+        "scale": [30.0, 30.0, 30.0]
+      },
+      "material_overrides": {
+        "Glass": "glass_override"
+      }
+    }
+  ],
+  "lights": [
+    {
+      "type": "quad",
+      "Q": [-3.2, 5.4, -1.8],
+      "u": [4.5, 0.0, 0.0],
+      "v": [0.0, 0.0, 3.8],
+      "intensity": [18.0, 16.0, 13.0]
+    },
+    {
+      "type": "quad",
+      "Q": [3.8, 1.2, 2.5],
+      "u": [0.0, 3.2, 0.0],
+      "v": [0.0, 0.0, -3.0],
+      "intensity": [5.0, 8.0, 14.0]
+    }
+  ]
+}

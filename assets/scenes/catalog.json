@@ -286,6 +286,11 @@
       "id": 62,
       "name": "pbr_texture_gallery",
       "path": "assets/scenes/scene_062_pbr_texture_gallery.json"
+    },
+    {
+      "id": 63,
+      "name": "gltf_toy_car",
+      "path": "assets/scenes/scene_063_gltf_toy_car.json"
     }
   ]
 }

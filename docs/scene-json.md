@@ -18,8 +18,8 @@ procedural generator、legacy mesh 路径和旧 pointer BVH 都已经从默认�
 运行时加载分三步：
 
 - `SceneDescription`：外部 JSON 描述和来源路径。
-- `SceneIR`：camera/render 配置以及强类型 Texture/Material variant；
-  object/light 暂时保留 JSON payload。
+- `SceneIR`：camera/render 配置以及强类型 Texture、Material、Object、Light
+  variant；递归 object 会降低为 ID 引用图。
 - `SceneConfig`：由 scene builder 构建出的运行时 camera、world、lights、render preset。
 
 Texture IR 会把内联节点降成 ID 图并检查未知引用和循环引用。构建阶段再根据
@@ -153,9 +153,11 @@ Texture 可以作为轻量 shader graph 节点嵌套使用，例如：
 `auto_emitters` 控制是否把 emissive geometry 自动加入 light sampler。默认规则：
 没有显式 `lights` 时开启，有显式 `lights` 时关闭，以避免旧场景重复采样同一盏灯。
 当前自动 emitter 支持 `xy_rect`、`xz_rect`、`yz_rect`、`quad`、`triangle`、
-`sphere`、`obj` mesh，并支持 `translate` / `rotate_y` / `flip_face` / `list` /
-`accel` 包裹。`flip_face` 会翻转矩形、三角形和 mesh emitter 的发光朝向；
-flip sphere 不生成 inward sphere emitter。
+`sphere`、`obj` 和 `model` mesh，并支持 `transform` / `translate` /
+`rotate_y` / `flip_face` / `list` / `accel` 包裹。Mesh emitter 引用共享
+`MeshInstance`，在采样点插值 UV/顶点色并求值 emission 纹理，不复制一份几何。
+`flip_face` 会翻转矩形、三角形和 mesh emitter 的发光朝向；flip sphere 不生成
+inward sphere emitter。
 
 Object：
 
@@ -168,12 +170,60 @@ Object：
 - `quad`
 - `triangle`
 - `obj`
+- `model`
+- `transform`
 - `translate`
 - `rotate_y`
 - `flip_face`
 - `constant_medium`
 - `list`
 - `accel`
+
+`model` 用于加载 glTF 2.0 `.gltf` / `.glb`：
+
+```json
+{
+  "type": "model",
+  "path": "assets/models/ToyCar/ToyCar.glb",
+  "scene": 0,
+  "transform": {
+    "translation": [0.0, 0.5, 0.0],
+    "rotation": [0.0, 0.0, 0.0, 1.0],
+    "scale": [30.0, 30.0, 30.0]
+  },
+  "material_overrides": {
+    "Glass": "glass_override"
+  }
+}
+```
+
+- `scene` 可省略，默认使用 glTF 的 default scene。
+- `transform.rotation` 是 `[x, y, z, w]` quaternion；也可使用 16 元素
+  column-major `matrix`。
+- `material_overrides` 按 glTF material name 绑定场景中的 JSON 材质。
+- mesh、image 和 model 都由 `ResourceRegistry` 按规范化路径缓存；多个 node 或
+  多个 model object 共享不可变几何与图像资源。
+- 导入器支持 triangle/triangle strip/triangle fan、interleaved/normalized/sparse
+  accessor、POSITION/NORMAL/TANGENT/TEXCOORD_0/COLOR_0、节点层级、多 primitive、
+  多材质、嵌入或外部图像、metallic-roughness、normal、emissive、clearcoat 和
+  `KHR_texture_transform`。缺失法线和切线会分别生成，切线使用 MikkTSpace。
+- 当前不支持 skin、morph animation、Draco、meshopt、GPU instancing、多个 UV set、
+  alpha masking/blending，以及 transmission/sheen/volume 等尚未进入 BSDF 的扩展。
+  对会改变画面语义的扩展会给出 warning 或明确加载错误，不静默伪装为完整支持。
+
+`transform` 是通用仿射包装，可作用于任意 object：
+
+```json
+{
+  "type": "transform",
+  "transform": {
+    "translation": [1.0, 0.0, 0.0],
+    "scale": [2.0, 1.0, 0.5]
+  },
+  "object": {"type": "sphere", "center": [0, 0, 0],
+             "radius": 1, "material": "paint"}
+}
+```
 
 Light：
 
@@ -186,7 +236,7 @@ Light：
 ## 已移除路径
 
 - `obj.implementation`
-  - 已移除。OBJ 统一使用 `FlatMesh`。
+  - 已移除。OBJ 统一导入为共享 `MeshAsset`，由 `MeshInstance` 绑定材质和变换。
 - `random_scene_generator`
   - 已移除。scene 1/6 已展开为显式 JSON。
 - `final_scene_generator`
@@ -196,7 +246,7 @@ Light：
 - `bvh_node`
   - 已移除。顶层加速结构使用 `LinearBVH`。
 - `mesh`
-  - 已移除。OBJ 使用 `FlatMesh`。
+  - 旧多态 mesh 已移除。OBJ/glTF 使用 `MeshAsset + MeshInstance`。
 - `material::scatter`
   - 已移除。renderer 调用 `MaterialProgram::evaluate(...)` 获取
     `MaterialOutput`，再只通过 `BSDF::sample/eval/pdf` 完成散射计算。
@@ -230,4 +280,5 @@ python3 tools/smoke_catalog.py --width 32 --spp 1 --threads 1
 ```bash
 ./build/CGAssignment4 23 4 --bench --width 300 --spp 8 --runs 1 --seed 123 --threads 1
 ./build/CGAssignment4 --scene-file assets/scenes/scene_023_mis_comparison_scene.json --integrator 4 --bench --width 300 --spp 8 --runs 1 --seed 123 --threads 1
+./build/CGAssignment4 63 4 --bench --width 640 --spp 32 --runs 1 --seed 123
 ```
