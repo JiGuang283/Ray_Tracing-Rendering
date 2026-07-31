@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(CGAssignment4 LANGUAGES CXX)
+project(CGAssignment4 LANGUAGES C CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -12,6 +12,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(SDL2 REQUIRED)
 find_package(Threads REQUIRED)
+
+add_library(mikktspace STATIC
+    ${PROJECT_SOURCE_DIR}/src/external/mikktspace/mikktspace.c
+)
+target_include_directories(mikktspace PUBLIC
+    ${PROJECT_SOURCE_DIR}/src/external/mikktspace
+)
 
 set(PROJECT_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/include
@@ -44,7 +51,10 @@ list(REMOVE_ITEM CORE_SOURCES
 
 add_library(raytracer_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
 target_include_directories(raytracer_core PUBLIC ${PROJECT_INCLUDE_DIRS})
-target_link_libraries(raytracer_core PUBLIC Threads::Threads)
+target_link_libraries(raytracer_core
+    PUBLIC Threads::Threads
+    PRIVATE mikktspace
+)
 
 add_executable(${PROJECT_NAME}
     ${PROJECT_SOURCE_DIR}/src/main.cpp
