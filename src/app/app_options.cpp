@@ -61,7 +61,7 @@ AppOptions parse_options(int argc, char *args[]) {
                 break;
             }
         } else if (arg == "--mesh-flat") {
-            fail("--mesh-flat was removed; FlatMesh is now the default OBJ path.");
+            fail("--mesh-flat was removed; MeshAsset is now the default model path.");
             break;
         } else if (arg == "--runs" && i + 1 < argc) {
             if (!parse_int_arg(args[++i], options.benchmark.runs)) {

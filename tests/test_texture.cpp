@@ -1,4 +1,4 @@
-#include "geometry_transform.h"
+#include "transform.h"
 #include "normal_mapping.h"
 #include "resource_registry.h"
 #include "test_harness.h"
@@ -151,8 +151,8 @@ TEST_CASE(normal_map_supports_opengl_directx_and_strength) {
 
 TEST_CASE(normals_use_inverse_scale_transform) {
     const vec3 normal = unit_vector(vec3(1, 1, 0));
-    const vec3 transformed =
-        transform_normal_by_inverse_scale(normal, vec3(2, 1, 1));
+    const vec3 transformed = unit_vector(
+        Transform::scale(vec3(2, 1, 1)).normal_to_world(normal));
     REQUIRE_NEAR(transformed.x(), 1.0 / std::sqrt(5.0), 1e-12);
     REQUIRE_NEAR(transformed.y(), 2.0 / std::sqrt(5.0), 1e-12);
 }

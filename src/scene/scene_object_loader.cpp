@@ -4,8 +4,9 @@
 #include "aarect.h"
 #include "box.h"
 #include "constant_medium.h"
-#include "mesh.h"
+#include "mesh_instance.h"
 #include "moving_sphere.h"
+#include "obj_importer.h"
 #include "quad_light.h"
 #include "sphere.h"
 #include "sphere_light.h"
@@ -19,6 +20,33 @@
 namespace scene_loader_internal {
 
 namespace {
+
+shared_ptr<MeshInstance>
+load_obj_instance(const json &object, SceneBuildContext &context,
+                  const MaterialHandle &material) {
+    const std::string path = resolve_asset_path(
+        context, read_string(object, "path", "obj"));
+    ObjImportOptions options;
+    options.build_bvh = read_bool_or(object, "build_bvh", true);
+    options.use_vertex_normals =
+        read_bool_or(object, "use_vertex_normals", true);
+    std::string error;
+    std::shared_ptr<const MeshAsset> asset =
+        load_obj_mesh_asset(path, options, error);
+    if (!asset) {
+        throw std::runtime_error("Scene file error: failed to load OBJ '" +
+                                 path + "': " + error);
+    }
+
+    const Transform local_transform =
+        Transform::translate(read_vec3_or(object, "translate", vec3(0, 0, 0),
+                                          "obj")) *
+        Transform::scale(
+            read_vec3_or(object, "scale", vec3(1, 1, 1), "obj"));
+    return make_shared<MeshInstance>(asset,
+                                     std::vector<MaterialHandle>{material},
+                                     local_transform);
+}
 
 std::vector<TriangleSurface>
 flip_triangles(const std::vector<TriangleSurface> &triangles) {
@@ -160,19 +188,11 @@ BuiltObject build_obj_with_emitters(const json &object,
     auto mat = lookup_material(context, object, "obj");
     if (object.contains("implementation")) {
         throw std::runtime_error(
-            "Scene file error: obj.implementation was removed; FlatMesh "
+            "Scene file error: obj.implementation was removed; MeshAsset "
             "is now the only OBJ path.");
     }
 
-    auto mesh = FlatMesh::load_from_obj(
-        resolve_asset_path(context, read_string(object, "path", "obj")), mat,
-        read_vec3_or(object, "translate", vec3(0, 0, 0), "obj"),
-        read_vec3_or(object, "scale", vec3(1, 1, 1), "obj"),
-        read_bool_or(object, "build_bvh", true),
-        read_bool_or(object, "use_vertex_normals", true));
-    if (!mesh) {
-        throw std::runtime_error("Scene file error: failed to load OBJ mesh.");
-    }
+    auto mesh = load_obj_instance(object, context, mat);
 
     BuiltObject built;
     built.object = mesh;
@@ -310,20 +330,11 @@ shared_ptr<hittable> build_object(const json &object,
         auto mat = lookup_material(context, object, "obj");
         if (object.contains("implementation")) {
             throw std::runtime_error(
-                "Scene file error: obj.implementation was removed; FlatMesh "
+                "Scene file error: obj.implementation was removed; MeshAsset "
                 "is now the only OBJ path.");
         }
-        shared_ptr<hittable> mesh_object = FlatMesh::load_from_obj(
-            resolve_asset_path(context, read_string(object, "path", "obj")),
-            mat,
-            read_vec3_or(object, "translate", vec3(0, 0, 0), "obj"),
-            read_vec3_or(object, "scale", vec3(1, 1, 1), "obj"),
-            read_bool_or(object, "build_bvh", true),
-            read_bool_or(object, "use_vertex_normals", true));
-        if (!mesh_object) {
-            throw std::runtime_error(
-                "Scene file error: failed to load OBJ mesh.");
-        }
+        shared_ptr<hittable> mesh_object =
+            load_obj_instance(object, context, mat);
         if (object.contains("rotation_y")) {
             mesh_object = make_shared<rotate_y>(
                 mesh_object, read_double_or(object, "rotation_y", 0.0));
