@@ -71,6 +71,25 @@ TEST_CASE(material_metadata_is_available_without_shader_evaluation) {
     REQUIRE_NEAR(output.emission.y(), 3.0, 1e-12);
 }
 
+TEST_CASE(principled_emission_can_be_double_sided) {
+    const TextureHandle white =
+        std::make_shared<SolidColorTexture>(color(1, 1, 1));
+    const TextureHandle black =
+        std::make_shared<SolidColorTexture>(color(0, 0, 0));
+    const MaterialHandle material = make_principled_material(
+        white, white, black, nullptr, white, 2.0, nullptr, nullptr, {}, true);
+    REQUIRE(material->is_emissive());
+    REQUIRE(material->is_double_sided());
+
+    ShaderEvalContext context = default_context();
+    context.front_face = false;
+    ShaderScratch scratch;
+    MaterialOutput output;
+    material->evaluate(context, scratch, output);
+    REQUIRE(output.has_emission);
+    REQUIRE_NEAR(output.emission.x(), 2.0, 1e-12);
+}
+
 TEST_CASE(material_program_closure_capacity_is_validated) {
     bool threw = false;
     try {

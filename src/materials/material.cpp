@@ -31,6 +31,10 @@ bool MaterialInstance::is_emissive() const {
     return m_metadata.emissive;
 }
 
+bool MaterialInstance::is_double_sided() const {
+    return m_metadata.double_sided;
+}
+
 const color &MaterialInstance::emission_estimate() const {
     return m_metadata.emission_estimate;
 }

@@ -6,8 +6,8 @@
 #include "constant_medium.h"
 #include "mesh_instance.h"
 #include "mesh_light.h"
+#include "model_asset.h"
 #include "moving_sphere.h"
-#include "obj_importer.h"
 #include "quad_light.h"
 #include "sphere.h"
 #include "sphere_light.h"
@@ -32,16 +32,6 @@ const ObjectIRNode &object_node(ObjectIRId id,
     return context.scene_ir->object_nodes[id];
 }
 
-std::vector<TriangleSurface>
-flip_triangles(const std::vector<TriangleSurface> &triangles) {
-    std::vector<TriangleSurface> result;
-    result.reserve(triangles.size());
-    for (const TriangleSurface &triangle : triangles) {
-        result.push_back({triangle.v0, triangle.v2, triangle.v1});
-    }
-    return result;
-}
-
 color emitter_radiance(const MaterialHandle &material) {
     if (!material || !material->is_emissive()) {
         return color(0, 0, 0);
@@ -64,13 +54,11 @@ BuiltObject build_obj(const ObjObjectIR &obj, const std::string &node_context,
                       bool flip_emitters) {
     const MaterialHandle material =
         lookup_material(context, obj.material, node_context);
-    ObjImportOptions options;
-    options.build_bvh = obj.build_bvh;
-    options.use_vertex_normals = obj.use_vertex_normals;
     const std::string path = resolve_asset_path(context, obj.path);
     std::string error;
     const std::shared_ptr<const MeshAsset> asset =
-        load_obj_mesh_asset(path, options, error);
+        context.resources.load_obj(path, obj.build_bvh,
+                                   obj.use_vertex_normals, error);
     if (!asset) {
         throw std::runtime_error("Scene file error: failed to load OBJ '" +
                                  path + "': " + error);
@@ -96,13 +84,115 @@ BuiltObject build_obj(const ObjObjectIR &obj, const std::string &node_context,
     built.object = instance;
     const color radiance = emitter_radiance(material);
     if (auto_emitters && radiance.length_squared() > 0.0) {
-        std::vector<TriangleSurface> triangles = instance->light_triangles();
-        if (flip_emitters) {
-            triangles = flip_triangles(triangles);
-        }
-        append_emitter(built,
-                       make_shared<MeshLight>(triangles, radiance), radiance);
+        append_emitter(
+            built, make_shared<MeshLight>(instance, 0, flip_emitters),
+            radiance);
     }
+    return built;
+}
+
+void instantiate_model_node(const ModelAsset &asset, std::size_t node_index,
+                            const Transform &parent_to_world,
+                            const std::vector<MaterialHandle> &materials,
+                            hittable_list &instances, BuiltObject &built,
+                            bool auto_emitters, bool flip_emitters) {
+    if (node_index >= asset.nodes().size()) {
+        throw std::runtime_error(
+            "Scene build error: model contains an invalid node reference.");
+    }
+    const ModelNode &node = asset.nodes()[node_index];
+    const Transform node_to_world = parent_to_world * node.local_transform;
+    if (node.mesh_index >= 0) {
+        const ModelMesh &mesh =
+            asset.meshes()[static_cast<std::size_t>(node.mesh_index)];
+        auto instance = make_shared<MeshInstance>(
+            mesh.geometry, materials, node_to_world);
+        instances.add(instance);
+
+        if (auto_emitters) {
+            std::vector<bool> used_slots(materials.size(), false);
+            for (std::size_t triangle_index = 0;
+                 triangle_index < mesh.geometry->triangle_count();
+                 ++triangle_index) {
+                const std::size_t slot =
+                    mesh.geometry->triangle(
+                        static_cast<std::uint32_t>(triangle_index))
+                        .material_slot;
+                if (used_slots[slot]) {
+                    continue;
+                }
+                used_slots[slot] = true;
+                const color radiance = emitter_radiance(materials[slot]);
+                if (radiance.length_squared() == 0.0) {
+                    continue;
+                }
+                append_emitter(built,
+                               make_shared<MeshLight>(
+                                   instance, static_cast<std::uint32_t>(slot),
+                                   flip_emitters),
+                               radiance);
+            }
+        }
+    }
+    for (std::size_t child : node.children) {
+        instantiate_model_node(asset, child, node_to_world, materials,
+                               instances, built, auto_emitters,
+                               flip_emitters);
+    }
+}
+
+BuiltObject build_model(const ModelObjectIR &model,
+                        const std::string &node_context,
+                        SceneBuildContext &context, bool auto_emitters,
+                        bool flip_emitters) {
+    const std::string path = resolve_asset_path(context, model.path);
+    ModelImportOptions options;
+    std::string error;
+    const std::shared_ptr<const ModelAsset> asset =
+        context.resources.load_model(path, options, error);
+    if (!asset) {
+        throw std::runtime_error("Scene file error: failed to load model '" +
+                                 path + "': " + error);
+    }
+
+    std::vector<MaterialHandle> materials = asset->materials();
+    for (const auto &override_entry : model.material_overrides) {
+        bool matched = false;
+        for (std::size_t slot = 0; slot < asset->material_names().size();
+             ++slot) {
+            if (asset->material_names()[slot] == override_entry.first) {
+                materials[slot] = lookup_material(
+                    context, override_entry.second,
+                    node_context + ".material_overrides." +
+                        override_entry.first);
+                matched = true;
+            }
+        }
+        if (!matched) {
+            throw std::runtime_error(
+                "Scene file error: model material override references unknown "
+                "material '" +
+                override_entry.first + "' in " + node_context + ".");
+        }
+    }
+
+    const int scene_index = asset->resolve_scene_index(model.scene_index);
+    const ModelScene &scene =
+        asset->scenes()[static_cast<std::size_t>(scene_index)];
+    hittable_list instances;
+    BuiltObject built;
+    for (std::size_t root : scene.roots) {
+        instantiate_model_node(*asset, root, model.transform, materials,
+                               instances, built, auto_emitters,
+                               flip_emitters);
+    }
+    if (instances.objects.empty()) {
+        throw std::runtime_error("Scene file error: selected model scene '" +
+                                 scene.name + "' contains no mesh instances.");
+    }
+    built.object = instances.objects.size() == 1
+                       ? instances.objects.front()
+                       : make_accel(instances);
     return built;
 }
 
@@ -238,10 +328,8 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                 return build_obj(typed, node.context, context, auto_emitters,
                                  flip_emitters);
             } else if constexpr (std::is_same_v<T, ModelObjectIR>) {
-                throw std::runtime_error(
-                    "Scene build error: glTF model loading is not implemented "
-                    "yet for " +
-                    node.context + ".");
+                return build_model(typed, node.context, context,
+                                   auto_emitters, flip_emitters);
             } else {
                 throw std::runtime_error(
                     "Scene build error: expected a primitive ObjectIR node in " +

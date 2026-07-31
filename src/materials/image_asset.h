@@ -1,6 +1,8 @@
 #ifndef IMAGE_ASSET_H
 #define IMAGE_ASSET_H
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -9,6 +11,9 @@ class ImageAsset {
   public:
     static std::shared_ptr<const ImageAsset>
     load(const std::string &path, std::string &error);
+    static std::shared_ptr<const ImageAsset>
+    load_from_memory(const std::uint8_t *data, std::size_t size,
+                     std::string &error);
     static std::shared_ptr<const ImageAsset> diagnostic();
     static std::shared_ptr<const ImageAsset>
     from_pixels(int width, int height, int channels,

@@ -35,6 +35,7 @@ struct SamplerState {
     WrapMode wrap_u = WrapMode::Repeat;
     WrapMode wrap_v = WrapMode::Repeat;
     FilterMode filter = FilterMode::Bilinear;
+    bool flip_v = true;
 };
 
 struct TextureSample {
@@ -65,6 +66,12 @@ class SolidColorTexture final : public Texture {
 
   private:
     color m_value;
+};
+
+class VertexColorTexture final : public Texture {
+  public:
+    TextureSample
+    evaluate(const ShaderEvalContext &context) const override;
 };
 
 class CheckerTexture final : public Texture {
@@ -124,6 +131,22 @@ class ScaleTexture final : public Texture {
   private:
     TextureHandle m_input;
     double m_scale;
+};
+
+class UVTransformTexture final : public Texture {
+  public:
+    UVTransformTexture(TextureHandle input, const vec2 &offset,
+                       const vec2 &scale, double rotation_radians);
+
+    TextureSample
+    evaluate(const ShaderEvalContext &context) const override;
+
+  private:
+    TextureHandle m_input;
+    vec2 m_offset;
+    vec2 m_scale;
+    double m_cos_rotation = 1.0;
+    double m_sin_rotation = 0.0;
 };
 
 class MultiplyTexture final : public Texture {

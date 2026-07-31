@@ -2,6 +2,7 @@
 
 #include "material_programs.h"
 #include "mesh_instance.h"
+#include "mesh_light.h"
 
 namespace {
 
@@ -37,6 +38,15 @@ std::shared_ptr<const MeshAsset> make_two_triangle_asset(bool build_bvh) {
                                     {"right", 1, 1, 1}},
         build_bvh);
 }
+
+class UVEmissionTexture final : public Texture {
+  public:
+    TextureSample
+    evaluate(const ShaderEvalContext &context) const override {
+        return TextureSample{color(context.uv0.x(), context.uv0.y(), 0.0),
+                             1.0};
+    }
+};
 
 } // namespace
 
@@ -98,4 +108,33 @@ TEST_CASE(mesh_instance_handles_non_uniform_and_mirrored_transforms) {
     REQUIRE_NEAR(hit.t, 2.0, 1e-12);
     REQUIRE(dot(hit.normal, hit.geometric_normal) > 0.999);
     REQUIRE(hit.front_face == false);
+}
+
+TEST_CASE(mesh_light_evaluates_textured_emission_at_the_sample) {
+    std::vector<MeshVertex> vertices(3);
+    vertices[0].position = point3(0, 0, 0);
+    vertices[1].position = point3(1, 0, 0);
+    vertices[2].position = point3(0, 1, 0);
+    vertices[0].uv0 = vec2(0, 0);
+    vertices[1].uv0 = vec2(1, 0);
+    vertices[2].uv0 = vec2(0, 1);
+    MeshTriangle triangle;
+    triangle.vertices[0] = 0;
+    triangle.vertices[1] = 1;
+    triangle.vertices[2] = 2;
+    triangle.attributes = MESH_ATTRIBUTE_UV0;
+    const auto asset = std::make_shared<MeshAsset>(
+        std::move(vertices), std::vector<MeshTriangle>{triangle});
+    const MaterialHandle material = make_diffuse_light_material(
+        std::make_shared<UVEmissionTexture>());
+    const auto instance =
+        std::make_shared<MeshInstance>(asset,
+                                       std::vector<MaterialHandle>{material});
+    const MeshLight light(instance, 0);
+
+    const LightSample sample =
+        light.sample(point3(0.25, 0.25, 1.0), vec2(0.25, 0.5));
+    REQUIRE(sample.pdf > 0.0);
+    REQUIRE_NEAR(sample.Li.x(), 0.25, 1e-12);
+    REQUIRE_NEAR(sample.Li.y(), 0.25, 1e-12);
 }

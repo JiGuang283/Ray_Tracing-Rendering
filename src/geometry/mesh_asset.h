@@ -28,6 +28,7 @@ struct MeshVertex {
     vec3 tangent{1, 0, 0};
     vec2 uv0{0, 0};
     color color0{1, 1, 1};
+    double color_alpha = 1.0;
     double tangent_sign = 1.0;
 };
 

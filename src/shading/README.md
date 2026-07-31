@@ -29,6 +29,12 @@ filtering. sRGB decoding happens before interpolation. Material input semantics
 resolve legacy unspecified images as sRGB for color and linear for scalar or
 normal data.
 
+glTF materials compile into the same texture views and built-in material
+programs as JSON materials. Base color is multiplied by `COLOR_0`; packed
+metallic-roughness channels and glTF sampler/UV transforms are represented as
+ordinary immutable texture nodes. The integrator therefore has no model-format
+specific shading path.
+
 Normal maps perturb only the shading frame. Geometric normals remain the source
 of front-face classification and spawned-ray offsets. Tangent frames retain UV
 handedness, and normal maps may declare OpenGL or DirectX convention.

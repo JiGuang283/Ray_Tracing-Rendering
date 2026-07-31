@@ -39,6 +39,14 @@
 
 #define INTERNAL_RND_SORT_SEED		39871946
 
+/* Local patch: avoid undefined 32-bit shifts when the rotation is zero. */
+static unsigned int rotate_left_32(const unsigned int value,
+                                   unsigned int shift)
+{
+	shift &= 31;
+	return shift == 0 ? value : (value << shift) | (value >> (32 - shift));
+}
+
 // internal structure
 typedef struct {
 	float x, y, z;
@@ -1457,7 +1465,7 @@ static void QuickSort(int* pSortBuffer, int iLeft, int iRight, unsigned int uSee
 
 	// Random
 	unsigned int t=uSeed&31;
-	t=(uSeed<<t)|(uSeed>>(32-t));
+	t=rotate_left_32(uSeed, t);
 	uSeed=uSeed+t+3;
 	// Random end
 
@@ -1664,7 +1672,7 @@ static void QuickSortEdges(SEdge * pSortBuffer, int iLeft, int iRight, const int
 
 	// Random
 	t=uSeed&31;
-	t=(uSeed<<t)|(uSeed>>(32-t));
+	t=rotate_left_32(uSeed, t);
 	uSeed=uSeed+t+3;
 	// Random end
 

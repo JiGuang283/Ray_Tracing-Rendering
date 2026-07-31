@@ -26,6 +26,8 @@ struct hit_record {
     vec3 normal;
     vec3 dpdu{1, 0, 0};
     vec3 dpdv{0, 1, 0};
+    color vertex_color{1, 1, 1};
+    double vertex_alpha = 1.0;
     const MaterialInstance *mat_ptr;
     double t;
     double u;
@@ -101,6 +103,8 @@ struct SurfaceInteraction {
     vec3 shading_normal;
     vec3 dpdu;
     vec3 dpdv;
+    color vertex_color;
+    double vertex_alpha;
     ShadingFrame frame;
     const MaterialInstance *mat_ptr;
     double t;
@@ -112,14 +116,15 @@ struct SurfaceInteraction {
 
     SurfaceInteraction()
         : p(0, 0, 0), geometry_normal(0, 0, 1), shading_normal(0, 0, 1),
-          dpdu(1, 0, 0), dpdv(0, 1, 0), frame(vec3(0, 0, 1)),
-          mat_ptr(nullptr), t(0), u(0), v(0), front_face(true),
-          primitive_id(-1), material_id(-1) {
+          dpdu(1, 0, 0), dpdv(0, 1, 0), vertex_color(1, 1, 1),
+          vertex_alpha(1.0), frame(vec3(0, 0, 1)), mat_ptr(nullptr), t(0),
+          u(0), v(0), front_face(true), primitive_id(-1), material_id(-1) {
     }
 
     explicit SurfaceInteraction(const hit_record &rec)
         : p(rec.p), geometry_normal(rec.geometric_normal),
           shading_normal(rec.normal), dpdu(rec.dpdu), dpdv(rec.dpdv),
+          vertex_color(rec.vertex_color), vertex_alpha(rec.vertex_alpha),
           frame(rec.normal), mat_ptr(rec.mat_ptr), t(rec.t), u(rec.u),
           v(rec.v), front_face(rec.front_face),
           primitive_id(rec.primitive_id), material_id(rec.material_id) {

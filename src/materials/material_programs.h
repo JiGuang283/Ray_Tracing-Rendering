@@ -15,7 +15,7 @@ MaterialHandle make_principled_material(
     TextureHandle normal_map = nullptr, TextureHandle emission = nullptr,
     double emission_strength = 1.0, TextureHandle clearcoat = nullptr,
     TextureHandle clearcoat_roughness = nullptr,
-    NormalMapSettings normal_settings = {});
+    NormalMapSettings normal_settings = {}, bool double_sided = false);
 MaterialHandle make_isotropic_material(TextureHandle albedo);
 MaterialHandle make_isotropic_material(const color &albedo);
 

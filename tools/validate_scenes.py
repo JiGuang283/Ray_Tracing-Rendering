@@ -24,11 +24,13 @@ OBJECT_TYPES = {
     "flip_face",
     "list",
     "moving_sphere",
+    "model",
     "obj",
     "quad",
     "rotate_y",
     "sphere",
     "translate",
+    "transform",
     "triangle",
     "xy_rect",
     "xz_rect",
@@ -446,7 +448,7 @@ def validate_object(object_: Any, materials: Set[str], textures: Set[str],
         validate_material_ref(object_, materials, context, reporter)
         if "implementation" in object_:
             reporter.error(f"{context}.implementation",
-                           "field was removed; FlatMesh is the only OBJ path")
+                           "field was removed; MeshAsset is the only OBJ path")
         path = object_.get("path")
         if not isinstance(path, str):
             reporter.error(context, "obj missing string 'path'")
@@ -455,6 +457,41 @@ def validate_object(object_: Any, materials: Set[str], textures: Set[str],
         for key in ("translate", "scale", "position"):
             if key in object_:
                 require_array(object_[key], 3, f"{context}.{key}", reporter)
+    elif object_type == "model":
+        path = object_.get("path")
+        if not isinstance(path, str):
+            reporter.error(context, "model missing string 'path'")
+        elif not resolve_asset(path).exists():
+            reporter.error(context, f"model path does not exist: {path}")
+        elif Path(path).suffix.lower() not in {".gltf", ".glb"}:
+            reporter.error(f"{context}.path", "expected .gltf or .glb model")
+        if "scene" in object_ and (not isinstance(object_["scene"], int) or
+                                   isinstance(object_["scene"], bool)):
+            reporter.error(f"{context}.scene", "expected integer")
+        transform = object_.get("transform")
+        if transform is not None:
+            validate_transform(transform, f"{context}.transform", reporter)
+        overrides = object_.get("material_overrides", {})
+        if not isinstance(overrides, dict):
+            reporter.error(f"{context}.material_overrides", "expected object")
+        else:
+            for source, target in overrides.items():
+                if not isinstance(target, str):
+                    reporter.error(
+                        f"{context}.material_overrides.{source}",
+                        "expected material name")
+                elif target not in materials:
+                    reporter.error(
+                        f"{context}.material_overrides.{source}",
+                        f"unknown material reference '{target}'")
+    elif object_type == "transform":
+        if "object" not in object_:
+            reporter.error(context, "missing nested 'object'")
+        else:
+            validate_object(object_["object"], materials, textures,
+                            f"{context}.object", reporter)
+        validate_transform(object_.get("transform"),
+                           f"{context}.transform", reporter)
     elif object_type in {"translate", "rotate_y", "flip_face"}:
         if object_type == "translate":
             require_vec(object_, "offset", 3, context, reporter)
@@ -485,6 +522,20 @@ def validate_object(object_: Any, materials: Set[str], textures: Set[str],
     elif object_type in {"list", "accel"}:
         validate_object_array(object_.get("objects"), materials, textures,
                               f"{context}.objects", reporter)
+
+
+def validate_transform(value: Any, context: str,
+                       reporter: Reporter) -> None:
+    if not require_object(value, context, reporter):
+        return
+    if "matrix" in value:
+        require_array(value["matrix"], 16, f"{context}.matrix", reporter)
+        return
+    for field in ("translation", "scale"):
+        if field in value:
+            require_array(value[field], 3, f"{context}.{field}", reporter)
+    if "rotation" in value:
+        require_array(value["rotation"], 4, f"{context}.rotation", reporter)
 
 
 def validate_object_array(objects: Any, materials: Set[str],

@@ -22,8 +22,6 @@ class MeshInstance final : public hittable {
     bool bounding_box(double time0, double time1,
                       aabb &output_box) const override;
 
-    std::vector<TriangleSurface>
-    light_triangles(int material_slot = -1) const;
     const std::shared_ptr<const MeshAsset> &asset() const;
     const Transform &object_to_world() const;
     const std::vector<MaterialHandle> &materials() const;

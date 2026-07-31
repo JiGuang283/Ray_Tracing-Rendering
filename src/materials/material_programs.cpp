@@ -184,7 +184,8 @@ class PrincipledProgram final : public MaterialProgram {
 
         const TextureHandle &emission =
             parameters.get<TextureHandle>(4);
-        if (emission && context.front_face) {
+        if (emission &&
+            (context.front_face || parameters.get<bool>(10))) {
             output.set_emission(
                 parameters.get<double>(5) *
                 evaluate_color(emission, context));
@@ -192,7 +193,7 @@ class PrincipledProgram final : public MaterialProgram {
     }
 
     void validate(const MaterialParameterBlock &parameters) const override {
-        require_size(parameters, 10, "PrincipledProgram");
+        require_size(parameters, 11, "PrincipledProgram");
         require_parameter<TextureHandle>(parameters, 0,
                                          "PrincipledProgram");
         require_parameter<TextureHandle>(parameters, 1,
@@ -211,6 +212,7 @@ class PrincipledProgram final : public MaterialProgram {
         require_parameter<std::uint32_t>(parameters, 8,
                                          "PrincipledProgram");
         require_parameter<double>(parameters, 9, "PrincipledProgram");
+        require_parameter<bool>(parameters, 10, "PrincipledProgram");
     }
 
     std::size_t max_closures() const override {
@@ -301,9 +303,11 @@ MaterialHandle make_principled_material(
     TextureHandle base_color, TextureHandle roughness, TextureHandle metallic,
     TextureHandle normal_map, TextureHandle emission,
     double emission_strength, TextureHandle clearcoat,
-    TextureHandle clearcoat_roughness, NormalMapSettings normal_settings) {
+    TextureHandle clearcoat_roughness, NormalMapSettings normal_settings,
+    bool double_sided) {
     MaterialMetadata metadata;
     metadata.emissive = emission && emission_strength > 0.0;
+    metadata.double_sided = double_sided;
     metadata.emission_estimate =
         emission_strength * estimate_texture(emission);
 
@@ -319,6 +323,7 @@ MaterialHandle make_principled_material(
     parameters.add(static_cast<std::uint32_t>(
         normal_settings.convention == NormalMapConvention::OpenGL ? 0 : 1));
     parameters.add(normal_settings.strength);
+    parameters.add(double_sided);
     return make_instance(program_instance<PrincipledProgram>(),
                          std::move(parameters), metadata);
 }

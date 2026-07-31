@@ -8,6 +8,8 @@ struct ShaderEvalContext {
     vec2 uv0{0, 0};
     vec3 geometry_normal{0, 0, 1};
     vec3 shading_normal{0, 0, 1};
+    color vertex_color{1, 1, 1};
+    double vertex_alpha = 1.0;
     ShadingFrame frame;
     vec3 wo{0, 0, 1};
     double time = 0.0;
@@ -23,6 +25,8 @@ struct ShaderEvalContext {
         context.uv0 = vec2(surface.u, surface.v);
         context.geometry_normal = surface.geometry_normal;
         context.shading_normal = surface.shading_normal;
+        context.vertex_color = surface.vertex_color;
+        context.vertex_alpha = surface.vertex_alpha;
         context.frame = surface.frame;
         context.wo =
             wo.near_zero() ? surface.frame.normal : unit_vector(wo);

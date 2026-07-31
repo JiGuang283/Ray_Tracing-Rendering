@@ -65,6 +65,27 @@ TEST_CASE(image_texture_supports_wrap_and_channel_views) {
                  1e-6);
 }
 
+TEST_CASE(texture_views_support_gltf_uvs_and_vertex_colors) {
+    auto image = ImageAsset::from_pixels(
+        1, 2, 3, {1, 0, 0, 0, 1, 0});
+    SamplerState sampler;
+    sampler.wrap_u = WrapMode::Clamp;
+    sampler.wrap_v = WrapMode::Clamp;
+    sampler.filter = FilterMode::Nearest;
+    sampler.flip_v = false;
+    ImageTexture gltf_texture(image, ColorSpace::Linear, sampler);
+    REQUIRE_NEAR(gltf_texture.evaluate(context_at(0.5, 0.0)).rgb.x(), 1.0,
+                 1e-12);
+
+    ShaderEvalContext context;
+    context.vertex_color = color(0.25, 0.5, 0.75);
+    context.vertex_alpha = 0.4;
+    VertexColorTexture vertex_color;
+    const TextureSample sample = vertex_color.evaluate(context);
+    REQUIRE_NEAR(sample.rgb.y(), 0.5, 1e-12);
+    REQUIRE_NEAR(sample.alpha, 0.4, 1e-12);
+}
+
 TEST_CASE(image_assets_preserve_luminance_alpha_and_hdr_channels) {
     auto luminance = ImageAsset::from_pixels(1, 1, 1, {0.25f});
     REQUIRE_NEAR(luminance->component(0, 0, 0), 0.25, 1e-6);

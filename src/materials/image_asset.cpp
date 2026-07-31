@@ -3,7 +3,75 @@
 #include "stb_image.h"
 
 #include <algorithm>
+#include <climits>
 #include <utility>
+
+namespace {
+
+bool valid_dimensions(int width, int height, int channels) {
+    return width > 0 && height > 0 && channels > 0 && channels <= 4;
+}
+
+std::shared_ptr<const ImageAsset>
+decode_memory(const std::uint8_t *data, std::size_t size,
+              std::string &error) {
+    if (!data || size == 0 || size > static_cast<std::size_t>(INT_MAX)) {
+        error = "invalid or oversized image buffer";
+        return nullptr;
+    }
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    const int byte_count = static_cast<int>(size);
+    const bool hdr = stbi_is_hdr_from_memory(data, byte_count) != 0;
+    std::vector<float> pixels;
+    if (hdr) {
+        float *decoded = stbi_loadf_from_memory(
+            data, byte_count, &width, &height, &channels, 0);
+        if (!decoded) {
+            error = stbi_failure_reason() ? stbi_failure_reason()
+                                          : "unknown decoder error";
+            return nullptr;
+        }
+        if (!valid_dimensions(width, height, channels)) {
+            stbi_image_free(decoded);
+            error = "unsupported image dimensions or channel count";
+            return nullptr;
+        }
+        const std::size_t component_count =
+            static_cast<std::size_t>(width) *
+            static_cast<std::size_t>(height) *
+            static_cast<std::size_t>(channels);
+        pixels.assign(decoded, decoded + component_count);
+        stbi_image_free(decoded);
+    } else {
+        unsigned char *decoded = stbi_load_from_memory(
+            data, byte_count, &width, &height, &channels, 0);
+        if (!decoded) {
+            error = stbi_failure_reason() ? stbi_failure_reason()
+                                          : "unknown decoder error";
+            return nullptr;
+        }
+        if (!valid_dimensions(width, height, channels)) {
+            stbi_image_free(decoded);
+            error = "unsupported image dimensions or channel count";
+            return nullptr;
+        }
+        const std::size_t component_count =
+            static_cast<std::size_t>(width) * height * channels;
+        pixels.resize(component_count);
+        for (std::size_t index = 0; index < component_count; ++index) {
+            pixels[index] = static_cast<float>(decoded[index]) / 255.0f;
+        }
+        stbi_image_free(decoded);
+    }
+
+    return ImageAsset::from_pixels(width, height, channels,
+                                   std::move(pixels), hdr);
+}
+
+} // namespace
 
 ImageAsset::ImageAsset(int width, int height, int channels,
                        std::vector<float> pixels, bool hdr)
@@ -27,7 +95,16 @@ ImageAsset::load(const std::string &path, std::string &error) {
                                           : "unknown decoder error";
             return nullptr;
         }
-        pixels.assign(data, data + width * height * channels);
+        if (!valid_dimensions(width, height, channels)) {
+            stbi_image_free(data);
+            error = "unsupported image dimensions or channel count";
+            return nullptr;
+        }
+        const std::size_t component_count =
+            static_cast<std::size_t>(width) *
+            static_cast<std::size_t>(height) *
+            static_cast<std::size_t>(channels);
+        pixels.assign(data, data + component_count);
         stbi_image_free(data);
     } else {
         unsigned char *data =
@@ -35,6 +112,11 @@ ImageAsset::load(const std::string &path, std::string &error) {
         if (!data) {
             error = stbi_failure_reason() ? stbi_failure_reason()
                                           : "unknown decoder error";
+            return nullptr;
+        }
+        if (!valid_dimensions(width, height, channels)) {
+            stbi_image_free(data);
+            error = "unsupported image dimensions or channel count";
             return nullptr;
         }
         const std::size_t count =
@@ -46,12 +128,14 @@ ImageAsset::load(const std::string &path, std::string &error) {
         stbi_image_free(data);
     }
 
-    if (width <= 0 || height <= 0 || channels <= 0 || channels > 4) {
-        error = "unsupported image dimensions or channel count";
-        return nullptr;
-    }
     return std::shared_ptr<const ImageAsset>(
         new ImageAsset(width, height, channels, std::move(pixels), hdr));
+}
+
+std::shared_ptr<const ImageAsset>
+ImageAsset::load_from_memory(const std::uint8_t *data, std::size_t size,
+                             std::string &error) {
+    return decode_memory(data, size, error);
 }
 
 std::shared_ptr<const ImageAsset> ImageAsset::diagnostic() {
@@ -67,10 +151,12 @@ std::shared_ptr<const ImageAsset> ImageAsset::diagnostic() {
 std::shared_ptr<const ImageAsset>
 ImageAsset::from_pixels(int width, int height, int channels,
                         std::vector<float> pixels, bool hdr) {
+    if (!valid_dimensions(width, height, channels)) {
+        return nullptr;
+    }
     const std::size_t expected =
         static_cast<std::size_t>(width) * height * channels;
-    if (width <= 0 || height <= 0 || channels <= 0 || channels > 4 ||
-        pixels.size() != expected) {
+    if (pixels.size() != expected) {
         return nullptr;
     }
     return std::shared_ptr<const ImageAsset>(

@@ -130,28 +130,18 @@ void MeshInstance::populate_record(const ray &world_ray,
         record.u = u;
         record.v = v;
     }
+    if (has_mesh_attribute(triangle.attributes, MESH_ATTRIBUTE_COLOR0)) {
+        record.vertex_color =
+            w * v0.color0 + u * v1.color0 + v * v2.color0;
+        record.vertex_alpha = w * v0.color_alpha + u * v1.color_alpha +
+                              v * v2.color_alpha;
+    } else {
+        record.vertex_color = color(1, 1, 1);
+        record.vertex_alpha = 1.0;
+    }
     record.mat_ptr = m_materials[triangle.material_slot].get();
     record.primitive_id = static_cast<int>(intersection.triangle_index);
     record.material_id = static_cast<int>(triangle.material_slot);
-}
-
-std::vector<TriangleSurface>
-MeshInstance::light_triangles(int material_slot) const {
-    std::vector<TriangleSurface> result;
-    result.reserve(m_asset->triangle_count());
-    for (std::uint32_t index = 0; index < m_asset->triangle_count(); ++index) {
-        const MeshTriangle &triangle = m_asset->triangle(index);
-        if (material_slot >= 0 &&
-            triangle.material_slot != static_cast<std::uint32_t>(material_slot)) {
-            continue;
-        }
-        TriangleSurface surface = m_asset->triangle_surface(index);
-        surface.v0 = m_object_to_world.point_to_world(surface.v0);
-        surface.v1 = m_object_to_world.point_to_world(surface.v1);
-        surface.v2 = m_object_to_world.point_to_world(surface.v2);
-        result.push_back(surface);
-    }
-    return result;
 }
 
 const std::shared_ptr<const MeshAsset> &MeshInstance::asset() const {

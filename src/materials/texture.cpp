@@ -54,6 +54,11 @@ SolidColorTexture::evaluate(const ShaderEvalContext & /*context*/) const {
     return TextureSample{m_value, 1.0};
 }
 
+TextureSample
+VertexColorTexture::evaluate(const ShaderEvalContext &context) const {
+    return TextureSample{context.vertex_color, context.vertex_alpha};
+}
+
 CheckerTexture::CheckerTexture(TextureHandle even, TextureHandle odd)
     : m_even(std::move(even)), m_odd(std::move(odd)) {
 }
@@ -83,7 +88,9 @@ TextureSample ImageTexture::evaluate(const ShaderEvalContext &context) const {
     const int width = m_image->width();
     const int height = m_image->height();
     double u = wrap_coordinate(context.uv0.x(), m_sampler.wrap_u);
-    double v = wrap_coordinate(1.0 - context.uv0.y(), m_sampler.wrap_v);
+    const double source_v =
+        m_sampler.flip_v ? 1.0 - context.uv0.y() : context.uv0.y();
+    double v = wrap_coordinate(source_v, m_sampler.wrap_v);
 
     if (m_sampler.filter == FilterMode::Nearest) {
         const int x = wrap_index(static_cast<int>(std::floor(u * width)),
@@ -193,6 +200,28 @@ TextureSample ScaleTexture::evaluate(const ShaderEvalContext &context) const {
     TextureSample sample = m_input->evaluate(context);
     sample.rgb *= m_scale;
     return sample;
+}
+
+UVTransformTexture::UVTransformTexture(TextureHandle input,
+                                       const vec2 &offset,
+                                       const vec2 &scale,
+                                       double rotation_radians)
+    : m_input(std::move(input)), m_offset(offset), m_scale(scale),
+      m_cos_rotation(std::cos(rotation_radians)),
+      m_sin_rotation(std::sin(rotation_radians)) {
+}
+
+TextureSample
+UVTransformTexture::evaluate(const ShaderEvalContext &context) const {
+    ShaderEvalContext transformed = context;
+    const double scaled_u = context.uv0.x() * m_scale.x();
+    const double scaled_v = context.uv0.y() * m_scale.y();
+    transformed.uv0 =
+        vec2(m_offset.x() + m_cos_rotation * scaled_u -
+                               m_sin_rotation * scaled_v,
+             m_offset.y() + m_sin_rotation * scaled_u +
+                               m_cos_rotation * scaled_v);
+    return m_input->evaluate(transformed);
 }
 
 MultiplyTexture::MultiplyTexture(TextureHandle a, TextureHandle b)

@@ -35,6 +35,7 @@ class MaterialParameterBlock {
 
 struct MaterialMetadata {
     bool emissive = false;
+    bool double_sided = false;
     color emission_estimate{0, 0, 0};
 };
 
@@ -63,6 +64,7 @@ class MaterialInstance {
     }
 
     bool is_emissive() const;
+    bool is_double_sided() const;
     const color &emission_estimate() const;
     const MaterialParameterBlock &parameters() const;
     const std::shared_ptr<const MaterialProgram> &program() const;
