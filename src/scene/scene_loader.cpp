@@ -43,12 +43,12 @@ SceneConfig build_scene_config(const SceneIR &ir) {
     std::vector<shared_ptr<Light>> auto_lights;
 
     hittable_list world;
-    for (const auto &object : ir.objects) {
-        add_object(object.data, context, world, auto_lights, ir.auto_emitters);
+    for (ObjectIRId object : ir.objects) {
+        add_object(object, context, world, auto_lights, ir.auto_emitters);
     }
 
     for (const auto &light : ir.lights) {
-        add_light(light.data, context, config);
+        add_light(light, context, config);
     }
     config.scene.lights.insert(config.scene.lights.end(), auto_lights.begin(),
                                auto_lights.end());

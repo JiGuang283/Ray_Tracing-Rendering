@@ -158,10 +158,8 @@ MaterialHandle build_material(const MaterialIR &material,
 }
 
 MaterialHandle lookup_material(SceneBuildContext &context,
-                               const json &object,
+                               const std::string &name,
                                const std::string &context_name) {
-    const std::string name =
-        read_string(object, "material", context_name);
     auto found = context.materials.find(name);
     if (found == context.materials.end()) {
         throw std::runtime_error("Scene file error: unknown material '" +

@@ -32,6 +32,7 @@ class Transform {
     aabb bounds_to_object(const aabb &bounds) const;
 
     bool swaps_handedness() const;
+    bool is_rigid(double tolerance = 1e-9) const;
     const Matrix4 &object_to_world() const;
     const Matrix4 &world_to_object() const;
 

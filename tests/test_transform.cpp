@@ -1,6 +1,9 @@
 #include "test_harness.h"
 
+#include "material_programs.h"
+#include "sphere.h"
 #include "transform.h"
+#include "transformed_hittable.h"
 
 namespace {
 
@@ -41,6 +44,8 @@ TEST_CASE(transform_uses_inverse_transpose_for_normals) {
 TEST_CASE(transform_tracks_mirrored_handedness) {
     REQUIRE(!Transform::scale(vec3(2, 3, 4)).swaps_handedness());
     REQUIRE(Transform::scale(vec3(-2, 3, 4)).swaps_handedness());
+    REQUIRE(Transform::rotate_y(37.0).is_rigid());
+    REQUIRE(!Transform::scale(vec3(2, 2, 2)).is_rigid());
 }
 
 TEST_CASE(transform_expands_world_bounds) {
@@ -50,4 +55,27 @@ TEST_CASE(transform_expands_world_bounds) {
         transform.bounds_to_world(aabb(point3(0, 0, 0), point3(1, 2, 3)));
     require_vec_near(world.min(), point3(2, 0, -1), 1e-9);
     require_vec_near(world.max(), point3(5, 2, 0), 1e-9);
+}
+
+TEST_CASE(transformed_hittable_supports_non_uniform_scale) {
+    const MaterialHandle material =
+        make_lambertian_material(color(0.5, 0.5, 0.5));
+    const Transform transform = Transform::translate(vec3(2, 0, 0)) *
+                                Transform::scale(vec3(2, 1, 0.5));
+    const TransformedHittable object(
+        std::make_shared<sphere>(point3(0, 0, 0), 1.0, material),
+        transform);
+
+    hit_record record;
+    REQUIRE(object.hit(ray(point3(2, 0, -3), vec3(0, 0, 1)), 0.001,
+                       infinity, record));
+    REQUIRE_NEAR(record.t, 2.5, 1e-9);
+    require_vec_near(record.p, point3(2, 0, -0.5));
+    require_vec_near(record.geometric_normal, vec3(0, 0, -1));
+    REQUIRE(record.front_face);
+
+    aabb bounds;
+    REQUIRE(object.bounding_box(0.0, 1.0, bounds));
+    require_vec_near(bounds.min(), point3(0, -1, -0.5));
+    require_vec_near(bounds.max(), point3(4, 1, 0.5));
 }

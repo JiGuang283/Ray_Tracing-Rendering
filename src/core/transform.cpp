@@ -95,6 +95,25 @@ bool Transform::swaps_handedness() const {
     return m_object_to_world.linear_determinant() < 0.0;
 }
 
+bool Transform::is_rigid(double tolerance) const {
+    const vec3 x(m_object_to_world(0, 0), m_object_to_world(1, 0),
+                 m_object_to_world(2, 0));
+    const vec3 y(m_object_to_world(0, 1), m_object_to_world(1, 1),
+                 m_object_to_world(2, 1));
+    const vec3 z(m_object_to_world(0, 2), m_object_to_world(1, 2),
+                 m_object_to_world(2, 2));
+    return std::abs(x.length_squared() - 1.0) <= tolerance &&
+           std::abs(y.length_squared() - 1.0) <= tolerance &&
+           std::abs(z.length_squared() - 1.0) <= tolerance &&
+           std::abs(dot(x, y)) <= tolerance &&
+           std::abs(dot(x, z)) <= tolerance &&
+           std::abs(dot(y, z)) <= tolerance &&
+           std::abs(m_object_to_world(3, 0)) <= tolerance &&
+           std::abs(m_object_to_world(3, 1)) <= tolerance &&
+           std::abs(m_object_to_world(3, 2)) <= tolerance &&
+           std::abs(m_object_to_world(3, 3) - 1.0) <= tolerance;
+}
+
 const Matrix4 &Transform::object_to_world() const {
     return m_object_to_world;
 }

@@ -7,51 +7,40 @@
 #include "spot_light.h"
 
 #include <stdexcept>
+#include <type_traits>
 
 namespace scene_loader_internal {
 
-void add_light(const json &light_json, SceneBuildContext &context,
+void add_light(const LightIR &light, SceneBuildContext &context,
                SceneConfig &config) {
-    std::string type = read_string(light_json, "type", "light");
-    if (type == "point") {
-        config.scene.lights.push_back(make_shared<PointLight>(
-            read_vec3(light_json, "position", "point light"),
-            read_vec3(light_json, "intensity", "point light")));
-        return;
-    }
-    if (type == "directional") {
-        config.scene.lights.push_back(make_shared<DirectionalLight>(
-            read_vec3(light_json, "direction", "directional light"),
-            read_vec3(light_json, "color", "directional light")));
-        return;
-    }
-    if (type == "spot") {
-        config.scene.lights.push_back(make_shared<SpotLight>(
-            read_vec3(light_json, "position", "spot light"),
-            read_vec3(light_json, "direction", "spot light"),
-            read_double_or(light_json, "cutoff", 20.0),
-            read_vec3(light_json, "intensity", "spot light")));
-        return;
-    }
-    if (type == "quad") {
-        config.scene.lights.push_back(make_shared<QuadLight>(
-            read_vec3(light_json, "Q", "quad light"),
-            read_vec3(light_json, "u", "quad light"),
-            read_vec3(light_json, "v", "quad light"),
-            read_vec3(light_json, "intensity", "quad light")));
-        return;
-    }
-    if (type == "environment") {
-        std::string path = resolve_asset_path(
-            context, read_string(light_json, "path", "environment light"));
-        config.scene.lights.push_back(
-            make_shared<EnvironmentLight>(context.resources.load_image(path)));
-        return;
-    }
-
-    throw std::runtime_error("Scene file error: unknown light type '" + type +
-                             "'.");
+    std::visit(
+        [&](const auto &typed) {
+            using T = std::decay_t<decltype(typed)>;
+            if constexpr (std::is_same_v<T, PointLightIR>) {
+                config.scene.lights.push_back(make_shared<PointLight>(
+                    typed.position, typed.intensity));
+            } else if constexpr (std::is_same_v<T, DirectionalLightIR>) {
+                config.scene.lights.push_back(make_shared<DirectionalLight>(
+                    typed.direction, typed.radiance));
+            } else if constexpr (std::is_same_v<T, SpotLightIR>) {
+                config.scene.lights.push_back(make_shared<SpotLight>(
+                    typed.position, typed.direction, typed.cutoff,
+                    typed.intensity));
+            } else if constexpr (std::is_same_v<T, QuadLightIR>) {
+                config.scene.lights.push_back(make_shared<QuadLight>(
+                    typed.origin, typed.u, typed.v, typed.intensity));
+            } else if constexpr (std::is_same_v<T, EnvironmentLightIR>) {
+                const std::string path =
+                    resolve_asset_path(context, typed.path);
+                config.scene.lights.push_back(make_shared<EnvironmentLight>(
+                    context.resources.load_image(path)));
+            } else {
+                throw std::runtime_error(
+                    "Scene build error: unsupported LightIR node in " +
+                    light.context + ".");
+            }
+        },
+        light.data);
 }
-
 
 } // namespace scene_loader_internal

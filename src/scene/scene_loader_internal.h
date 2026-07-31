@@ -49,8 +49,6 @@ int read_int_or(const json &object, const std::string &key, int fallback);
 bool read_bool_or(const json &object, const std::string &key, bool fallback);
 std::string read_string(const json &object, const std::string &key,
                         const std::string &context);
-vec2 read_optional_uv(const json &object, const std::string &key,
-                      bool &present, const std::string &context);
 std::string resolve_asset_path(const SceneBuildContext &context,
                                const std::string &path);
 
@@ -59,19 +57,19 @@ TextureHandle build_texture(TextureIRId id, TextureSemantic semantic,
 MaterialHandle build_material(const MaterialIR &material,
                               SceneBuildContext &context);
 MaterialHandle lookup_material(SceneBuildContext &context,
-                               const json &object,
+                               const std::string &name,
                                const std::string &context_name);
 
-shared_ptr<hittable> build_object(const json &object,
+shared_ptr<hittable> build_object(ObjectIRId id,
                                   SceneBuildContext &context);
-BuiltObject build_object_with_emitters(const json &object,
+BuiltObject build_object_with_emitters(ObjectIRId id,
                                        SceneBuildContext &context,
                                        bool auto_emitters);
-void add_object(const json &object, SceneBuildContext &context,
+void add_object(ObjectIRId id, SceneBuildContext &context,
                 hittable_list &world,
                 std::vector<shared_ptr<Light>> &emitters,
                 bool auto_emitters);
-void add_light(const json &light_json, SceneBuildContext &context,
+void add_light(const LightIR &light, SceneBuildContext &context,
                SceneConfig &config);
 
 } // namespace scene_loader_internal

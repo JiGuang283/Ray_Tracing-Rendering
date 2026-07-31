@@ -199,42 +199,6 @@ class TextureIRParser {
                                  context + ".");
     }
 
-    void lower_object_textures(json &object, const std::string &context) {
-        if (!object.is_object()) {
-            return;
-        }
-        const std::string type =
-            read_string(object, "type", context);
-        if (type == "constant_medium" && object.contains("texture")) {
-            const TextureIRId id = parse_value(
-                object["texture"], context + ".texture");
-            object["_texture_ir_id"] = id;
-            object.erase("texture");
-        }
-        if ((type == "translate" || type == "rotate_y" ||
-             type == "flip_face") &&
-            object.contains("object")) {
-            lower_object_textures(object["object"], context + ".object");
-        }
-        if (type == "constant_medium") {
-            if (object.contains("boundary")) {
-                lower_object_textures(object["boundary"],
-                                      context + ".boundary");
-            } else if (object.contains("object")) {
-                lower_object_textures(object["object"],
-                                      context + ".object");
-            }
-        }
-        if ((type == "list" || type == "accel") &&
-            object.contains("objects") && object["objects"].is_array()) {
-            for (std::size_t i = 0; i < object["objects"].size(); ++i) {
-                lower_object_textures(
-                    object["objects"][i],
-                    context + ".objects[" + std::to_string(i) + "]");
-            }
-        }
-    }
-
     void validate_graph() const {
         std::vector<int> state(m_ir.textures.size(), 0);
         for (TextureIRId id = 0; id < m_ir.textures.size(); ++id) {
@@ -527,19 +491,328 @@ MaterialIR parse_material(const std::string &name, const json &value,
                              type + "' for " + context + ".");
 }
 
-SceneObjectSpec parse_object_spec(json data, const std::string &context,
-                                  TextureIRParser *textures = nullptr) {
-    if (!data.is_object()) {
+Quaternion parse_quaternion(const json &value, const std::string &context) {
+    if (!value.is_array() || value.size() != 4) {
+        throw std::runtime_error(
+            "Scene file error: expected quaternion [x,y,z,w] in " +
+            context + ".");
+    }
+    return Quaternion{value[0].get<double>(), value[1].get<double>(),
+                      value[2].get<double>(), value[3].get<double>()};
+}
+
+Transform parse_transform(const json &value, const std::string &context) {
+    if (!value.is_object()) {
         throw std::runtime_error("Scene file error: " + context +
                                  " must be an object.");
     }
-    if (textures) {
-        textures->lower_object_textures(data, context);
+    if (value.contains("matrix")) {
+        const json &matrix = value["matrix"];
+        if (!matrix.is_array() || matrix.size() != 16) {
+            throw std::runtime_error(
+                "Scene file error: transform.matrix must contain 16 numbers in " +
+                context + ".");
+        }
+        double elements[16];
+        for (std::size_t index = 0; index < 16; ++index) {
+            elements[index] = matrix[index].get<double>();
+        }
+        return Transform(Matrix4::from_column_major(elements));
     }
-    SceneObjectSpec spec;
-    spec.type = read_string(data, "type", context);
-    spec.data = std::move(data);
-    return spec;
+
+    const vec3 translation =
+        read_vec3_or(value, "translation", vec3(0, 0, 0), context);
+    const vec3 scale = read_vec3_or(value, "scale", vec3(1, 1, 1), context);
+    const Quaternion rotation =
+        value.contains("rotation")
+            ? parse_quaternion(value["rotation"], context + ".rotation")
+            : Quaternion{};
+    return Transform::from_trs(translation, rotation, scale);
+}
+
+class ObjectIRParser {
+  public:
+    ObjectIRParser(SceneIR &ir, TextureIRParser &textures)
+        : m_ir(ir), m_textures(textures) {
+    }
+
+    ObjectIRId parse(const json &object, const std::string &context) {
+        if (!object.is_object()) {
+            throw std::runtime_error("Scene file error: " + context +
+                                     " must be an object.");
+        }
+        const std::string type = read_string(object, "type", context);
+        if (type == "sphere") {
+            return append(context,
+                          SphereObjectIR{
+                              read_vec3(object, "center", context),
+                              read_double_or(object, "radius", 1.0),
+                              read_string(object, "material", context)});
+        }
+        if (type == "moving_sphere") {
+            return append(
+                context,
+                MovingSphereObjectIR{
+                    read_vec3(object, "center0", context),
+                    read_vec3(object, "center1", context),
+                    read_double_or(object, "time0", 0.0),
+                    read_double_or(object, "time1", 1.0),
+                    read_double_or(object, "radius", 1.0),
+                    read_string(object, "material", context)});
+        }
+        if (type == "box") {
+            return append(context,
+                          BoxObjectIR{
+                              read_vec3(object, "min", context),
+                              read_vec3(object, "max", context),
+                              read_string(object, "material", context)});
+        }
+        if (type == "xy_rect" || type == "xz_rect" || type == "yz_rect") {
+            AxisRectObjectIR rectangle;
+            rectangle.material = read_string(object, "material", context);
+            if (type == "xy_rect") {
+                rectangle.plane = AxisRectPlane::XY;
+                rectangle.a0 = read_double_or(object, "x0", 0.0);
+                rectangle.a1 = read_double_or(object, "x1", 1.0);
+                rectangle.b0 = read_double_or(object, "y0", 0.0);
+                rectangle.b1 = read_double_or(object, "y1", 1.0);
+            } else if (type == "xz_rect") {
+                rectangle.plane = AxisRectPlane::XZ;
+                rectangle.a0 = read_double_or(object, "x0", 0.0);
+                rectangle.a1 = read_double_or(object, "x1", 1.0);
+                rectangle.b0 = read_double_or(object, "z0", 0.0);
+                rectangle.b1 = read_double_or(object, "z1", 1.0);
+            } else {
+                rectangle.plane = AxisRectPlane::YZ;
+                rectangle.a0 = read_double_or(object, "y0", 0.0);
+                rectangle.a1 = read_double_or(object, "y1", 1.0);
+                rectangle.b0 = read_double_or(object, "z0", 0.0);
+                rectangle.b1 = read_double_or(object, "z1", 1.0);
+            }
+            rectangle.k = read_double_or(object, "k", 0.0);
+            return append(context, rectangle);
+        }
+        if (type == "quad") {
+            return append(context,
+                          QuadObjectIR{
+                              read_vec3(object, "Q", context),
+                              read_vec3(object, "u", context),
+                              read_vec3(object, "v", context),
+                              read_string(object, "material", context)});
+        }
+        if (type == "triangle") {
+            TriangleObjectIR triangle;
+            if (object.contains("vertices")) {
+                const json &positions = object["vertices"];
+                if (!positions.is_array() || positions.size() != 3) {
+                    throw std::runtime_error(
+                        "Scene file error: triangle.vertices must contain 3 "
+                        "points in " +
+                        context + ".");
+                }
+                for (std::size_t index = 0; index < 3; ++index) {
+                    triangle.positions[index] = read_vec3_value(
+                        positions[index], context + ".vertices[" +
+                                              std::to_string(index) + "]");
+                }
+            } else {
+                triangle.positions = {read_vec3(object, "v0", context),
+                                      read_vec3(object, "v1", context),
+                                      read_vec3(object, "v2", context)};
+            }
+            triangle.has_normals = object.contains("n0") &&
+                                   object.contains("n1") &&
+                                   object.contains("n2");
+            if (triangle.has_normals) {
+                triangle.normals = {
+                    unit_vector(read_vec3(object, "n0", context)),
+                    unit_vector(read_vec3(object, "n1", context)),
+                    unit_vector(read_vec3(object, "n2", context))};
+            }
+            triangle.has_uv0 = object.contains("uv0") &&
+                               object.contains("uv1") &&
+                               object.contains("uv2");
+            if (triangle.has_uv0) {
+                triangle.uv0 = {
+                    read_vec2_value(object["uv0"], context + ".uv0"),
+                    read_vec2_value(object["uv1"], context + ".uv1"),
+                    read_vec2_value(object["uv2"], context + ".uv2")};
+            }
+            triangle.material = read_string(object, "material", context);
+            return append(context, triangle);
+        }
+        if (type == "obj") {
+            if (object.contains("implementation")) {
+                throw std::runtime_error(
+                    "Scene file error: obj.implementation was removed in " +
+                    context + ".");
+            }
+            ObjObjectIR obj;
+            obj.path = read_string(object, "path", context);
+            obj.local_translation = read_vec3_or(
+                object, "translate", vec3(0, 0, 0), context);
+            obj.scale =
+                read_vec3_or(object, "scale", vec3(1, 1, 1), context);
+            obj.rotation_y = read_double_or(object, "rotation_y", 0.0);
+            obj.has_position = object.contains("position");
+            obj.position =
+                read_vec3_or(object, "position", vec3(0, 0, 0), context);
+            obj.auto_lift_to_ground =
+                read_bool_or(object, "auto_lift_to_ground", false);
+            obj.build_bvh = read_bool_or(object, "build_bvh", true);
+            obj.use_vertex_normals =
+                read_bool_or(object, "use_vertex_normals", true);
+            obj.material = read_string(object, "material", context);
+            return append(context, obj);
+        }
+        if (type == "model") {
+            ModelObjectIR model;
+            model.path = read_string(object, "path", context);
+            model.scene_index = read_int_or(object, "scene", -1);
+            if (object.contains("transform")) {
+                model.transform = parse_transform(object["transform"],
+                                                  context + ".transform");
+            }
+            if (object.contains("material_overrides")) {
+                const json &overrides = object["material_overrides"];
+                if (!overrides.is_object()) {
+                    throw std::runtime_error(
+                        "Scene file error: material_overrides must be an "
+                        "object in " +
+                        context + ".");
+                }
+                for (auto it = overrides.begin(); it != overrides.end(); ++it) {
+                    model.material_overrides.emplace(
+                        it.key(), it.value().get<std::string>());
+                }
+            }
+            return append(context, model);
+        }
+        if (type == "translate") {
+            const ObjectIRId child = parse(
+                require_key(object, "object", context), context + ".object");
+            const vec3 offset =
+                object.contains("offset")
+                    ? read_vec3(object, "offset", context)
+                    : read_vec3_or(object, "translate", vec3(0, 0, 0),
+                                   context);
+            return append(context,
+                          TransformObjectIR{child,
+                                            Transform::translate(offset)});
+        }
+        if (type == "rotate_y") {
+            const ObjectIRId child = parse(
+                require_key(object, "object", context), context + ".object");
+            return append(
+                context,
+                TransformObjectIR{
+                    child, Transform::rotate_y(
+                               read_double_or(object, "angle", 0.0))});
+        }
+        if (type == "transform") {
+            const ObjectIRId child = parse(
+                require_key(object, "object", context), context + ".object");
+            const json &transform_json =
+                object.contains("transform") ? object["transform"] : object;
+            return append(context,
+                          TransformObjectIR{
+                              child, parse_transform(transform_json,
+                                                     context + ".transform")});
+        }
+        if (type == "flip_face") {
+            return append(
+                context,
+                FlipFaceObjectIR{
+                    parse(require_key(object, "object", context),
+                          context + ".object")});
+        }
+        if (type == "constant_medium") {
+            const json &boundary =
+                object.contains("boundary")
+                    ? object["boundary"]
+                    : require_key(object, "object", context);
+            ConstantMediumObjectIR medium;
+            medium.boundary = parse(boundary, context + ".boundary");
+            medium.density = read_double_or(object, "density", 1.0);
+            if (object.contains("texture")) {
+                medium.texture = m_textures.parse_value(
+                    object["texture"], context + ".texture");
+            } else {
+                medium.albedo = read_vec3_or(
+                    object, "color", color(1, 1, 1), context);
+            }
+            return append(context, medium);
+        }
+        if (type == "list" || type == "accel") {
+            const json &children = require_key(object, "objects", context);
+            if (!children.is_array()) {
+                throw std::runtime_error("Scene file error: " + context +
+                                         ".objects must be an array.");
+            }
+            GroupObjectIR group;
+            group.accelerate = type == "accel" ||
+                               read_bool_or(object, "accelerate", false);
+            group.time0 = read_double_or(object, "time0", 0.0);
+            group.time1 = read_double_or(object, "time1", 1.0);
+            group.children.reserve(children.size());
+            for (std::size_t index = 0; index < children.size(); ++index) {
+                group.children.push_back(parse(
+                    children[index], context + ".objects[" +
+                                         std::to_string(index) + "]"));
+            }
+            return append(context, std::move(group));
+        }
+        throw std::runtime_error("Scene file error: unknown object type '" +
+                                 type + "' in " + context + ".");
+    }
+
+  private:
+    template <typename T>
+    ObjectIRId append(const std::string &context, T data) {
+        const ObjectIRId id = m_ir.object_nodes.size();
+        m_ir.object_nodes.push_back(
+            ObjectIRNode{context, ObjectIRData{std::move(data)}});
+        return id;
+    }
+
+    SceneIR &m_ir;
+    TextureIRParser &m_textures;
+};
+
+LightIR parse_light(const json &value, const std::string &context) {
+    if (!value.is_object()) {
+        throw std::runtime_error("Scene file error: " + context +
+                                 " must be an object.");
+    }
+    const std::string type = read_string(value, "type", context);
+    LightIR light;
+    light.context = context;
+    if (type == "point") {
+        light.data = PointLightIR{read_vec3(value, "position", context),
+                                  read_vec3(value, "intensity", context)};
+    } else if (type == "directional") {
+        light.data =
+            DirectionalLightIR{read_vec3(value, "direction", context),
+                               read_vec3(value, "color", context)};
+    } else if (type == "spot") {
+        light.data = SpotLightIR{
+            read_vec3(value, "position", context),
+            read_vec3(value, "direction", context),
+            read_double_or(value, "cutoff", 20.0),
+            read_vec3(value, "intensity", context)};
+    } else if (type == "quad") {
+        light.data = QuadLightIR{read_vec3(value, "Q", context),
+                                 read_vec3(value, "u", context),
+                                 read_vec3(value, "v", context),
+                                 read_vec3(value, "intensity", context)};
+    } else if (type == "environment") {
+        light.data =
+            EnvironmentLightIR{read_string(value, "path", context)};
+    } else {
+        throw std::runtime_error("Scene file error: unknown light type '" +
+                                 type + "' in " + context + ".");
+    }
+    return light;
 }
 
 } // namespace
@@ -579,10 +852,10 @@ SceneIR parse_scene_ir(const SceneDescription &description) {
         throw std::runtime_error(
             "Scene file error: 'objects' must be an array.");
     }
+    ObjectIRParser object_parser(ir, texture_parser);
     for (std::size_t i = 0; i < objects.size(); ++i) {
-        ir.objects.push_back(parse_object_spec(
-            objects[i], "objects[" + std::to_string(i) + "]",
-            &texture_parser));
+        ir.objects.push_back(object_parser.parse(
+            objects[i], "objects[" + std::to_string(i) + "]"));
     }
 
     const bool has_explicit_lights =
@@ -597,7 +870,7 @@ SceneIR parse_scene_ir(const SceneDescription &description) {
                 "Scene file error: 'lights' must be an array.");
         }
         for (std::size_t i = 0; i < lights.size(); ++i) {
-            ir.lights.push_back(parse_object_spec(
+            ir.lights.push_back(parse_light(
                 lights[i], "lights[" + std::to_string(i) + "]"));
         }
     }

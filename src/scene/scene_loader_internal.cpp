@@ -89,17 +89,6 @@ std::string read_string(const json &object, const std::string &key,
     return require_key(object, key, context).get<std::string>();
 }
 
-vec2 read_optional_uv(const json &object, const std::string &key,
-                      bool &present, const std::string &context) {
-    auto found = object.find(key);
-    if (found == object.end()) {
-        present = false;
-        return vec2(0, 0);
-    }
-    present = true;
-    return read_vec2_value(*found, context + "." + key);
-}
-
 std::string resolve_asset_path(const SceneBuildContext &context,
                                const std::string &path) {
     if (path.empty() || is_absolute_path(path) || file_exists(path)) {
@@ -114,6 +103,5 @@ std::string resolve_asset_path(const SceneBuildContext &context,
     std::string candidate = base + "/" + path;
     return file_exists(candidate) ? candidate : path;
 }
-
 
 } // namespace scene_loader_internal
