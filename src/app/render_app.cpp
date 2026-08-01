@@ -153,6 +153,10 @@ cuda_backend::CudaRendererSettings make_cuda_settings(
 int run_benchmark(const AppOptions &options) {
     std::vector<double> seconds;
     seconds.reserve(options.benchmark.runs);
+    std::vector<double> upload_seconds;
+    upload_seconds.reserve(options.benchmark.runs);
+    std::vector<double> device_seconds;
+    device_seconds.reserve(options.benchmark.runs);
     RenderStats last_stats;
     long long clamped_samples = 0;
     long long invalid_samples = 0;
@@ -191,6 +195,8 @@ int run_benchmark(const AppOptions &options) {
 #endif
         }
         seconds.push_back(last_stats.seconds);
+        upload_seconds.push_back(last_stats.upload_seconds);
+        device_seconds.push_back(last_stats.device_seconds);
         clamped_samples += last_stats.clamped_samples;
         invalid_samples += last_stats.invalid_samples;
         saved_buffer = render_buffer;
@@ -228,6 +234,12 @@ int run_benchmark(const AppOptions &options) {
     auto sorted = seconds;
     std::sort(sorted.begin(), sorted.end());
     double median = sorted[sorted.size() / 2];
+    std::sort(upload_seconds.begin(), upload_seconds.end());
+    std::sort(device_seconds.begin(), device_seconds.end());
+    const double median_upload_seconds =
+        upload_seconds[upload_seconds.size() / 2];
+    const double median_device_seconds =
+        device_seconds[device_seconds.size() / 2];
     double samples_per_second =
         median > 0.0 ? last_stats.sample_count / median : 0.0;
     std::cout << "BENCH_SUMMARY"
@@ -243,8 +255,8 @@ int run_benchmark(const AppOptions &options) {
               << " seed=" << last_stats.seed
               << " threads=" << last_stats.threads
               << " device=" << log_token(last_stats.device_name)
-              << " upload_seconds=" << last_stats.upload_seconds
-              << " device_seconds=" << last_stats.device_seconds
+              << " median_upload_seconds=" << median_upload_seconds
+              << " median_device_seconds=" << median_device_seconds
               << " scene_bytes=" << last_stats.scene_bytes
               << " workspace_bytes=" << last_stats.workspace_bytes
               << " batch_size=" << last_stats.batch_size

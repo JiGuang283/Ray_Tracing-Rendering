@@ -43,7 +43,7 @@ RenderStats render_cuda(const CompiledScene &scene,
             "CUDA max depth and sample count must be positive");
     }
 
-    const auto begin = std::chrono::high_resolution_clock::now();
+    const auto begin = std::chrono::steady_clock::now();
     DeviceSceneStorage device_scene;
     const DeviceSceneUploadStats upload = device_scene.upload(scene);
     CudaRenderSettings transport_settings;
@@ -78,7 +78,7 @@ RenderStats render_cuda(const CompiledScene &scene,
                     static_cast<int>(pixel.sample_count)));
         }
     }
-    const auto end = std::chrono::high_resolution_clock::now();
+    const auto end = std::chrono::steady_clock::now();
     const std::chrono::duration<double> elapsed = end - begin;
 
     RenderStats stats;
