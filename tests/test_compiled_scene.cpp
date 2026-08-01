@@ -344,8 +344,6 @@ TEST_CASE(flat_intersector_hits_and_reconstructs_sphere_and_mesh) {
     REQUIRE(intersect_compiled_scene(view, sphere_ray, sphere_hit));
     REQUIRE((sphere_hit.flags & PACKED_HIT_SPHERE) != 0);
     REQUIRE_NEAR(sphere_hit.t, 2.0, 1e-5);
-    REQUIRE(sphere_hit.material_id == 0);
-
     PackedSurfaceInteraction sphere_surface;
     REQUIRE(reconstruct_compiled_hit(view, sphere_ray, sphere_hit,
                                      sphere_surface));
@@ -353,6 +351,7 @@ TEST_CASE(flat_intersector_hits_and_reconstructs_sphere_and_mesh) {
     REQUIRE_NEAR(sphere_surface.geometric_normal.z, -1.0, 1e-5);
     REQUIRE_NEAR(sphere_surface.uv.x, 0.75, 1e-5);
     REQUIRE_NEAR(sphere_surface.uv.y, 0.5, 1e-5);
+    REQUIRE(sphere_surface.material_id == 0);
 
     PackedRay box_ray;
     box_ray.origin = {3.0f, 0.0f, -3.0f};
@@ -363,13 +362,12 @@ TEST_CASE(flat_intersector_hits_and_reconstructs_sphere_and_mesh) {
     REQUIRE(intersect_compiled_scene(view, box_ray, box_hit));
     REQUIRE((box_hit.flags & PACKED_HIT_TRIANGLE) != 0);
     REQUIRE_NEAR(box_hit.t, 2.0, 1e-5);
-    REQUIRE(box_hit.material_id == 0);
-
     PackedSurfaceInteraction box_surface;
     REQUIRE(reconstruct_compiled_hit(view, box_ray, box_hit, box_surface));
     REQUIRE_NEAR(box_surface.position.x, 3.0, 1e-5);
     REQUIRE_NEAR(box_surface.position.z, -1.0, 1e-5);
     REQUIRE(std::abs(box_surface.geometric_normal.z) > 0.999f);
+    REQUIRE(box_surface.material_id == 0);
 }
 
 TEST_CASE(flat_intersector_matches_reference_geometry_hits) {
@@ -453,7 +451,7 @@ TEST_CASE(flat_intersector_samples_medium_only_with_explicit_rng) {
     REQUIRE(hit.t < 4.0f);
     PackedSurfaceInteraction surface;
     REQUIRE(reconstruct_compiled_hit(view, ray, hit, surface));
-    REQUIRE(surface.material_id == hit.material_id);
+    REQUIRE(surface.material_id < packed.materials.size());
 }
 
 TEST_CASE(flat_intersector_preserves_negative_sphere_and_mirrored_transform) {

@@ -92,6 +92,12 @@ ImageId PackedResourceCompiler::compile_image(
 
     const std::size_t texel_offset = m_scene.image_texels.size();
     const std::vector<float> &pixels = image->pixels();
+    for (float value : pixels) {
+        if (!std::isfinite(value)) {
+            throw std::runtime_error(
+                "image contains a non-finite texel value");
+        }
+    }
     m_scene.image_texels.insert(m_scene.image_texels.end(), pixels.begin(),
                                 pixels.end());
 

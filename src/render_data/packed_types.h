@@ -188,9 +188,8 @@ struct alignas(16) PackedHit {
     float barycentric_v = 0.0f;
     std::uint32_t instance_id = kInvalidPackedIndex;
     std::uint32_t primitive_id = kInvalidPackedIndex;
-    std::uint32_t element_id = kInvalidPackedIndex;
-    std::uint32_t material_id = kInvalidPackedIndex;
     std::uint32_t flags = 0;
+    std::uint32_t padding[2]{};
 };
 
 struct alignas(16) PackedSurfaceInteraction {
@@ -355,10 +354,23 @@ static_assert(sizeof(PackedRay) == 48);
 static_assert(sizeof(PackedHit) == 32);
 static_assert(sizeof(PackedTransform) == 96);
 static_assert(std::is_trivially_copyable_v<PackedBVHNode>);
+static_assert(std::is_trivially_copyable_v<Range32>);
+static_assert(std::is_trivially_copyable_v<PackedRay>);
+static_assert(std::is_trivially_copyable_v<PackedHit>);
 static_assert(std::is_trivially_copyable_v<PackedTransform>);
+static_assert(std::is_trivially_copyable_v<PackedTriangle>);
+static_assert(std::is_trivially_copyable_v<PackedSphere>);
+static_assert(std::is_trivially_copyable_v<PackedMovingSphere>);
+static_assert(std::is_trivially_copyable_v<PackedMesh>);
+static_assert(std::is_trivially_copyable_v<PackedInstance>);
+static_assert(std::is_trivially_copyable_v<PackedAggregate>);
+static_assert(std::is_trivially_copyable_v<PackedMedium>);
 static_assert(std::is_trivially_copyable_v<PackedTextureNode>);
 static_assert(std::is_trivially_copyable_v<PackedMaterial>);
+static_assert(std::is_trivially_copyable_v<PackedImageDesc>);
+static_assert(std::is_trivially_copyable_v<PackedPerlinDesc>);
 static_assert(std::is_trivially_copyable_v<PackedLight>);
 static_assert(std::is_trivially_copyable_v<PackedSurfaceInteraction>);
+static_assert(std::is_trivially_copyable_v<PackedCamera>);
 
 #endif

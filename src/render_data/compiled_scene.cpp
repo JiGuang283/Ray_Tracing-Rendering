@@ -22,6 +22,11 @@ bool finite(const Float3 &value) {
            std::isfinite(value.z);
 }
 
+bool finite(const Float4 &value) {
+    return std::isfinite(value.x) && std::isfinite(value.y) &&
+           std::isfinite(value.z) && std::isfinite(value.w);
+}
+
 bool valid_range(Range32 range, std::size_t size) {
     return range.offset <= size && range.count <= size - range.offset;
 }
@@ -190,6 +195,19 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         report.errors.push_back(
             "compiled vertex attribute buffers have different sizes");
     }
+    for (std::size_t index = 0; index < scene.transforms.size(); ++index) {
+        const PackedTransform &transform = scene.transforms[index];
+        bool transform_finite = true;
+        for (float value : transform.object_to_world) {
+            transform_finite = transform_finite && std::isfinite(value);
+        }
+        for (float value : transform.world_to_object) {
+            transform_finite = transform_finite && std::isfinite(value);
+        }
+        if (!transform_finite) {
+            add_index_error(report, "transform", "matrix", index);
+        }
+    }
 
     for (std::size_t index = 0; index < scene.meshes.size(); ++index) {
         const PackedMesh &mesh = scene.meshes[index];
@@ -321,9 +339,17 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
     }
 
     for (std::size_t index = 0; index < scene.images.size(); ++index) {
-        if (!valid_range(scene.images[index].texels,
-                         scene.image_texels.size())) {
+        const PackedImageDesc &image = scene.images[index];
+        if (!valid_range(image.texels, scene.image_texels.size())) {
             add_range_error(report, "image", "texels", index);
+        } else {
+            const std::uint64_t expected =
+                static_cast<std::uint64_t>(image.width) * image.height *
+                image.channels;
+            if (image.width == 0 || image.height == 0 || image.channels == 0 ||
+                image.channels > 4 || image.texels.count != expected) {
+                add_index_error(report, "image", "dimensions", index);
+            }
         }
     }
 
@@ -405,6 +431,86 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         }
         if (!valid_optional_index(light.image_id, scene.images.size())) {
             add_index_error(report, "light", "image_id", index);
+        }
+        if (!finite(light.data0) || !finite(light.data1) ||
+            !finite(light.data2) || !finite(light.radiance) ||
+            !finite(light.power)) {
+            add_index_error(report, "light", "numeric_data", index);
+        }
+        if (valid_range(light.element_indices,
+                        scene.light_element_indices.size())) {
+            for (std::uint32_t local = 0;
+                 local < light.element_indices.count; ++local) {
+                if (scene.light_element_indices[
+                        light.element_indices.offset + local] >=
+                    scene.triangles.size()) {
+                    add_index_error(report, "light", "triangle_id", index);
+                    break;
+                }
+            }
+        }
+        if (light.type == PackedLightType::TriangleEmitter ||
+            light.type == PackedLightType::MeshEmitter) {
+            const std::uint32_t count = light.element_indices.count;
+            if (count == 0 || light.distribution.count != count * 2u) {
+                add_index_error(report, "light", "mesh_distribution",
+                                index);
+            } else if (valid_range(light.distribution,
+                                   scene.light_distributions.size())) {
+                float probability_sum = 0.0f;
+                float previous = 0.0f;
+                for (std::uint32_t local = 0; local < count; ++local) {
+                    const float probability = scene.light_distributions[
+                        light.distribution.offset + local];
+                    const float cdf = scene.light_distributions[
+                        light.distribution.offset + count + local];
+                    if (!std::isfinite(probability) || probability <= 0.0f ||
+                        !std::isfinite(cdf) || cdf < previous) {
+                        add_index_error(report, "light", "mesh_cdf", index);
+                        break;
+                    }
+                    probability_sum += probability;
+                    previous = cdf;
+                }
+                if (std::abs(probability_sum - 1.0f) > 1e-4f ||
+                    std::abs(previous - 1.0f) > 1e-6f) {
+                    add_index_error(report, "light", "mesh_probability",
+                                    index);
+                }
+            }
+        } else if (light.type == PackedLightType::Environment) {
+            const std::uint64_t width =
+                static_cast<std::uint32_t>(light.data0.x);
+            const std::uint64_t height =
+                static_cast<std::uint32_t>(light.data0.y);
+            const std::uint64_t expected =
+                width * height + height * (width + 1) + height + height + 1;
+            if (width == 0 || height == 0 ||
+                light.distribution.count != expected) {
+                add_index_error(report, "light", "environment_distribution",
+                                index);
+            }
+        }
+    }
+    if (!scene.light_cdf.empty()) {
+        float previous = 0.0f;
+        float probability_sum = 0.0f;
+        for (std::size_t index = 0; index < scene.light_cdf.size(); ++index) {
+            const float probability = scene.light_selection_probabilities[index];
+            const float cdf = scene.light_cdf[index];
+            if (!std::isfinite(probability) || probability <= 0.0f ||
+                !std::isfinite(cdf) || cdf < previous) {
+                report.errors.push_back(
+                    "light selection distribution is invalid");
+                break;
+            }
+            probability_sum += probability;
+            previous = cdf;
+        }
+        if (std::abs(probability_sum - 1.0f) > 1e-4f ||
+            std::abs(previous - 1.0f) > 1e-6f) {
+            report.errors.push_back(
+                "light selection distribution is not normalized");
         }
     }
     return report;

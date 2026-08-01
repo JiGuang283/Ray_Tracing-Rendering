@@ -674,7 +674,7 @@ class SceneCompiler {
             {0.2, 0.2, 0.6}};
         std::vector<EmitterTriangle> entries;
         double total_area = 0.0;
-        Float3 integrated{};
+        double integrated[3]{};
         for (std::uint32_t local = 0; local < mesh.triangles.count; ++local) {
             const std::uint32_t triangle_id = mesh.triangles.offset + local;
             const PackedTriangle &triangle = m_scene.triangles[triangle_id];
@@ -755,11 +755,12 @@ class SceneCompiler {
                  estimate.z * 0.25f});
             entries.push_back({triangle_id, area, estimate});
             total_area += area;
-            integrated.x += static_cast<float>(area * estimate.x);
-            integrated.y += static_cast<float>(area * estimate.y);
-            integrated.z += static_cast<float>(area * estimate.z);
+            integrated[0] += area * estimate.x;
+            integrated[1] += area * estimate.y;
+            integrated[2] += area * estimate.z;
         }
-        if (entries.empty() || !(total_area > 0.0)) {
+        if (entries.empty() || !(total_area > 0.0) ||
+            !std::isfinite(total_area)) {
             return;
         }
 
@@ -774,8 +775,8 @@ class SceneCompiler {
             m_scene.light_element_indices.size();
         const std::size_t distribution_offset =
             m_scene.light_distributions.size();
-        std::vector<float> probabilities;
-        probabilities.reserve(entries.size());
+        std::vector<double> raw_probabilities;
+        raw_probabilities.reserve(entries.size());
         for (const EmitterTriangle &entry : entries) {
             const double area_probability = entry.area / total_area;
             const double emission_probability =
@@ -786,16 +787,40 @@ class SceneCompiler {
                            0.0722 * entry.emission.z) /
                           emission_weight_sum
                     : area_probability;
-            const float probability = static_cast<float>(
+            raw_probabilities.push_back(
                 0.95 * emission_probability + 0.05 * area_probability);
-            probabilities.push_back(probability);
-            m_scene.light_distributions.push_back(probability);
             m_scene.light_element_indices.push_back(entry.index);
         }
-        float cumulative = 0.0f;
+        const double minimum_probability =
+            static_cast<double>(std::numeric_limits<float>::min());
+        double adjusted_sum = 0.0;
+        for (double &probability : raw_probabilities) {
+            probability = std::max(probability, minimum_probability);
+            adjusted_sum += probability;
+        }
+        std::vector<float> probabilities;
+        probabilities.reserve(raw_probabilities.size());
+        float float_sum = 0.0f;
+        std::size_t largest_index = 0;
+        for (std::size_t index = 0; index < raw_probabilities.size();
+             ++index) {
+            const float probability = static_cast<float>(
+                raw_probabilities[index] / adjusted_sum);
+            probabilities.push_back(probability);
+            float_sum += probability;
+            if (probability > probabilities[largest_index]) {
+                largest_index = index;
+            }
+        }
+        probabilities[largest_index] += 1.0f - float_sum;
+        for (float probability : probabilities) {
+            m_scene.light_distributions.push_back(probability);
+        }
+        double cumulative = 0.0;
         for (float probability : probabilities) {
             cumulative += probability;
-            m_scene.light_distributions.push_back(cumulative);
+            m_scene.light_distributions.push_back(
+                static_cast<float>(cumulative));
         }
         m_scene.light_distributions.back() = 1.0f;
 
@@ -821,13 +846,18 @@ class SceneCompiler {
         light.data0 = {checked_float(total_area, "emitter area"),
                        static_cast<float>(entries.size()), 0.0f, 0.0f};
         light.radiance = {
-            integrated.x / static_cast<float>(total_area),
-            integrated.y / static_cast<float>(total_area),
-            integrated.z / static_cast<float>(total_area), 0.0f};
-        light.power = {side_factor * static_cast<float>(pi) * integrated.x,
-                       side_factor * static_cast<float>(pi) * integrated.y,
-                       side_factor * static_cast<float>(pi) * integrated.z,
-                       0.0f};
+            checked_float(integrated[0] / total_area, "emitter radiance"),
+            checked_float(integrated[1] / total_area, "emitter radiance"),
+            checked_float(integrated[2] / total_area, "emitter radiance"),
+            0.0f};
+        light.power = {
+            checked_float(side_factor * pi * integrated[0],
+                          "emitter power"),
+            checked_float(side_factor * pi * integrated[1],
+                          "emitter power"),
+            checked_float(side_factor * pi * integrated[2],
+                          "emitter power"),
+            0.0f};
         append_light(light);
     }
 
@@ -849,7 +879,7 @@ class SceneCompiler {
         const double base_patch =
             4.0 * pi * sphere.radius * sphere.radius / 6.0;
         double total_area = 0.0;
-        Float3 integrated{};
+        double integrated[3]{};
         for (Float3 normal : normals) {
             const Float3 inverse_transpose{
                 inverse[0] * normal.x + inverse[4] * normal.y +
@@ -885,9 +915,9 @@ class SceneCompiler {
             }
             emission = finite_nonnegative(emission);
             total_area += area;
-            integrated.x += static_cast<float>(area * emission.x);
-            integrated.y += static_cast<float>(area * emission.y);
-            integrated.z += static_cast<float>(area * emission.z);
+            integrated[0] += area * emission.x;
+            integrated[1] += area * emission.y;
+            integrated[2] += area * emission.z;
         }
         if (!(total_area > 0.0) || !std::isfinite(total_area)) {
             return;
@@ -908,13 +938,21 @@ class SceneCompiler {
                        sphere.radius};
         light.data1.x = checked_float(total_area, "sphere emitter area");
         light.radiance = {
-            integrated.x / static_cast<float>(total_area),
-            integrated.y / static_cast<float>(total_area),
-            integrated.z / static_cast<float>(total_area), 0.0f};
-        light.power = {side_factor * static_cast<float>(pi) * integrated.x,
-                       side_factor * static_cast<float>(pi) * integrated.y,
-                       side_factor * static_cast<float>(pi) * integrated.z,
-                       0.0f};
+            checked_float(integrated[0] / total_area,
+                          "sphere emitter radiance"),
+            checked_float(integrated[1] / total_area,
+                          "sphere emitter radiance"),
+            checked_float(integrated[2] / total_area,
+                          "sphere emitter radiance"),
+            0.0f};
+        light.power = {
+            checked_float(side_factor * pi * integrated[0],
+                          "sphere emitter power"),
+            checked_float(side_factor * pi * integrated[1],
+                          "sphere emitter power"),
+            checked_float(side_factor * pi * integrated[2],
+                          "sphere emitter power"),
+            0.0f};
         append_light(light);
     }
 

@@ -175,8 +175,7 @@ bool intersect_triangle(const CompiledSceneView &scene,
     candidate.t = t;
     candidate.barycentric_u = u;
     candidate.barycentric_v = v;
-    candidate.primitive_id = triangle.primitive_id;
-    candidate.element_id = triangle_index;
+    candidate.primitive_id = triangle_index;
     candidate.flags = PACKED_HIT_TRIANGLE;
     return true;
 }
@@ -303,7 +302,6 @@ bool intersect_medium(const CompiledSceneView &scene,
         return false;
     }
     hit.t = entry_t + hit_distance / ray_length;
-    hit.material_id = medium.phase_material;
     hit.flags = PACKED_HIT_MEDIUM | PACKED_HIT_FRONT_FACE;
     return true;
 }
@@ -326,19 +324,12 @@ bool intersect_instance(const CompiledSceneView &scene,
         const PackedMesh &mesh = scene.meshes[instance.geometry_index];
         found = intersect_mesh(scene, mesh, object_ray, ray.t_min, t_max,
                                candidate);
-        if (found) {
-            const PackedTriangle &triangle =
-                scene.triangles[candidate.element_id];
-            candidate.material_id =
-                resolve_material(scene, instance, triangle.material_slot);
-        }
         break;
     }
     case PackedGeometryType::Sphere: {
         const PackedSphere &sphere = scene.spheres[instance.geometry_index];
         found = intersect_sphere(sphere.center, sphere.radius, object_ray,
                                  ray.t_min, t_max, candidate);
-        candidate.material_id = resolve_material(scene, instance, 0);
         break;
     }
     case PackedGeometryType::MovingSphere: {
@@ -347,7 +338,6 @@ bool intersect_instance(const CompiledSceneView &scene,
         found = intersect_sphere(moving_sphere_center(sphere, ray.time),
                                  sphere.radius, object_ray, ray.t_min, t_max,
                                  candidate);
-        candidate.material_id = resolve_material(scene, instance, 0);
         break;
     }
     case PackedGeometryType::Medium:
@@ -361,13 +351,8 @@ bool intersect_instance(const CompiledSceneView &scene,
         return false;
     }
     candidate.instance_id = instance_id;
-    if ((candidate.flags & PACKED_HIT_MEDIUM) == 0) {
-        candidate.primitive_id = candidate.flags & PACKED_HIT_TRIANGLE
-                                     ? candidate.primitive_id
-                                     : instance.source_object_id;
-    } else {
-        candidate.primitive_id = instance.source_object_id;
-        candidate.element_id = instance.geometry_index;
+    if ((candidate.flags & PACKED_HIT_TRIANGLE) == 0) {
+        candidate.primitive_id = instance.geometry_index;
     }
     hit = candidate;
     return true;
@@ -455,11 +440,11 @@ bool reconstruct_triangle(const CompiledSceneView &scene,
                           const PackedTransform &transform,
                           PackedSurfaceInteraction &surface) {
     if (instance.geometry_index >= scene.meshes.count ||
-        hit.element_id >= scene.triangles.count) {
+        hit.primitive_id >= scene.triangles.count) {
         return false;
     }
     const PackedMesh &mesh = scene.meshes[instance.geometry_index];
-    const PackedTriangle &triangle = scene.triangles[hit.element_id];
+    const PackedTriangle &triangle = scene.triangles[hit.primitive_id];
     const Float3 object_v0 = packed_position(scene, mesh, triangle.vertex0);
     const Float3 object_v1 = packed_position(scene, mesh, triangle.vertex1);
     const Float3 object_v2 = packed_position(scene, mesh, triangle.vertex2);
@@ -562,6 +547,9 @@ bool reconstruct_triangle(const CompiledSceneView &scene,
     }
     surface.flags = PACKED_HIT_TRIANGLE |
                     (front_face ? PACKED_HIT_FRONT_FACE : 0u);
+    surface.material_id =
+        resolve_material(scene, instance, triangle.material_slot);
+    surface.primitive_id = triangle.primitive_id;
     return true;
 }
 
@@ -637,6 +625,8 @@ bool reconstruct_sphere(const CompiledSceneView &scene,
         transform_vector(transform.object_to_world, object_dpdv);
     surface.flags = PACKED_HIT_SPHERE |
                     (front_face ? PACKED_HIT_FRONT_FACE : 0u);
+    surface.material_id = resolve_material(scene, instance, 0);
+    surface.primitive_id = instance.source_object_id;
     return true;
 }
 
@@ -655,8 +645,7 @@ bool intersect_compiled_scene(const CompiledSceneView &scene,
 bool reconstruct_compiled_hit(const CompiledSceneView &scene,
                               const PackedRay &ray, const PackedHit &hit,
                               PackedSurfaceInteraction &surface) {
-    if (hit.instance_id >= scene.instances.count ||
-        hit.material_id >= scene.materials.count || !std::isfinite(hit.t)) {
+    if (hit.instance_id >= scene.instances.count || !std::isfinite(hit.t)) {
         return false;
     }
     const PackedInstance &instance = scene.instances[hit.instance_id];
@@ -664,9 +653,7 @@ bool reconstruct_compiled_hit(const CompiledSceneView &scene,
         return false;
     }
     surface = {};
-    surface.material_id = hit.material_id;
     surface.instance_id = hit.instance_id;
-    surface.primitive_id = hit.primitive_id;
     const PackedTransform &transform = scene.transforms[instance.transform_id];
     if ((hit.flags & PACKED_HIT_TRIANGLE) != 0) {
         return reconstruct_triangle(scene, ray, hit, instance, transform,
@@ -682,8 +669,11 @@ bool reconstruct_compiled_hit(const CompiledSceneView &scene,
         surface.shading_normal = surface.geometric_normal;
         surface.dpdu = {0.0f, 1.0f, 0.0f};
         surface.dpdv = {0.0f, 0.0f, 1.0f};
+        surface.material_id =
+            scene.media[instance.geometry_index].phase_material;
+        surface.primitive_id = instance.source_object_id;
         surface.flags = PACKED_HIT_MEDIUM | PACKED_HIT_FRONT_FACE;
-        return true;
+        return surface.material_id < scene.materials.count;
     }
     return false;
 }

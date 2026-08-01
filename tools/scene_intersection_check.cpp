@@ -218,9 +218,9 @@ ComparisonResult compare_scene(const std::filesystem::path &path,
                 report(x, y, "shading normal differs");
             }
             if (reference_hit.mat_ptr == nullptr ||
-                packed_hit.material_id >= packed.materials.size() ||
+                surface.material_id >= packed.materials.size() ||
                 material_type(reference_hit.mat_ptr->description()) !=
-                    packed.materials[packed_hit.material_id].type) {
+                    packed.materials[surface.material_id].type) {
                 report(x, y, "material type differs");
             }
         }
