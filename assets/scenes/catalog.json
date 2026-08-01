@@ -291,6 +291,11 @@
       "id": 63,
       "name": "gltf_toy_car",
       "path": "assets/scenes/scene_063_gltf_toy_car.json"
+    },
+    {
+      "id": 64,
+      "name": "complex_gltf_light_lab",
+      "path": "assets/scenes/scene_064_complex_gltf_light_lab.json"
     }
   ]
 }

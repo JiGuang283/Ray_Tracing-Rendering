@@ -1,0 +1,220 @@
+{
+  "name": "complex_gltf_light_lab",
+  "camera": {
+    "lookfrom": [7.0, 4.2, 14.0],
+    "lookat": [0.0, 1.55, -0.15],
+    "vup": [0.0, 1.0, 0.0],
+    "vfov": 32.0,
+    "aperture": 0.0,
+    "focus_dist": 16.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {
+    "width": 1200,
+    "spp": 512,
+    "background": [0.002, 0.003, 0.006],
+    "color_pipeline": {
+      "tone_mapping": "aces",
+      "exposure": -0.65,
+      "gamma": 2.2
+    }
+  },
+  "world_accel": true,
+  "auto_emitters": true,
+  "materials": {
+    "floor": {
+      "type": "principled",
+      "base_color": [0.055, 0.065, 0.085],
+      "roughness": 0.3,
+      "metallic": 0.05,
+      "clearcoat": 0.12,
+      "clearcoat_roughness": 0.18
+    },
+    "back_wall": {
+      "type": "principled",
+      "base_color": [0.16, 0.17, 0.19],
+      "roughness": 0.78,
+      "metallic": 0.0
+    },
+    "left_wall": {
+      "type": "lambertian",
+      "albedo": [0.065, 0.095, 0.16]
+    },
+    "podium_dark": {
+      "type": "principled",
+      "base_color": [0.035, 0.04, 0.05],
+      "roughness": 0.2,
+      "metallic": 0.72,
+      "clearcoat": 0.24,
+      "clearcoat_roughness": 0.1
+    },
+    "podium_light": {
+      "type": "principled",
+      "base_color": [0.31, 0.32, 0.34],
+      "roughness": 0.52,
+      "metallic": 0.0
+    },
+    "brushed_gold": {
+      "type": "principled",
+      "base_color": [0.95, 0.56, 0.16],
+      "roughness": 0.16,
+      "metallic": 1.0,
+      "clearcoat": 0.08,
+      "clearcoat_roughness": 0.12
+    },
+    "glass": {
+      "type": "dielectric",
+      "index_of_refraction": 1.52
+    }
+  },
+  "objects": [
+    {
+      "type": "xz_rect",
+      "x0": -7.0,
+      "x1": 7.0,
+      "z0": -5.0,
+      "z1": 6.0,
+      "k": 0.0,
+      "material": "floor"
+    },
+    {
+      "type": "xy_rect",
+      "x0": -7.0,
+      "x1": 7.0,
+      "y0": 0.0,
+      "y1": 7.0,
+      "k": -5.0,
+      "material": "back_wall"
+    },
+    {
+      "type": "yz_rect",
+      "y0": 0.0,
+      "y1": 7.0,
+      "z0": -5.0,
+      "z1": 6.0,
+      "k": -7.0,
+      "material": "left_wall"
+    },
+    {
+      "type": "box",
+      "min": [-1.75, 0.0, -1.45],
+      "max": [1.75, 0.65, 1.05],
+      "material": "podium_dark"
+    },
+    {
+      "type": "box",
+      "min": [-5.25, 0.0, -2.2],
+      "max": [-2.55, 0.55, 0.3],
+      "material": "podium_light"
+    },
+    {
+      "type": "box",
+      "min": [2.55, 0.0, -1.55],
+      "max": [5.15, 0.45, 0.85],
+      "material": "podium_light"
+    },
+    {
+      "type": "model",
+      "path": "assets/models/BoomBox/BoomBox.glb",
+      "transform": {
+        "translation": [0.0, 1.92, -0.25],
+        "rotation": [0.0, 0.0654031292, 0.0, 0.9978589232],
+        "scale": [130.0, 130.0, 130.0]
+      }
+    },
+    {
+      "type": "model",
+      "path": "assets/models/Lantern/Lantern.glb",
+      "transform": {
+        "translation": [-4.72, 0.526, -1.25],
+        "rotation": [0.0, -0.1736481777, 0.0, 0.984807753],
+        "scale": [0.13, 0.13, 0.13]
+      }
+    },
+    {
+      "type": "model",
+      "path": "assets/models/WaterBottle/WaterBottle.glb",
+      "transform": {
+        "translation": [3.35, 1.296, -0.45],
+        "rotation": [0.0, -0.1305261922, 0.0, 0.9914448614],
+        "scale": [6.5, 6.5, 6.5]
+      }
+    },
+    {
+      "type": "model",
+      "path": "assets/models/WaterBottle/WaterBottle.glb",
+      "transform": {
+        "translation": [4.32, 1.075, 0.18],
+        "rotation": [0.0, 0.1736481777, 0.0, 0.984807753],
+        "scale": [4.8, 4.8, 4.8]
+      }
+    },
+    {
+      "type": "model",
+      "path": "assets/models/Avocado/Avocado.glb",
+      "transform": {
+        "translation": [1.55, 0.08, 2.25],
+        "rotation": [0.0, -0.3007057995, 0.0, 0.9537169507],
+        "scale": [26.0, 26.0, 26.0]
+      }
+    },
+    {
+      "type": "sphere",
+      "center": [-5.55, 0.7, 2.15],
+      "radius": 0.7,
+      "material": "brushed_gold"
+    },
+    {
+      "type": "sphere",
+      "center": [5.35, 0.72, 2.35],
+      "radius": 0.72,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [5.35, 0.72, 2.35],
+      "radius": -0.61,
+      "material": "glass"
+    }
+  ],
+  "lights": [
+    {
+      "type": "quad",
+      "Q": [-3.0, 6.4, -3.6],
+      "u": [6.0, 0.0, 0.0],
+      "v": [0.0, 0.0, 4.2],
+      "intensity": [18.0, 13.5, 9.0]
+    },
+    {
+      "type": "quad",
+      "Q": [-6.8, 1.0, -3.0],
+      "u": [0.0, 4.2, 0.0],
+      "v": [0.0, 0.0, 4.0],
+      "intensity": [3.5, 7.0, 15.0]
+    },
+    {
+      "type": "quad",
+      "Q": [6.8, 1.0, 1.6],
+      "u": [0.0, 4.0, 0.0],
+      "v": [0.0, 0.0, -3.6],
+      "intensity": [12.0, 2.8, 2.2]
+    },
+    {
+      "type": "spot",
+      "position": [0.0, 5.8, 4.2],
+      "direction": [0.0, -0.78, -1.2],
+      "cutoff": 22.0,
+      "intensity": [46.0, 33.0, 22.0]
+    },
+    {
+      "type": "point",
+      "position": [-4.1, 2.35, -1.25],
+      "intensity": [18.0, 9.0, 3.2]
+    },
+    {
+      "type": "directional",
+      "direction": [0.35, -1.0, -0.4],
+      "color": [0.025, 0.035, 0.065]
+    }
+  ]
+}
