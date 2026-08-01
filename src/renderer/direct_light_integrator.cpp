@@ -58,10 +58,8 @@ color DirectLightIntegrator::Li(
         }
 
         if (!light_sampler.empty()) {
-            L += throughput *
-                 integrator_common::clamp_radiance(
-                     integrator_common::sample_direct_lighting(
-                         shaded, scene, light_sampler, rng, false));
+            L += throughput * integrator_common::sample_direct_lighting(
+                                  shaded, scene, light_sampler, rng, false);
         }
 
         auto bs = shaded.shading.bsdf.sample(shaded.wo, rng);

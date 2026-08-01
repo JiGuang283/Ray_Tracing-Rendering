@@ -47,6 +47,9 @@ void apply_overrides(SceneConfig &config, const AppOptions &options) {
     if (options.render.spp_override > 0) {
         config.preset.samples_per_pixel = options.render.spp_override;
     }
+    if (options.render.sample_clamp_override >= 0.0) {
+        config.preset.sample_clamp = options.render.sample_clamp_override;
+    }
 }
 
 void apply_seed(const AppOptions &options) {
@@ -65,6 +68,7 @@ void configure_renderer(Renderer &renderer, const SceneConfig &config,
     renderer.set_samples(config.preset.samples_per_pixel);
     renderer.set_seed(options.render.seed);
     renderer.set_thread_count(options.render.threads);
+    renderer.set_sample_clamp(config.preset.sample_clamp);
     renderer.set_color_pipeline(config.preset.color_pipeline);
     renderer.set_integrator(make_integrator(options.integrator_id));
     renderer.set_max_depth(options.render.max_depth);
@@ -83,6 +87,8 @@ int run_benchmark(const AppOptions &options) {
     std::vector<double> seconds;
     seconds.reserve(options.benchmark.runs);
     RenderStats last_stats;
+    long long clamped_samples = 0;
+    long long invalid_samples = 0;
     shared_ptr<RenderBuffer> saved_buffer;
 
     for (int run = 1; run <= options.benchmark.runs; ++run) {
@@ -101,6 +107,8 @@ int run_benchmark(const AppOptions &options) {
                                      config.preset.background, *render_buffer,
                                      config.scene.lights);
         seconds.push_back(last_stats.seconds);
+        clamped_samples += last_stats.clamped_samples;
+        invalid_samples += last_stats.invalid_samples;
         saved_buffer = render_buffer;
 
         double samples_per_second =
@@ -117,7 +125,10 @@ int run_benchmark(const AppOptions &options) {
                   << " seconds=" << last_stats.seconds
                   << " samples_per_second=" << samples_per_second
                   << " seed=" << last_stats.seed
-                  << " threads=" << last_stats.threads << std::endl;
+                  << " threads=" << last_stats.threads
+                  << " clamped_samples=" << last_stats.clamped_samples
+                  << " invalid_samples=" << last_stats.invalid_samples
+                  << std::endl;
     }
 
     auto sorted = seconds;
@@ -135,7 +146,9 @@ int run_benchmark(const AppOptions &options) {
               << " median_seconds=" << median
               << " median_samples_per_second=" << samples_per_second
               << " seed=" << last_stats.seed
-              << " threads=" << last_stats.threads << std::endl;
+              << " threads=" << last_stats.threads
+              << " clamped_samples=" << clamped_samples
+              << " invalid_samples=" << invalid_samples << std::endl;
 
     if (options.benchmark.save && saved_buffer) {
         save_rendered_image(*saved_buffer, options.scene_id,

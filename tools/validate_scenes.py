@@ -627,6 +627,14 @@ def validate_scene(path: Path, reporter: Reporter) -> None:
     else:
         for key in ("width", "spp"):
             require_number(render, key, f"{context}.render", reporter)
+        if "sample_clamp" in render:
+            require_number(render, "sample_clamp", f"{context}.render",
+                           reporter)
+            value = render.get("sample_clamp")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if value < 0:
+                    reporter.error(f"{context}.render.sample_clamp",
+                                   "expected a non-negative number")
         require_vec(render, "background", 3, f"{context}.render", reporter)
         validate_color_pipeline(render, f"{context}.render", reporter)
         if "color_pipeline" in render:

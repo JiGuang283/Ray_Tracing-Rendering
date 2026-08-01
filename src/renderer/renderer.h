@@ -8,6 +8,7 @@
 #include "material.h"
 #include "render_buffer.h"
 #include "rtweekend.h"
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <vector>
@@ -20,6 +21,8 @@ struct RenderStats {
     long long sample_count = 0;
     unsigned seed = 1337;
     int threads = 0;
+    long long clamped_samples = 0;
+    long long invalid_samples = 0;
 };
 
 class Renderer {
@@ -28,6 +31,7 @@ class Renderer {
         int samples_per_pixel = 10;
         unsigned seed = 1337;
         int thread_count = 0;
+        double sample_clamp = 0.0;
         ColorPipelineSettings color_pipeline;
     };
 
@@ -49,6 +53,9 @@ class Renderer {
     }
     void set_thread_count(int thread_count) {
         m_settings.thread_count = thread_count;
+    }
+    void set_sample_clamp(double sample_clamp) {
+        m_settings.sample_clamp = std::max(0.0, sample_clamp);
     }
     void set_color_pipeline(const ColorPipelineSettings &settings) {
         m_settings.color_pipeline = settings;

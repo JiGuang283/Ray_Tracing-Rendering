@@ -13,6 +13,7 @@ struct RenderOptions {
     int max_depth = AppDefaults::kMaxDepth;
     int threads = 0;
     unsigned seed = 1337;
+    double sample_clamp_override = -1.0;
 };
 
 struct BenchmarkOptions {

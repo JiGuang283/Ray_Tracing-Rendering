@@ -1,6 +1,7 @@
 #include "app_options.h"
 
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -20,6 +21,19 @@ bool parse_int_arg(const char *value, int &out) {
     return true;
 }
 
+bool parse_double_arg(const char *value, double &out) {
+    if (value == nullptr) {
+        return false;
+    }
+    char *end = nullptr;
+    const double parsed = std::strtod(value, &end);
+    if (end == value || *end != '\0' || !std::isfinite(parsed)) {
+        return false;
+    }
+    out = parsed;
+    return true;
+}
+
 } // namespace
 
 void print_usage() {
@@ -35,6 +49,7 @@ void print_usage() {
         << "  --max-depth N        Override integrator max depth\n"
         << "  --seed N             Set render and scene seed (default 1337)\n"
         << "  --threads N          Set render worker count (default hardware)\n"
+        << "  --sample-clamp N     Clamp camera-sample luminance (0 disables)\n"
         << "  --save               Save final rendered image\n";
 }
 
@@ -98,6 +113,13 @@ AppOptions parse_options(int argc, char *args[]) {
         } else if (arg == "--threads" && i + 1 < argc) {
             if (!parse_int_arg(args[++i], options.render.threads)) {
                 fail("--threads expects an integer.");
+                break;
+            }
+        } else if (arg == "--sample-clamp" && i + 1 < argc) {
+            if (!parse_double_arg(args[++i],
+                                  options.render.sample_clamp_override) ||
+                options.render.sample_clamp_override < 0.0) {
+                fail("--sample-clamp expects a non-negative number.");
                 break;
             }
         } else if (!arg.empty() && arg[0] == '-') {

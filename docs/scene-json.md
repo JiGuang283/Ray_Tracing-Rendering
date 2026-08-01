@@ -58,6 +58,7 @@ Texture IR 会把内联节点降成 ID 图并检查未知引用和循环引用�
 - `width`
 - `spp`
 - `background`
+- `sample_clamp`：可选的 camera sample 线性亮度上限；`0` 表示关闭
 - `exposure`
 - `gamma`
 - `tone_mapping`：`linear`、`reinhard`、`aces`

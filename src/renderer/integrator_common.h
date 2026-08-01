@@ -18,7 +18,6 @@ struct ShadedSurface {
 ShadedSurface shade_surface(const hit_record &rec, const ray &r,
                             ShaderScratch &scratch);
 double power_heuristic(double pdf_a, double pdf_b);
-color clamp_radiance(const color &L, double max_value = 100.0);
 double scattering_cos_factor(const MaterialOutput &shading,
                              const BSDFSample &sample);
 color scattering_weight(const MaterialOutput &shading,

@@ -7,6 +7,7 @@
 
 #include "film.h"
 #include "sampler.h"
+#include "sample_filter.h"
 
 Renderer::Renderer() : m_is_rendering(false) {
 }
@@ -37,6 +38,12 @@ Renderer::render(shared_ptr<hittable> world, shared_ptr<camera> cam,
             : static_cast<int>(
                   std::max(1u, std::thread::hardware_concurrency()));
     std::vector<std::thread> threads;
+    struct WorkerStats {
+        long long clamped_samples = 0;
+        long long invalid_samples = 0;
+    };
+    std::vector<WorkerStats> worker_stats(
+        static_cast<std::size_t>(num_threads));
 
     auto render_worker = [&](int worker_id) {
         Sampler sampler(
@@ -68,11 +75,17 @@ Renderer::render(shared_ptr<hittable> world, shared_ptr<camera> cam,
                         ray r = cam->get_ray(sample.u, sample.v,
                                              sampler.rng());
                         if (m_integrator) {
-                            film.add_sample(
-                                i, j,
-                                m_integrator->Li(r, *world, background,
-                                                 lights,
-                                                 integrator_context));
+                            const FilteredCameraSample filtered =
+                                filter_camera_sample(
+                                    m_integrator->Li(
+                                        r, *world, background, lights,
+                                        integrator_context),
+                                    m_settings.sample_clamp);
+                            worker_stats[worker_id].clamped_samples +=
+                                filtered.clamped ? 1 : 0;
+                            worker_stats[worker_id].invalid_samples +=
+                                filtered.invalid ? 1 : 0;
+                            film.add_sample(i, j, filtered.radiance);
                         }
                     }
                     film.finalize_pixel(i, j);
@@ -105,5 +118,9 @@ Renderer::render(shared_ptr<hittable> world, shared_ptr<camera> cam,
                          m_settings.samples_per_pixel;
     stats.seed = m_settings.seed;
     stats.threads = num_threads;
+    for (const WorkerStats &worker : worker_stats) {
+        stats.clamped_samples += worker.clamped_samples;
+        stats.invalid_samples += worker.invalid_samples;
+    }
     return stats;
 }

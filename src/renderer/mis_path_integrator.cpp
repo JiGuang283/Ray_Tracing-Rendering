@@ -82,7 +82,7 @@ color MISPathIntegrator::Li(
             if (depth == 0) {
                 L += L_emit;
             } else {
-                L += integrator_common::clamp_radiance(L_emit);
+                L += L_emit;
             }
         }
 
@@ -90,7 +90,7 @@ color MISPathIntegrator::Li(
             color L_direct = throughput *
                              integrator_common::sample_direct_lighting(
                                  shaded, scene, light_sampler, rng, true);
-            L += integrator_common::clamp_radiance(L_direct);
+            L += L_direct;
         }
 
         auto bs = shaded.shading.bsdf.sample(shaded.wo, rng);

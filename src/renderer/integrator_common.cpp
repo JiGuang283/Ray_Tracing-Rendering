@@ -26,16 +26,6 @@ double power_heuristic(double pdf_a, double pdf_b) {
     return denom > 0 ? a2 / denom : 0.0;
 }
 
-color clamp_radiance(const color &L, double max_value) {
-    if (L.x() > max_value || L.y() > max_value || L.z() > max_value) {
-        double max_c = std::max({L.x(), L.y(), L.z()});
-        if (max_c > max_value) {
-            return L * (max_value / max_c);
-        }
-    }
-    return L;
-}
-
 double scattering_cos_factor(const MaterialOutput &shading,
                              const BSDFSample &sample) {
     return sample.is_phase() ? 1.0 : shading.bsdf.abs_cos_theta(sample.wi);

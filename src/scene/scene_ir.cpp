@@ -2,6 +2,7 @@
 
 #include "scene_loader_internal.h"
 
+#include <cmath>
 #include <stdexcept>
 #include <type_traits>
 #include <unordered_map>
@@ -74,6 +75,13 @@ void apply_render_json(const json &root, SceneIR &ir) {
     ir.preset.background =
         read_vec3_or(render_json, "background", ir.preset.background,
                      "render");
+    ir.preset.sample_clamp =
+        read_double_or(render_json, "sample_clamp", ir.preset.sample_clamp);
+    if (!std::isfinite(ir.preset.sample_clamp) ||
+        ir.preset.sample_clamp < 0.0) {
+        throw std::runtime_error(
+            "Scene file error: render.sample_clamp must be non-negative.");
+    }
     apply_color_pipeline_json(render_json, ir.preset.color_pipeline,
                               "render");
     if (render_json.contains("color_pipeline")) {

@@ -137,3 +137,17 @@ TEST_CASE(scene_ir_rejects_invalid_transform_matrices) {
         }]
     })"));
 }
+
+TEST_CASE(scene_ir_parses_and_validates_sample_clamp) {
+    const SceneIR ir = parse_scene_ir(description_from(R"({
+        "render": {"sample_clamp": 12.5},
+        "materials": {},
+        "objects": []
+    })"));
+    REQUIRE_NEAR(ir.preset.sample_clamp, 12.5, 1e-12);
+    REQUIRE(parse_throws(R"({
+        "render": {"sample_clamp": -1},
+        "materials": {},
+        "objects": []
+    })"));
+}
