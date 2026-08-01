@@ -44,6 +44,10 @@ class TransformedLight final : public Light {
         return m_light->is_infinite();
     }
 
+    bool is_bsdf_hittable() const override {
+        return m_light->is_bsdf_hittable();
+    }
+
     color Le(const ray &value) const override {
         return m_light->Le(m_object_to_world.ray_to_object(value));
     }

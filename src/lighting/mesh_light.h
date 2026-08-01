@@ -19,6 +19,7 @@ class MeshLight final : public Light {
     double pdf(const point3 &origin,
                const vec3 &direction) const override;
     color power() const override;
+    bool is_bsdf_hittable() const override;
 
   private:
     struct TriangleEntry {

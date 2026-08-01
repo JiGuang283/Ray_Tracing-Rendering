@@ -346,6 +346,10 @@ class EnvironmentLight : public Light {
         return true;
     }
 
+    bool is_bsdf_hittable() const override {
+        return true;
+    }
+
     virtual color power() const override {
         return color(total_power, total_power, total_power);
     }

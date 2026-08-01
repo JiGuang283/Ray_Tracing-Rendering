@@ -3,6 +3,8 @@
 
 #include "light.h"
 
+#include <cmath>
+
 class SpotLight : public Light {
 public:
     SpotLight(point3 pos, vec3 dir, double cutoff, color intensity)
@@ -15,6 +17,9 @@ public:
         LightSample s;
         vec3 d = position - p;
         double dist2 = d.length_squared();
+        if (!std::isfinite(dist2) || dist2 <= 1e-12) {
+            return s;
+        }
         s.dist = sqrt(dist2);
         s.wi = d / s.dist;
         s.is_delta = true;

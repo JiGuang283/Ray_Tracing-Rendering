@@ -6,8 +6,10 @@
 
 class QuadLight : public Light {
   public:
-    QuadLight(const point3 &_Q, const vec3 &_u, const vec3 &_v, const color &_c)
-        : Q(_Q), u(_u), v(_v), intensity(_c) {
+    QuadLight(const point3 &_Q, const vec3 &_u, const vec3 &_v,
+              const color &_c, bool bsdf_hittable = false)
+        : Q(_Q), u(_u), v(_v), intensity(_c),
+          m_bsdf_hittable(bsdf_hittable) {
         vec3 n = cross(u, v);
         area = n.length();
         normal = unit_vector(n);
@@ -83,6 +85,10 @@ class QuadLight : public Light {
         return false;
     }
 
+    bool is_bsdf_hittable() const override {
+        return m_bsdf_hittable;
+    }
+
     virtual color power() const override {
         return pi * area * intensity;
     }
@@ -93,6 +99,7 @@ class QuadLight : public Light {
     color intensity;
     vec3 normal;
     double area;
+    bool m_bsdf_hittable = false;
 };
 
 #endif

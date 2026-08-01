@@ -242,7 +242,7 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                             built,
                             make_shared<QuadLight>(
                                 origin, flip_emitters ? v : u,
-                                flip_emitters ? u : v, radiance),
+                                flip_emitters ? u : v, radiance, true),
                             radiance);
                     }
                 } else if (typed.plane == AxisRectPlane::XZ) {
@@ -257,7 +257,7 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                             built,
                             make_shared<QuadLight>(
                                 origin, flip_emitters ? v : u,
-                                flip_emitters ? u : v, radiance),
+                                flip_emitters ? u : v, radiance, true),
                             radiance);
                     }
                 } else {
@@ -272,7 +272,7 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                             built,
                             make_shared<QuadLight>(
                                 origin, flip_emitters ? v : u,
-                                flip_emitters ? u : v, radiance),
+                                flip_emitters ? u : v, radiance, true),
                             radiance);
                     }
                 }
@@ -293,7 +293,8 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                         built,
                         make_shared<QuadLight>(
                             typed.origin, flip_emitters ? typed.v : typed.u,
-                            flip_emitters ? typed.u : typed.v, radiance),
+                            flip_emitters ? typed.u : typed.v, radiance,
+                            true),
                         radiance);
                 }
             } else if constexpr (std::is_same_v<T, TriangleObjectIR>) {

@@ -79,6 +79,10 @@ class TriangleLight : public Light {
         return pi * area * intensity;
     }
 
+    bool is_bsdf_hittable() const override {
+        return true;
+    }
+
   private:
     point3 v0;
     point3 v1;

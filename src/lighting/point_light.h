@@ -3,6 +3,8 @@
 
 #include "light.h"
 
+#include <cmath>
+
 class PointLight : public Light {
   public:
     PointLight(const point3 &pos, const color &intensity)
@@ -14,6 +16,9 @@ class PointLight : public Light {
 
         vec3 direction = m_position - p;
         double dist_squared = direction.length_squared();
+        if (!std::isfinite(dist_squared) || dist_squared <= 1e-12) {
+            return ls;
+        }
 
         ls.dist = sqrt(dist_squared);
         ls.wi = direction / ls.dist;

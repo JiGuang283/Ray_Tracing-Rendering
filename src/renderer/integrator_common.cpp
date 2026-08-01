@@ -1,6 +1,7 @@
 #include "integrator_common.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace integrator_common {
 
@@ -55,6 +56,57 @@ bool visible(const hittable &scene, const ray &shadow_ray,
                       rng);
 }
 
+namespace {
+
+bool finite_color(const color &value) {
+    return std::isfinite(value.x()) && std::isfinite(value.y()) &&
+           std::isfinite(value.z());
+}
+
+bool finite_direction(const vec3 &value) {
+    return std::isfinite(value.x()) && std::isfinite(value.y()) &&
+           std::isfinite(value.z()) && value.length_squared() > 0.0;
+}
+
+color evaluate_direct_sample(const ShadedSurface &shaded,
+                             const hittable &scene, const LightSample &sample,
+                             double selection_pdf,
+                             bool has_bsdf_competitor, RNG &rng,
+                             bool use_mis) {
+    if (sample.pdf <= 0.0 || selection_pdf <= 0.0 ||
+        !std::isfinite(sample.pdf) || !std::isfinite(selection_pdf) ||
+        !finite_color(sample.Li) || !finite_direction(sample.wi) ||
+        sample.Li.length_squared() <= 0.0) {
+        return color(0, 0, 0);
+    }
+
+    const color f = shaded.shading.bsdf.eval(shaded.wo, sample.wi);
+    const double cos_theta = shaded.shading.bsdf.is_phase()
+                                 ? 1.0
+                                 : shaded.shading.bsdf.abs_cos_theta(sample.wi);
+    if (!finite_color(f) || f.length_squared() <= 0.0 || cos_theta <= 0.0 ||
+        !std::isfinite(cos_theta)) {
+        return color(0, 0, 0);
+    }
+
+    if (!visible(scene, shaded.surface.spawn_ray(sample.wi, shaded.time),
+                 sample.dist, rng)) {
+        return color(0, 0, 0);
+    }
+
+    const double light_pdf = sample.pdf * selection_pdf;
+    if (sample.is_delta || !use_mis || !has_bsdf_competitor) {
+        return f * sample.Li * cos_theta / light_pdf;
+    }
+
+    const double bsdf_pdf =
+        shaded.shading.bsdf.pdf(shaded.wo, sample.wi);
+    const double mis_weight = power_heuristic(light_pdf, bsdf_pdf);
+    return f * sample.Li * cos_theta * mis_weight / light_pdf;
+}
+
+} // namespace
+
 color sample_direct_lighting(const ShadedSurface &shaded,
                              const hittable &scene,
                              const LightSampler &light_sampler, RNG &rng,
@@ -63,32 +115,22 @@ color sample_direct_lighting(const ShadedSurface &shaded,
         return color(0, 0, 0);
     }
 
-    double light_select_pdf = 0.0;
-    LightSample ls =
-        light_sampler.sample(shaded.surface.p, rng, light_select_pdf);
-    if (ls.pdf <= 0.0 || light_select_pdf <= 0.0 ||
-        ls.Li.length_squared() <= 0.0) {
-        return color(0, 0, 0);
+    color result(0, 0, 0);
+    for (const auto &light : light_sampler.delta_lights()) {
+        const LightSample sample =
+            light->sample(shaded.surface.p, vec2(rng.next(), rng.next()));
+        result += evaluate_direct_sample(shaded, scene, sample, 1.0, false,
+                                         rng, use_mis);
     }
 
-    if (!visible(scene, shaded.surface.spawn_ray(ls.wi, shaded.time), ls.dist,
-                 rng)) {
-        return color(0, 0, 0);
+    if (light_sampler.has_non_delta_lights()) {
+        const SelectedLightSample selected =
+            light_sampler.sample_non_delta(shaded.surface.p, rng);
+        result += evaluate_direct_sample(
+            shaded, scene, selected.sample, selected.selection_pdf,
+            selected.has_bsdf_competitor, rng, use_mis);
     }
-
-    color f = shaded.shading.bsdf.eval(shaded.wo, ls.wi);
-    double cos_theta = shaded.shading.bsdf.is_phase()
-                           ? 1.0
-                           : shaded.shading.bsdf.abs_cos_theta(ls.wi);
-
-    if (ls.is_delta || !use_mis) {
-        return f * ls.Li * cos_theta / (ls.pdf * light_select_pdf);
-    }
-
-    double bsdf_pdf = shaded.shading.bsdf.pdf(shaded.wo, ls.wi);
-    double light_pdf = ls.pdf * light_select_pdf;
-    double mis_weight = power_heuristic(light_pdf, bsdf_pdf);
-    return f * ls.Li * cos_theta * mis_weight / light_pdf;
+    return result;
 }
 
 } // namespace integrator_common

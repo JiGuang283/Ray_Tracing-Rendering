@@ -133,6 +133,10 @@ color MeshLight::power() const {
            m_instance->materials()[m_material_slot]->emission_estimate();
 }
 
+bool MeshLight::is_bsdf_hittable() const {
+    return true;
+}
+
 const MeshLight::TriangleEntry &
 MeshLight::choose_triangle(double u, double &local_u) const {
     const double target = clamp(u, 0.0, 0.999999999) * m_total_area;

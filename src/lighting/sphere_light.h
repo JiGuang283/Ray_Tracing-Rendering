@@ -73,6 +73,10 @@ class SphereLight : public Light {
         return pi * m_area * m_intensity;
     }
 
+    bool is_bsdf_hittable() const override {
+        return true;
+    }
+
   private:
     point3 m_center;
     double m_radius = 1.0;

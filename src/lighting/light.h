@@ -5,11 +5,11 @@
 #include "vec3.h"
 
 struct LightSample {
-    color Li;    // 到达着色点的辐射亮度 (Radiance)，让积分器自己乘 cos 和除 pdf
-    vec3 wi;     // 入射方向 (指向光源)
-    double pdf;  // 采样概率密度 (通常是关于立体角的)
-    double dist; // 到光源的距离 (用于阴影射线遮挡测试)
-    bool is_delta; // 是否是 Delta 光源 (点光源/平行光)
+    color Li{0, 0, 0}; // 到达着色点的辐射亮度 (Radiance)
+    vec3 wi{0, 0, 1};  // 入射方向 (指向光源)
+    double pdf = 0.0;  // 采样概率密度 (通常是关于立体角的)
+    double dist = infinity; // 到光源的距离 (用于阴影射线)
+    bool is_delta = false; // 是否是 Delta 光源 (点光源/平行光)
 };
 
 class Light {
@@ -32,6 +32,11 @@ class Light {
 
     // 是否是无限远环境光源
     virtual bool is_infinite() const {
+        return false;
+    }
+
+    // True when a BSDF-sampled ray can encounter this emitter in the scene.
+    virtual bool is_bsdf_hittable() const {
         return false;
     }
 
