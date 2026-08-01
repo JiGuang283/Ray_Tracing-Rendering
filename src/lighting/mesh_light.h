@@ -21,6 +21,9 @@ class MeshLight final : public Light {
     color power() const override;
     bool is_bsdf_hittable() const override;
 
+    std::size_t triangle_count() const;
+    double triangle_selection_probability(std::size_t index) const;
+
   private:
     struct TriangleEntry {
         std::uint32_t triangle_index = 0;
@@ -32,6 +35,8 @@ class MeshLight final : public Light {
         vec3 edge2;
         vec3 normal;
         double area = 0.0;
+        double selection_probability = 0.0;
+        color emission_estimate{0, 0, 0};
     };
 
     const TriangleEntry &choose_triangle(double u, double &local_u) const;
@@ -46,6 +51,7 @@ class MeshLight final : public Light {
     std::vector<TriangleEntry> m_triangles;
     std::vector<double> m_cdf;
     double m_total_area = 0.0;
+    color m_integrated_emission{0, 0, 0};
     bool m_double_sided = false;
 };
 

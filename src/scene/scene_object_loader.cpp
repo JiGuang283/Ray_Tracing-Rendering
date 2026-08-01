@@ -32,16 +32,8 @@ const ObjectIRNode &object_node(ObjectIRId id,
     return context.scene_ir->object_nodes[id];
 }
 
-color emitter_radiance(const MaterialHandle &material) {
-    if (!material || !material->is_emissive()) {
-        return color(0, 0, 0);
-    }
-    return material->emission_estimate();
-}
-
-void append_emitter(BuiltObject &built, shared_ptr<Light> emitter,
-                    const color &radiance) {
-    if (emitter && radiance.length_squared() > 0.0) {
+void append_emitter(BuiltObject &built, shared_ptr<Light> emitter) {
+    if (emitter) {
         built.emitters.push_back(std::move(emitter));
     }
 }
@@ -82,11 +74,9 @@ BuiltObject build_obj(const ObjObjectIR &obj, const std::string &node_context,
         asset, std::vector<MaterialHandle>{material}, object_to_world);
     BuiltObject built;
     built.object = instance;
-    const color radiance = emitter_radiance(material);
-    if (auto_emitters && radiance.length_squared() > 0.0) {
+    if (auto_emitters && material->is_emissive()) {
         append_emitter(
-            built, make_shared<MeshLight>(instance, 0, flip_emitters),
-            radiance);
+            built, make_shared<MeshLight>(instance, 0, flip_emitters));
     }
     return built;
 }
@@ -122,15 +112,13 @@ void instantiate_model_node(const ModelAsset &asset, std::size_t node_index,
                     continue;
                 }
                 used_slots[slot] = true;
-                const color radiance = emitter_radiance(materials[slot]);
-                if (radiance.length_squared() == 0.0) {
+                if (!materials[slot]->is_emissive()) {
                     continue;
                 }
                 append_emitter(built,
                                make_shared<MeshLight>(
                                    instance, static_cast<std::uint32_t>(slot),
-                                   flip_emitters),
-                               radiance);
+                                   flip_emitters));
             }
         }
     }
@@ -209,13 +197,12 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                     lookup_material(context, typed.material, node.context);
                 built.object = make_shared<sphere>(typed.center, typed.radius,
                                                    material);
-                const color radiance = emitter_radiance(material);
-                if (auto_emitters && !flip_emitters) {
+                if (auto_emitters && !flip_emitters &&
+                    material->is_emissive()) {
                     append_emitter(
                         built,
                         make_shared<SphereLight>(typed.center, typed.radius,
-                                                 radiance),
-                        radiance);
+                                                 material));
                 }
             } else if constexpr (std::is_same_v<T, MovingSphereObjectIR>) {
                 built.object = make_shared<moving_sphere>(
@@ -229,7 +216,6 @@ BuiltObject build_primitive(const ObjectIRNode &node,
             } else if constexpr (std::is_same_v<T, AxisRectObjectIR>) {
                 const MaterialHandle material =
                     lookup_material(context, typed.material, node.context);
-                const color radiance = emitter_radiance(material);
                 if (typed.plane == AxisRectPlane::XY) {
                     built.object = make_shared<xy_rect>(
                         typed.a0, typed.a1, typed.b0, typed.b1, typed.k,
@@ -237,13 +223,13 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                     const point3 origin(typed.a0, typed.b0, typed.k);
                     const vec3 u(typed.a1 - typed.a0, 0, 0);
                     const vec3 v(0, typed.b1 - typed.b0, 0);
-                    if (auto_emitters) {
+                    if (auto_emitters && material->is_emissive()) {
                         append_emitter(
                             built,
                             make_shared<QuadLight>(
                                 origin, flip_emitters ? v : u,
-                                flip_emitters ? u : v, radiance, true),
-                            radiance);
+                                flip_emitters ? u : v, material, true,
+                                flip_emitters));
                     }
                 } else if (typed.plane == AxisRectPlane::XZ) {
                     built.object = make_shared<xz_rect>(
@@ -252,13 +238,13 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                     const point3 origin(typed.a0, typed.k, typed.b0);
                     const vec3 u(typed.a1 - typed.a0, 0, 0);
                     const vec3 v(0, 0, typed.b1 - typed.b0);
-                    if (auto_emitters) {
+                    if (auto_emitters && material->is_emissive()) {
                         append_emitter(
                             built,
                             make_shared<QuadLight>(
                                 origin, flip_emitters ? v : u,
-                                flip_emitters ? u : v, radiance, true),
-                            radiance);
+                                flip_emitters ? u : v, material, true,
+                                flip_emitters));
                     }
                 } else {
                     built.object = make_shared<yz_rect>(
@@ -267,13 +253,13 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                     const point3 origin(typed.k, typed.a0, typed.b0);
                     const vec3 u(0, typed.a1 - typed.a0, 0);
                     const vec3 v(0, 0, typed.b1 - typed.b0);
-                    if (auto_emitters) {
+                    if (auto_emitters && material->is_emissive()) {
                         append_emitter(
                             built,
                             make_shared<QuadLight>(
                                 origin, flip_emitters ? v : u,
-                                flip_emitters ? u : v, radiance, true),
-                            radiance);
+                                flip_emitters ? u : v, material, true,
+                                flip_emitters));
                     }
                 }
             } else if constexpr (std::is_same_v<T, QuadObjectIR>) {
@@ -282,20 +268,20 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                 auto quad = make_shared<hittable_list>();
                 quad->add(make_shared<triangle>(
                     typed.origin, typed.origin + typed.u,
-                    typed.origin + typed.u + typed.v, material));
+                    typed.origin + typed.u + typed.v, material, vec2(0, 0),
+                    vec2(1, 0), vec2(1, 1), true));
                 quad->add(make_shared<triangle>(
                     typed.origin, typed.origin + typed.u + typed.v,
-                    typed.origin + typed.v, material));
+                    typed.origin + typed.v, material, vec2(0, 0), vec2(1, 1),
+                    vec2(0, 1), true));
                 built.object = quad;
-                const color radiance = emitter_radiance(material);
-                if (auto_emitters) {
+                if (auto_emitters && material->is_emissive()) {
                     append_emitter(
                         built,
                         make_shared<QuadLight>(
                             typed.origin, flip_emitters ? typed.v : typed.u,
-                            flip_emitters ? typed.u : typed.v, radiance,
-                            true),
-                        radiance);
+                            flip_emitters ? typed.u : typed.v, material, true,
+                            flip_emitters));
                 }
             } else if constexpr (std::is_same_v<T, TriangleObjectIR>) {
                 const MaterialHandle material =
@@ -312,18 +298,16 @@ BuiltObject build_primitive(const ObjectIRNode &node,
                         typed.positions[2], material, typed.uv0[0],
                         typed.uv0[1], typed.uv0[2], typed.has_uv0);
                 }
-                const color radiance = emitter_radiance(material);
-                if (auto_emitters) {
+                if (auto_emitters && material->is_emissive()) {
+                    const std::size_t first = 0;
+                    const std::size_t second = flip_emitters ? 2 : 1;
+                    const std::size_t third = flip_emitters ? 1 : 2;
                     append_emitter(
                         built,
                         make_shared<TriangleLight>(
-                            typed.positions[0],
-                            flip_emitters ? typed.positions[2]
-                                          : typed.positions[1],
-                            flip_emitters ? typed.positions[1]
-                                          : typed.positions[2],
-                            radiance),
-                        radiance);
+                            typed.positions[first], typed.positions[second],
+                            typed.positions[third], material, typed.uv0[first],
+                            typed.uv0[second], typed.uv0[third], typed.has_uv0));
                 }
             } else if constexpr (std::is_same_v<T, ObjObjectIR>) {
                 return build_obj(typed, node.context, context, auto_emitters,

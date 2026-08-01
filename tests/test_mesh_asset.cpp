@@ -48,6 +48,41 @@ class UVEmissionTexture final : public Texture {
     }
 };
 
+class SparseEmissionTexture final : public Texture {
+  public:
+    TextureSample
+    evaluate(const ShaderEvalContext &context) const override {
+        const double value = context.uv0.x() > 0.5 ? 10.0 : 0.0;
+        return TextureSample{color(value, value, value), 1.0};
+    }
+};
+
+std::shared_ptr<const MeshAsset> make_sparse_emitter_asset() {
+    std::vector<MeshVertex> vertices(6);
+    vertices[0].position = point3(0, 0, 0);
+    vertices[1].position = point3(1, 0, 0);
+    vertices[2].position = point3(0, 1, 0);
+    vertices[3].position = point3(2, 0, 0);
+    vertices[4].position = point3(3, 0, 0);
+    vertices[5].position = point3(2, 1, 0);
+    for (std::size_t index = 0; index < vertices.size(); ++index) {
+        vertices[index].uv0 = index < 3 ? vec2(0, 0) : vec2(1, 1);
+    }
+
+    MeshTriangle dark;
+    dark.vertices[0] = 0;
+    dark.vertices[1] = 1;
+    dark.vertices[2] = 2;
+    dark.attributes = MESH_ATTRIBUTE_UV0;
+    MeshTriangle bright;
+    bright.vertices[0] = 3;
+    bright.vertices[1] = 4;
+    bright.vertices[2] = 5;
+    bright.attributes = MESH_ATTRIBUTE_UV0;
+    return std::make_shared<MeshAsset>(
+        std::move(vertices), std::vector<MeshTriangle>{dark, bright});
+}
+
 } // namespace
 
 TEST_CASE(mesh_asset_bvh_matches_brute_force) {
@@ -137,4 +172,30 @@ TEST_CASE(mesh_light_evaluates_textured_emission_at_the_sample) {
     REQUIRE(sample.pdf > 0.0);
     REQUIRE_NEAR(sample.Li.x(), 0.25, 1e-12);
     REQUIRE_NEAR(sample.Li.y(), 0.25, 1e-12);
+}
+
+TEST_CASE(mesh_light_mixes_emission_importance_with_area_floor) {
+    const auto asset = make_sparse_emitter_asset();
+    const MaterialHandle material = make_diffuse_light_material(
+        std::make_shared<SparseEmissionTexture>());
+    const auto instance = std::make_shared<MeshInstance>(
+        asset, std::vector<MaterialHandle>{material});
+    const MeshLight light(instance, 0);
+
+    REQUIRE(light.triangle_count() == 2);
+    REQUIRE_NEAR(light.triangle_selection_probability(0), 0.025, 1e-12);
+    REQUIRE_NEAR(light.triangle_selection_probability(1), 0.975, 1e-12);
+
+    const point3 origin(0.25, 0.25, 1.0);
+    const LightSample dark_sample = light.sample(origin, vec2(0.01, 0.5));
+    REQUIRE(dark_sample.pdf > 0.0);
+    REQUIRE_NEAR(dark_sample.Li.length_squared(), 0.0, 1e-12);
+    const double cosine = dot(-dark_sample.wi, vec3(0, 0, 1));
+    const double expected_pdf =
+        (0.025 / 0.5) * dark_sample.dist * dark_sample.dist / cosine;
+    REQUIRE_NEAR(dark_sample.pdf, expected_pdf, 1e-12);
+
+    const LightSample bright_sample = light.sample(origin, vec2(0.5, 0.5));
+    REQUIRE(bright_sample.pdf > 0.0);
+    REQUIRE_NEAR(bright_sample.Li.x(), 10.0, 1e-12);
 }

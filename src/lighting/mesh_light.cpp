@@ -9,6 +9,25 @@
 #include <stdexcept>
 #include <utility>
 
+namespace {
+
+double emission_luminance(const color &value) {
+    const double result =
+        0.2126 * value.x() + 0.7152 * value.y() + 0.0722 * value.z();
+    return std::isfinite(result) ? std::max(0.0, result) : 0.0;
+}
+
+color finite_nonnegative(const color &value) {
+    color result;
+    for (int axis = 0; axis < 3; ++axis) {
+        result[axis] =
+            std::isfinite(value[axis]) ? std::max(0.0, value[axis]) : 0.0;
+    }
+    return result;
+}
+
+} // namespace
+
 MeshLight::MeshLight(std::shared_ptr<const MeshInstance> instance,
                      std::uint32_t material_slot, bool flip_orientation)
     : m_instance(std::move(instance)), m_material_slot(material_slot) {
@@ -55,7 +74,41 @@ MeshLight::MeshLight(std::shared_ptr<const MeshInstance> instance,
         entry.normal = unit_vector(normal);
         m_total_area += entry.area;
         m_triangles.push_back(entry);
-        m_cdf.push_back(m_total_area);
+    }
+
+    constexpr double sample_points[4][3] = {
+        {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0},
+        {0.6, 0.2, 0.2},
+        {0.2, 0.6, 0.2},
+        {0.2, 0.2, 0.6}};
+    double emission_weight_sum = 0.0;
+    for (TriangleEntry &entry : m_triangles) {
+        color estimate(0, 0, 0);
+        for (const auto &barycentric : sample_points) {
+            estimate += evaluate_emission(
+                entry, barycentric[0], barycentric[1], barycentric[2], true);
+        }
+        entry.emission_estimate = finite_nonnegative(estimate / 4.0);
+        emission_weight_sum +=
+            entry.area * emission_luminance(entry.emission_estimate);
+        m_integrated_emission += entry.area * entry.emission_estimate;
+    }
+
+    double cumulative = 0.0;
+    for (TriangleEntry &entry : m_triangles) {
+        const double area_probability = entry.area / m_total_area;
+        const double emission_probability =
+            emission_weight_sum > 0.0
+                ? entry.area * emission_luminance(entry.emission_estimate) /
+                      emission_weight_sum
+                : area_probability;
+        entry.selection_probability =
+            0.95 * emission_probability + 0.05 * area_probability;
+        cumulative += entry.selection_probability;
+        m_cdf.push_back(cumulative);
+    }
+    if (!m_cdf.empty()) {
+        m_cdf.back() = 1.0;
     }
 }
 
@@ -95,7 +148,8 @@ LightSample MeshLight::sample(const point3 &p, const vec2 &u) const {
 
     sample.Li = evaluate_emission(triangle, b0, b1, b2,
                                   signed_cosine > 0.0);
-    sample.pdf = distance_squared / (m_total_area * cosine);
+    sample.pdf = triangle.selection_probability / triangle.area *
+                 distance_squared / cosine;
     return sample;
 }
 
@@ -120,8 +174,8 @@ double MeshLight::pdf(const point3 &origin, const vec3 &direction) const {
             cosine = std::abs(cosine);
         }
         if (cosine > 0.0) {
-            result += t * t * direction_length_squared /
-                      (m_total_area * cosine);
+            result += triangle.selection_probability / triangle.area * t * t *
+                      direction_length_squared / cosine;
         }
     }
     return result;
@@ -129,17 +183,24 @@ double MeshLight::pdf(const point3 &origin, const vec3 &direction) const {
 
 color MeshLight::power() const {
     const double side_factor = m_double_sided ? 2.0 : 1.0;
-    return side_factor * pi * m_total_area *
-           m_instance->materials()[m_material_slot]->emission_estimate();
+    return side_factor * pi * m_integrated_emission;
 }
 
 bool MeshLight::is_bsdf_hittable() const {
     return true;
 }
 
+std::size_t MeshLight::triangle_count() const {
+    return m_triangles.size();
+}
+
+double MeshLight::triangle_selection_probability(std::size_t index) const {
+    return m_triangles.at(index).selection_probability;
+}
+
 const MeshLight::TriangleEntry &
 MeshLight::choose_triangle(double u, double &local_u) const {
-    const double target = clamp(u, 0.0, 0.999999999) * m_total_area;
+    const double target = clamp(u, 0.0, 0.999999999);
     auto found = std::lower_bound(m_cdf.begin(), m_cdf.end(), target);
     std::size_t index = static_cast<std::size_t>(found - m_cdf.begin());
     index = std::min(index, m_triangles.size() - 1);
