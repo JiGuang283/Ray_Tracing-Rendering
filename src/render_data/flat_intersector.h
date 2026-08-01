@@ -12,6 +12,10 @@ bool intersect_compiled_scene(const CompiledSceneView &scene,
                               const PackedRay &ray, PackedHit &hit,
                               RNG *rng = nullptr);
 
+PackedShadingStatus reconstruct_compiled_hit_status(
+    const CompiledSceneView &scene, const PackedRay &ray,
+    const PackedHit &hit, PackedSurfaceInteraction &surface);
+
 bool reconstruct_compiled_hit(const CompiledSceneView &scene,
                               const PackedRay &ray, const PackedHit &hit,
                               PackedSurfaceInteraction &surface);

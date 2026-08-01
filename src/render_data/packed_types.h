@@ -9,6 +9,9 @@
 
 constexpr std::uint32_t kInvalidPackedIndex =
     std::numeric_limits<std::uint32_t>::max();
+constexpr std::uint32_t kPackedTextureStackCapacity = 16;
+constexpr std::uint32_t kPackedTextureValueCapacity =
+    2 * kPackedTextureStackCapacity;
 
 template <typename Tag> struct Handle32 {
     std::uint32_t value = kInvalidPackedIndex;
@@ -99,6 +102,26 @@ enum class PackedLightType : std::uint32_t {
     MeshEmitter = 7
 };
 
+enum class PackedClosureType : std::uint32_t {
+    Lambertian = 0,
+    Mirror = 1,
+    Dielectric = 2,
+    GGXReflection = 3,
+    ClearcoatGGX = 4,
+    IsotropicPhase = 5
+};
+
+enum class PackedShadingStatus : std::uint32_t {
+    Success = 0,
+    Miss = 1,
+    InvalidInput = 2,
+    InvalidMaterial = 3,
+    TextureFailure = 4,
+    TextureStackOverflow = 5,
+    ClosureOverflow = 6,
+    NonFinite = 7
+};
+
 enum PackedInstanceFlags : std::uint32_t {
     PACKED_INSTANCE_NONE = 0,
     PACKED_INSTANCE_FLIP_FACE = 1u << 0
@@ -123,6 +146,11 @@ enum PackedHitFlags : std::uint32_t {
     PACKED_HIT_TRIANGLE = 1u << 1,
     PACKED_HIT_SPHERE = 1u << 2,
     PACKED_HIT_MEDIUM = 1u << 3
+};
+
+enum PackedClosureFlags : std::uint32_t {
+    PACKED_CLOSURE_NONE = 0,
+    PACKED_CLOSURE_FRONT_FACE = 1u << 0
 };
 
 enum class PackedTraversalStatus : std::uint32_t {
@@ -215,6 +243,32 @@ struct alignas(16) PackedSurfaceInteraction {
     Float2 uv;
     Float2 padding{};
     Float4 vertex_color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+struct alignas(16) PackedShadingFrame {
+    Float3 tangent{1.0f, 0.0f, 0.0f};
+    float handedness = 1.0f;
+    Float3 normal{0.0f, 0.0f, 1.0f};
+    float padding = 0.0f;
+};
+
+struct alignas(16) PackedClosure {
+    Float4 parameters{};
+    PackedClosureType type = PackedClosureType::Lambertian;
+    std::uint32_t flags = PACKED_CLOSURE_NONE;
+    float contribution_weight = 1.0f;
+    float sample_weight = 1.0f;
+};
+
+struct alignas(16) PackedMaterialOutput {
+    static constexpr std::uint32_t kMaxClosures = 8;
+
+    PackedShadingFrame frame;
+    Float3 geometry_normal{0.0f, 0.0f, 1.0f};
+    std::uint32_t closure_count = 0;
+    Float3 emission{};
+    float opacity = 1.0f;
+    PackedClosure closures[kMaxClosures]{};
 };
 
 struct alignas(16) PackedTransform {
@@ -361,12 +415,21 @@ static_assert(sizeof(Float4) == 16);
 static_assert(sizeof(PackedBVHNode) == 32);
 static_assert(sizeof(PackedRay) == 48);
 static_assert(sizeof(PackedHit) == 32);
+static_assert(sizeof(PackedSurfaceInteraction) == 112);
+static_assert(sizeof(PackedShadingFrame) == 32);
+static_assert(sizeof(PackedClosure) == 32);
+static_assert(sizeof(PackedMaterialOutput) == 320);
 static_assert(sizeof(PackedTransform) == 96);
 static_assert(std::is_trivially_copyable_v<PackedBVHNode>);
 static_assert(std::is_trivially_copyable_v<Range32>);
 static_assert(std::is_trivially_copyable_v<PackedRay>);
 static_assert(std::is_trivially_copyable_v<PackedHit>);
 static_assert(std::is_trivially_copyable_v<PackedTraversalStatus>);
+static_assert(std::is_trivially_copyable_v<PackedShadingStatus>);
+static_assert(std::is_trivially_copyable_v<PackedSurfaceInteraction>);
+static_assert(std::is_trivially_copyable_v<PackedShadingFrame>);
+static_assert(std::is_trivially_copyable_v<PackedClosure>);
+static_assert(std::is_trivially_copyable_v<PackedMaterialOutput>);
 static_assert(std::is_trivially_copyable_v<PackedTransform>);
 static_assert(std::is_trivially_copyable_v<PackedTriangle>);
 static_assert(std::is_trivially_copyable_v<PackedSphere>);
@@ -380,7 +443,6 @@ static_assert(std::is_trivially_copyable_v<PackedMaterial>);
 static_assert(std::is_trivially_copyable_v<PackedImageDesc>);
 static_assert(std::is_trivially_copyable_v<PackedPerlinDesc>);
 static_assert(std::is_trivially_copyable_v<PackedLight>);
-static_assert(std::is_trivially_copyable_v<PackedSurfaceInteraction>);
 static_assert(std::is_trivially_copyable_v<PackedCamera>);
 
 #endif

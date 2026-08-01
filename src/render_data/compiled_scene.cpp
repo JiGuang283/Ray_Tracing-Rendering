@@ -1,5 +1,6 @@
 #include "compiled_scene.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <sstream>
@@ -353,6 +354,7 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         }
     }
 
+    std::vector<std::uint32_t> texture_depths(scene.texture_nodes.size(), 1);
     for (std::size_t index = 0; index < scene.texture_nodes.size(); ++index) {
         const PackedTextureNode &texture = scene.texture_nodes[index];
         auto valid_input = [&](std::uint32_t input) {
@@ -368,6 +370,21 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         if (!valid_optional_index(texture.perlin_id,
                                   scene.perlin_tables.size())) {
             add_index_error(report, "texture", "perlin_id", index);
+        }
+        const std::uint32_t inputs[3]{texture.input0, texture.input1,
+                                      texture.input2};
+        for (std::uint32_t input : inputs) {
+            if (input != kInvalidPackedIndex && input < index) {
+                texture_depths[index] = std::max(
+                    texture_depths[index], texture_depths[input] + 1);
+            }
+        }
+        if (texture_depths[index] > kPackedTextureStackCapacity) {
+            std::ostringstream message;
+            message << "texture[" << index << "] requires evaluation depth "
+                    << texture_depths[index] << ", capacity is "
+                    << kPackedTextureStackCapacity;
+            report.errors.push_back(message.str());
         }
     }
 
