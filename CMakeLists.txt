@@ -86,6 +86,7 @@ if(RAYTRACER_ENABLE_CUDA)
         ${PROJECT_SOURCE_DIR}/src/cuda/intersection_kernels.cu
         ${PROJECT_SOURCE_DIR}/src/cuda/light_kernels.cu
         ${PROJECT_SOURCE_DIR}/src/cuda/shading_kernels.cu
+        ${PROJECT_SOURCE_DIR}/src/cuda/wavefront_renderer.cu
     )
     target_include_directories(raytracer_cuda PUBLIC ${PROJECT_INCLUDE_DIRS})
     target_link_libraries(raytracer_cuda
@@ -159,6 +160,14 @@ if(RAYTRACER_ENABLE_CUDA)
         ${PROJECT_INCLUDE_DIRS}
     )
     target_link_libraries(cuda_shading_check PRIVATE raytracer_cuda)
+
+    add_executable(cuda_transport_check
+        ${PROJECT_SOURCE_DIR}/tools/cuda_transport_check.cpp
+    )
+    target_include_directories(cuda_transport_check PRIVATE
+        ${PROJECT_INCLUDE_DIRS}
+    )
+    target_link_libraries(cuda_transport_check PRIVATE raytracer_cuda)
 endif()
 
 include(CTest)
@@ -205,6 +214,15 @@ if(BUILD_TESTING)
                     --grid-height 7
         )
         set_tests_properties(cuda_shading_check PROPERTIES
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            SKIP_RETURN_CODE 77
+        )
+        add_test(
+            NAME cuda_transport_check
+            COMMAND cuda_transport_check --ids 1,7,23 --width 8
+                    --height 6 --spp 1 --max-depth 6 --batch-size 17
+        )
+        set_tests_properties(cuda_transport_check PROPERTIES
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             SKIP_RETURN_CODE 77
         )

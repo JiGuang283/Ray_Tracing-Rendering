@@ -158,6 +158,12 @@ enum class PackedTransportStatus : std::uint32_t {
     NonFinite = 7
 };
 
+enum PackedPathFlags : std::uint32_t {
+    PACKED_PATH_NONE = 0,
+    PACKED_PATH_ACTIVE = 1u << 0,
+    PACKED_PATH_DELTA_BOUNCE = 1u << 1
+};
+
 enum PackedInstanceFlags : std::uint32_t {
     PACKED_INSTANCE_NONE = 0,
     PACKED_INSTANCE_FLIP_FACE = 1u << 0
@@ -390,6 +396,30 @@ struct alignas(16) PackedTransportResult {
     std::uint32_t padding = 0;
 };
 
+struct alignas(16) PackedPathState {
+    PackedRay ray;
+    Float3 throughput{1.0f, 1.0f, 1.0f};
+    float eta_scale = 1.0f;
+    Float3 radiance{};
+    float previous_bsdf_pdf = 0.0f;
+    std::uint32_t rng_state = 1;
+    std::uint32_t pixel_index = 0;
+    std::uint32_t sample_index = 0;
+    std::uint32_t depth = 0;
+    PackedTransportStatus status = PackedTransportStatus::Success;
+    std::uint32_t flags = PACKED_PATH_NONE;
+    std::uint32_t shadow_rays = 0;
+    std::uint32_t traversal_steps = 0;
+
+    RT_HOST_DEVICE bool active() const noexcept {
+        return (flags & PACKED_PATH_ACTIVE) != 0;
+    }
+
+    RT_HOST_DEVICE bool delta_bounce() const noexcept {
+        return (flags & PACKED_PATH_DELTA_BOUNCE) != 0;
+    }
+};
+
 struct alignas(16) PackedTransform {
     float object_to_world[12]{};
     float world_to_object[12]{};
@@ -543,6 +573,7 @@ static_assert(sizeof(PackedLightSample) == 48);
 static_assert(sizeof(SelectedPackedLightSample) == 64);
 static_assert(sizeof(PackedTransportSettings) == 16);
 static_assert(sizeof(PackedTransportResult) == 32);
+static_assert(sizeof(PackedPathState) == 112);
 static_assert(sizeof(PackedTransform) == 96);
 static_assert(std::is_trivially_copyable_v<PackedBVHNode>);
 static_assert(std::is_trivially_copyable_v<Range32>);
@@ -563,6 +594,7 @@ static_assert(std::is_trivially_copyable_v<PackedLightSample>);
 static_assert(std::is_trivially_copyable_v<SelectedPackedLightSample>);
 static_assert(std::is_trivially_copyable_v<PackedTransportSettings>);
 static_assert(std::is_trivially_copyable_v<PackedTransportResult>);
+static_assert(std::is_trivially_copyable_v<PackedPathState>);
 static_assert(std::is_trivially_copyable_v<PackedTransform>);
 static_assert(std::is_trivially_copyable_v<PackedTriangle>);
 static_assert(std::is_trivially_copyable_v<PackedSphere>);

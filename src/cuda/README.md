@@ -1,11 +1,10 @@
 # CUDA Packed Backend
 
 This module uploads an immutable `CompiledScene` and runs the shared packed
-geometry and material evaluation code over batches of rays. It currently
-provides intersection, surface reconstruction, fixed-stack texture evaluation,
-normal mapping, material closure generation, BSDF sample/eval/pdf, and light
-sampling. It does not yet implement camera path generation, complete light
-transport, or film accumulation.
+geometry and material evaluation code over batches of rays. It provides
+intersection, surface reconstruction, fixed-stack texture evaluation, normal
+mapping, material closure generation, BSDF sample/eval/pdf, light sampling,
+complete camera light transport, and GPU Film accumulation.
 
 ## Ownership
 
@@ -48,12 +47,23 @@ CPU and CUDA shading include the same host/device headers:
   maps with matching MIS PDFs.
 
 `reconstruct_hits_cuda()` and `evaluate_materials_cuda()` remain separate
-launches. This keeps status reporting and CPU/GPU validation precise. A future
-path tracing kernel may fuse them after the transport implementation is
-verified.
+validation launches. This keeps status reporting and CPU/GPU comparison
+precise while the production path queue evaluates reconstruction, material,
+lighting, visibility, and BSDF work together for one bounce.
 
-The next transport stage still needs path state, visibility rays, Russian
-roulette, queue compaction, and Film accumulation.
+## Wavefront Transport
+
+`render_wavefront_cuda()` assigns one `PackedPathState` to every active camera
+sample in a batch. Two compact index queues alternate between bounces. Each
+path owns its RNG state, so atomic queue ordering cannot change its random
+sequence. Finished paths are filtered and accumulated into a linear float
+Film on the device; only the completed Film and counters are downloaded.
+
+The host stops launching bounce work when the compact queue becomes empty.
+Batching caps temporary memory independently of image resolution, while each
+sample layer is accumulated in a fixed order for repeatable single-device
+results. Transport errors remain typed and are counted rather than silently
+turning into successful black paths.
 
 ## Build And Check
 
@@ -70,6 +80,8 @@ ctest --test-dir build-cuda --output-on-failure
 ./build-cuda/cuda_light_check --all
 ./build-cuda/cuda_shading_check
 ./build-cuda/cuda_shading_check --all
+./build-cuda/cuda_transport_check
+./build-cuda/cuda_transport_check --all --width 4 --height 3 --spp 1
 ```
 
 `cuda_shading_check` compares CPU and GPU traversal status, reconstructed
@@ -79,6 +91,10 @@ for every material so validation is not limited to camera-visible surfaces.
 
 `cuda_light_check` compares every packed light type, conditional PDFs, global
 non-delta selection, and final RNG states on the CPU and GPU.
+
+`cuda_transport_check` compares the CPU packed reference and the compact CUDA
+path queue at the Film boundary, checks status counts, and renders each case
+twice to verify deterministic GPU accumulation.
 
 The CUDA option defaults to `OFF`, so normal CPU builds do not require a CUDA
 compiler or runtime.

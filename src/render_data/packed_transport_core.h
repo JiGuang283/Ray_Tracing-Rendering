@@ -332,143 +332,216 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus emitted_radiance(
                                   : PackedTransportStatus::NonFinite;
 }
 
+RT_HOST_DEVICE RT_FORCE_INLINE bool valid_transport_input(
+    const CompiledSceneView &scene, const PackedRay &ray,
+    const PackedTransportSettings &settings) {
+    return scene.aggregates.count != 0 && settings.max_depth != 0 &&
+           static_cast<std::uint32_t>(settings.integrator) <=
+               static_cast<std::uint32_t>(PackedIntegratorType::MISPath) &&
+           math::finite(ray.origin) && math::finite(ray.direction) &&
+           math::length_squared(ray.direction) != 0.0f &&
+           ray.t_max >= ray.t_min;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE void initialize_packed_path_state(
+    const CompiledSceneView &scene, PackedRay ray,
+    const PackedTransportSettings &settings, std::uint32_t rng_state,
+    std::uint32_t pixel_index, std::uint32_t sample_index,
+    PackedPathState &state) {
+    state = {};
+    state.ray = ray;
+    state.throughput = {1.0f, 1.0f, 1.0f};
+    state.eta_scale = 1.0f;
+    state.rng_state = rng_state == 0 ? 1 : rng_state;
+    state.pixel_index = pixel_index;
+    state.sample_index = sample_index;
+    if (!valid_transport_input(scene, ray, settings)) {
+        state.status = PackedTransportStatus::InvalidInput;
+        return;
+    }
+    state.ray.direction = math::normalize(state.ray.direction);
+    state.flags = PACKED_PATH_ACTIVE;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE void finish_packed_path(
+    PackedPathState &state, PackedTransportStatus status, const RNG &rng) {
+    state.status = status;
+    state.flags &= ~PACKED_PATH_ACTIVE;
+    state.rng_state = rng.state;
+    if (!math::finite(state.radiance)) {
+        state.radiance = {};
+        state.status = PackedTransportStatus::NonFinite;
+    }
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
+    const CompiledSceneView &scene,
+    const PackedTransportSettings &settings, PackedPathState &state) {
+    if (!state.active()) {
+        return;
+    }
+    RNG rng(state.rng_state);
+    if (state.depth >= settings.max_depth) {
+        finish_packed_path(state, PackedTransportStatus::Success, rng);
+        return;
+    }
+
+    const std::uint32_t depth = state.depth++;
+    ++state.traversal_steps;
+    PackedHit hit{};
+    const PackedTraversalStatus traversal =
+        packed_intersector::intersect_compiled_scene_core(
+            scene, state.ray, hit, &rng);
+    if (traversal == PackedTraversalStatus::Miss) {
+        Float3 miss{};
+        const PackedTransportStatus status = miss_radiance(
+            scene, state.ray, settings.integrator, depth,
+            state.delta_bounce(), state.previous_bsdf_pdf, miss);
+        if (status == PackedTransportStatus::Success) {
+            state.radiance = math::add(
+                state.radiance, math::multiply(state.throughput, miss));
+        }
+        finish_packed_path(state, status, rng);
+        return;
+    }
+    if (traversal != PackedTraversalStatus::Hit) {
+        finish_packed_path(state, PackedTransportStatus::TraversalFailure,
+                           rng);
+        return;
+    }
+
+    PackedSurfaceInteraction surface{};
+    const PackedShadingStatus reconstruction =
+        packed_reconstruction::reconstruct_compiled_hit_core(
+            scene, state.ray, hit, surface);
+    if (reconstruction != PackedShadingStatus::Success) {
+        finish_packed_path(
+            state, PackedTransportStatus::ReconstructionFailure, rng);
+        return;
+    }
+    PackedMaterialOutput material{};
+    const PackedShadingStatus material_status =
+        packed_material::evaluate_packed_material_core(
+            scene, surface.material_id, surface, material);
+    if (material_status != PackedShadingStatus::Success) {
+        finish_packed_path(state, PackedTransportStatus::MaterialFailure,
+                           rng);
+        return;
+    }
+    const Float3 wo =
+        math::normalize(math::multiply(state.ray.direction, -1.0f));
+    Float3 emission{};
+    PackedTransportStatus status = emitted_radiance(
+        scene, material, surface, state.ray, hit, settings.integrator,
+        depth, state.delta_bounce(), state.previous_bsdf_pdf, emission);
+    if (status != PackedTransportStatus::Success) {
+        finish_packed_path(state, status, rng);
+        return;
+    }
+    state.radiance = math::add(
+        state.radiance, math::multiply(state.throughput, emission));
+
+    if (transport_uses_direct_lighting(settings.integrator) &&
+        material.closure_count != 0 && scene.lights.count != 0) {
+        Float3 direct{};
+        status = sample_direct_lighting(
+            scene, surface, material, wo,
+            transport_uses_mis(settings.integrator), state.ray.time, rng,
+            direct, state.shadow_rays);
+        if (status != PackedTransportStatus::Success) {
+            finish_packed_path(state, status, rng);
+            return;
+        }
+        state.radiance = math::add(
+            state.radiance, math::multiply(state.throughput, direct));
+    }
+
+    PackedBSDFSample sample{};
+    const PackedBSDFStatus bsdf_status =
+        packed_bsdf::sample_packed_bsdf_core(material, wo, rng, sample);
+    if (bsdf_status == PackedBSDFStatus::Empty ||
+        bsdf_status == PackedBSDFStatus::NoSample) {
+        finish_packed_path(state, PackedTransportStatus::Success, rng);
+        return;
+    }
+    if (bsdf_status != PackedBSDFStatus::Success ||
+        !(sample.pdf >= 1e-8f)) {
+        finish_packed_path(
+            state,
+            bsdf_status == PackedBSDFStatus::Success
+                ? PackedTransportStatus::Success
+                : PackedTransportStatus::BSDFFailure,
+            rng);
+        return;
+    }
+
+    if (sample.is_delta()) {
+        state.flags |= PACKED_PATH_DELTA_BOUNCE;
+        state.previous_bsdf_pdf = 0.0f;
+    } else {
+        state.flags &= ~PACKED_PATH_DELTA_BOUNCE;
+        state.previous_bsdf_pdf = sample.pdf;
+    }
+    const float cosine = packed_bsdf::abs_cos_theta(material, sample.wi);
+    state.throughput = math::multiply(
+        state.throughput, math::multiply(sample.f, cosine / sample.pdf));
+    if (sample.is_transmission()) {
+        state.eta_scale *= sample.eta * sample.eta;
+    }
+    if (!math::finite(state.throughput) ||
+        !math::finite(state.eta_scale)) {
+        finish_packed_path(state, PackedTransportStatus::NonFinite, rng);
+        return;
+    }
+    state.ray = spawn_ray(surface, sample.wi, state.ray.time);
+
+    if (transport_uses_rr(settings.integrator) &&
+        depth >= settings.rr_start_depth) {
+        const Float3 compensated =
+            math::multiply(state.throughput, state.eta_scale);
+        const float minimum_probability =
+            settings.integrator == PackedIntegratorType::RussianRoulette
+                ? 0.005f
+                : 0.05f;
+        const float survival = math::clamp(
+            math::maximum_component(compensated), minimum_probability,
+            0.95f);
+        if (static_cast<float>(rng.next()) > survival) {
+            finish_packed_path(state, PackedTransportStatus::Success, rng);
+            return;
+        }
+        state.throughput =
+            math::multiply(state.throughput, 1.0f / survival);
+    }
+
+    state.rng_state = rng.state;
+    if (state.depth >= settings.max_depth) {
+        finish_packed_path(state, PackedTransportStatus::Success, rng);
+    }
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportResult packed_path_result(
+    const PackedPathState &state) {
+    PackedTransportResult result{};
+    result.radiance = state.radiance;
+    result.status = state.status;
+    result.depth = state.depth;
+    result.shadow_rays = state.shadow_rays;
+    result.traversal_steps = state.traversal_steps;
+    return result;
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportResult trace_packed_path_core(
     const CompiledSceneView &scene, PackedRay ray,
     const PackedTransportSettings &settings, RNG &rng) {
-    PackedTransportResult result{};
-    if (scene.aggregates.count == 0 || settings.max_depth == 0 ||
-        static_cast<std::uint32_t>(settings.integrator) >
-            static_cast<std::uint32_t>(PackedIntegratorType::MISPath) ||
-        !math::finite(ray.origin) || !math::finite(ray.direction) ||
-        math::length_squared(ray.direction) == 0.0f ||
-        ray.t_max < ray.t_min) {
-        result.status = PackedTransportStatus::InvalidInput;
-        return result;
+    PackedPathState state{};
+    initialize_packed_path_state(scene, ray, settings, rng.state, 0, 0,
+                                 state);
+    while (state.active()) {
+        advance_packed_path_core(scene, settings, state);
     }
-    ray.direction = math::normalize(ray.direction);
-    Float3 throughput{1.0f, 1.0f, 1.0f};
-    float eta_scale = 1.0f;
-    float previous_bsdf_pdf = 0.0f;
-    bool delta_bounce = false;
-
-    for (std::uint32_t depth = 0; depth < settings.max_depth; ++depth) {
-        result.depth = depth + 1;
-        ++result.traversal_steps;
-        PackedHit hit{};
-        const PackedTraversalStatus traversal =
-            packed_intersector::intersect_compiled_scene_core(scene, ray, hit,
-                                                              &rng);
-        if (traversal == PackedTraversalStatus::Miss) {
-            Float3 miss{};
-            result.status = miss_radiance(
-                scene, ray, settings.integrator, depth, delta_bounce,
-                previous_bsdf_pdf, miss);
-            if (result.status == PackedTransportStatus::Success) {
-                result.radiance = math::add(
-                    result.radiance, math::multiply(throughput, miss));
-            }
-            break;
-        }
-        if (traversal != PackedTraversalStatus::Hit) {
-            result.status = PackedTransportStatus::TraversalFailure;
-            break;
-        }
-
-        PackedSurfaceInteraction surface{};
-        const PackedShadingStatus reconstruction =
-            packed_reconstruction::reconstruct_compiled_hit_core(
-                scene, ray, hit, surface);
-        if (reconstruction != PackedShadingStatus::Success) {
-            result.status = PackedTransportStatus::ReconstructionFailure;
-            break;
-        }
-        PackedMaterialOutput material{};
-        const PackedShadingStatus material_status =
-            packed_material::evaluate_packed_material_core(
-                scene, surface.material_id, surface, material);
-        if (material_status != PackedShadingStatus::Success) {
-            result.status = PackedTransportStatus::MaterialFailure;
-            break;
-        }
-        const Float3 wo = math::normalize(
-            math::multiply(ray.direction, -1.0f));
-        Float3 emission{};
-        result.status = emitted_radiance(
-            scene, material, surface, ray, hit, settings.integrator, depth,
-            delta_bounce, previous_bsdf_pdf, emission);
-        if (result.status != PackedTransportStatus::Success) {
-            break;
-        }
-        result.radiance = math::add(
-            result.radiance, math::multiply(throughput, emission));
-
-        if (transport_uses_direct_lighting(settings.integrator) &&
-            material.closure_count != 0 && scene.lights.count != 0) {
-            Float3 direct{};
-            result.status = sample_direct_lighting(
-                scene, surface, material, wo,
-                transport_uses_mis(settings.integrator), ray.time, rng,
-                direct, result.shadow_rays);
-            if (result.status != PackedTransportStatus::Success) {
-                break;
-            }
-            result.radiance = math::add(
-                result.radiance,
-                math::multiply(throughput, direct));
-        }
-
-        PackedBSDFSample sample{};
-        const PackedBSDFStatus bsdf_status =
-            packed_bsdf::sample_packed_bsdf_core(material, wo, rng, sample);
-        if (bsdf_status == PackedBSDFStatus::Empty ||
-            bsdf_status == PackedBSDFStatus::NoSample) {
-            result.status = PackedTransportStatus::Success;
-            break;
-        }
-        if (bsdf_status != PackedBSDFStatus::Success ||
-            !(sample.pdf >= 1e-8f)) {
-            result.status = bsdf_status == PackedBSDFStatus::Success
-                                ? PackedTransportStatus::Success
-                                : PackedTransportStatus::BSDFFailure;
-            break;
-        }
-        delta_bounce = sample.is_delta();
-        previous_bsdf_pdf = delta_bounce ? 0.0f : sample.pdf;
-        const float cosine = packed_bsdf::abs_cos_theta(material, sample.wi);
-        throughput = math::multiply(
-            throughput,
-            math::multiply(sample.f, cosine / sample.pdf));
-        if (sample.is_transmission()) {
-            eta_scale *= sample.eta * sample.eta;
-        }
-        if (!math::finite(throughput) || !math::finite(eta_scale)) {
-            result.status = PackedTransportStatus::NonFinite;
-            break;
-        }
-        ray = spawn_ray(surface, sample.wi, ray.time);
-
-        if (transport_uses_rr(settings.integrator) &&
-            depth >= settings.rr_start_depth) {
-            const Float3 compensated = math::multiply(throughput, eta_scale);
-            const float minimum_probability =
-                settings.integrator == PackedIntegratorType::RussianRoulette
-                    ? 0.005f
-                    : 0.05f;
-            const float survival = math::clamp(
-                math::maximum_component(compensated), minimum_probability,
-                0.95f);
-            if (static_cast<float>(rng.next()) > survival) {
-                result.status = PackedTransportStatus::Success;
-                break;
-            }
-            throughput = math::multiply(throughput, 1.0f / survival);
-        }
-    }
-    if (!math::finite(result.radiance)) {
-        result.radiance = {};
-        result.status = PackedTransportStatus::NonFinite;
-    }
-    return result;
+    rng.state = state.rng_state;
+    return packed_path_result(state);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE Float2 random_in_unit_disk(RNG &rng) {
@@ -479,6 +552,13 @@ RT_HOST_DEVICE RT_FORCE_INLINE Float2 random_in_unit_disk(RNG &rng) {
             return {x, y};
         }
     }
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE std::uint32_t packed_camera_sample_seed(
+    std::uint32_t base_seed, std::uint32_t pixel_index,
+    std::uint32_t sample_index) {
+    const std::uint32_t pixel_seed = mix_seed(base_seed, pixel_index + 1u);
+    return mix_seed(pixel_seed, sample_index + 1u);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE PackedRay generate_packed_camera_ray_core(
