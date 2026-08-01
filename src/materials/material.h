@@ -39,6 +39,48 @@ struct MaterialMetadata {
     color emission_estimate{0, 0, 0};
 };
 
+struct LambertianMaterialDescription {
+    TextureHandle albedo;
+};
+
+struct MetalMaterialDescription {
+    color albedo{1, 1, 1};
+    double roughness = 0.0;
+};
+
+struct DielectricMaterialDescription {
+    double ior = 1.5;
+};
+
+struct DiffuseLightMaterialDescription {
+    TextureHandle emission;
+};
+
+struct PrincipledMaterialDescription {
+    TextureHandle base_color;
+    TextureHandle roughness;
+    TextureHandle metallic;
+    TextureHandle normal_map;
+    TextureHandle emission;
+    TextureHandle clearcoat;
+    TextureHandle clearcoat_roughness;
+    double emission_strength = 1.0;
+    double normal_strength = 1.0;
+    std::uint32_t normal_convention = 0;
+    bool double_sided = false;
+};
+
+struct IsotropicMaterialDescription {
+    TextureHandle albedo;
+};
+
+using MaterialDescription =
+    std::variant<std::monostate, LambertianMaterialDescription,
+                 MetalMaterialDescription, DielectricMaterialDescription,
+                 DiffuseLightMaterialDescription,
+                 PrincipledMaterialDescription,
+                 IsotropicMaterialDescription>;
+
 class MaterialProgram {
   public:
     virtual ~MaterialProgram() = default;
@@ -55,7 +97,8 @@ class MaterialInstance {
   public:
     MaterialInstance(std::shared_ptr<const MaterialProgram> program,
                      MaterialParameterBlock parameters,
-                     MaterialMetadata metadata = {});
+                     MaterialMetadata metadata = {},
+                     MaterialDescription description = {});
 
     void evaluate(const ShaderEvalContext &context, ShaderScratch &scratch,
                   MaterialOutput &output) const {
@@ -68,11 +111,13 @@ class MaterialInstance {
     const color &emission_estimate() const;
     const MaterialParameterBlock &parameters() const;
     const std::shared_ptr<const MaterialProgram> &program() const;
+    const MaterialDescription &description() const;
 
   private:
     std::shared_ptr<const MaterialProgram> m_program;
     MaterialParameterBlock m_parameters;
     MaterialMetadata m_metadata;
+    MaterialDescription m_description;
 };
 
 using MaterialHandle = std::shared_ptr<const MaterialInstance>;

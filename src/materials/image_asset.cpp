@@ -179,6 +179,10 @@ bool ImageAsset::is_hdr() const {
     return m_hdr;
 }
 
+const std::vector<float> &ImageAsset::pixels() const {
+    return m_pixels;
+}
+
 float ImageAsset::component(int x, int y, int channel) const {
     x = std::max(0, std::min(x, m_width - 1));
     y = std::max(0, std::min(y, m_height - 1));

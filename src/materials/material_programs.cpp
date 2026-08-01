@@ -250,18 +250,21 @@ std::shared_ptr<const MaterialProgram> program_instance() {
 
 MaterialHandle make_instance(std::shared_ptr<const MaterialProgram> program,
                              MaterialParameterBlock parameters,
-                             MaterialMetadata metadata = {}) {
+                             MaterialMetadata metadata,
+                             MaterialDescription description) {
     return std::make_shared<const MaterialInstance>(
-        std::move(program), std::move(parameters), metadata);
+        std::move(program), std::move(parameters), metadata,
+        std::move(description));
 }
 
 } // namespace
 
 MaterialHandle make_lambertian_material(TextureHandle albedo) {
+    LambertianMaterialDescription description{albedo};
     MaterialParameterBlock parameters;
     parameters.add(std::move(albedo));
     return make_instance(program_instance<LambertianProgram>(),
-                         std::move(parameters));
+                         std::move(parameters), {}, std::move(description));
 }
 
 MaterialHandle make_lambertian_material(const color &albedo) {
@@ -270,18 +273,22 @@ MaterialHandle make_lambertian_material(const color &albedo) {
 }
 
 MaterialHandle make_metal_material(const color &albedo, double roughness) {
+    const double clamped_roughness = clamp(roughness, 0.0, 1.0);
     MaterialParameterBlock parameters;
     parameters.add(albedo);
-    parameters.add(clamp(roughness, 0.0, 1.0));
+    parameters.add(clamped_roughness);
     return make_instance(program_instance<MetalProgram>(),
-                         std::move(parameters));
+                         std::move(parameters), {},
+                         MetalMaterialDescription{albedo,
+                                                  clamped_roughness});
 }
 
 MaterialHandle make_dielectric_material(double ior) {
     MaterialParameterBlock parameters;
     parameters.add(ior);
     return make_instance(program_instance<DielectricProgram>(),
-                         std::move(parameters));
+                         std::move(parameters), {},
+                         DielectricMaterialDescription{ior});
 }
 
 MaterialHandle make_diffuse_light_material(TextureHandle emission) {
@@ -289,9 +296,11 @@ MaterialHandle make_diffuse_light_material(TextureHandle emission) {
     metadata.emissive = true;
     metadata.emission_estimate = estimate_texture(emission);
     MaterialParameterBlock parameters;
+    DiffuseLightMaterialDescription description{emission};
     parameters.add(std::move(emission));
     return make_instance(program_instance<DiffuseLightProgram>(),
-                         std::move(parameters), metadata);
+                         std::move(parameters), metadata,
+                         std::move(description));
 }
 
 MaterialHandle make_diffuse_light_material(const color &emission) {
@@ -311,6 +320,20 @@ MaterialHandle make_principled_material(
     metadata.emission_estimate =
         emission_strength * estimate_texture(emission);
 
+    PrincipledMaterialDescription description;
+    description.base_color = base_color;
+    description.roughness = roughness;
+    description.metallic = metallic;
+    description.normal_map = normal_map;
+    description.emission = emission;
+    description.clearcoat = clearcoat;
+    description.clearcoat_roughness = clearcoat_roughness;
+    description.emission_strength = emission_strength;
+    description.normal_strength = normal_settings.strength;
+    description.normal_convention = static_cast<std::uint32_t>(
+        normal_settings.convention == NormalMapConvention::OpenGL ? 0 : 1);
+    description.double_sided = double_sided;
+
     MaterialParameterBlock parameters;
     parameters.add(std::move(base_color));
     parameters.add(std::move(roughness));
@@ -325,14 +348,16 @@ MaterialHandle make_principled_material(
     parameters.add(normal_settings.strength);
     parameters.add(double_sided);
     return make_instance(program_instance<PrincipledProgram>(),
-                         std::move(parameters), metadata);
+                         std::move(parameters), metadata,
+                         std::move(description));
 }
 
 MaterialHandle make_isotropic_material(TextureHandle albedo) {
+    IsotropicMaterialDescription description{albedo};
     MaterialParameterBlock parameters;
     parameters.add(std::move(albedo));
     return make_instance(program_instance<IsotropicProgram>(),
-                         std::move(parameters));
+                         std::move(parameters), {}, std::move(description));
 }
 
 MaterialHandle make_isotropic_material(const color &albedo) {

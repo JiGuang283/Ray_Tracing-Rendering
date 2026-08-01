@@ -6,6 +6,7 @@
 #include "shading/shader_context.h"
 
 #include <memory>
+#include <cstdint>
 
 enum class ColorSpace {
     SRGB,
@@ -43,11 +44,28 @@ struct TextureSample {
     double alpha = 1.0;
 };
 
+enum class TextureKind : std::uint32_t {
+    Unsupported = 0,
+    SolidColor,
+    VertexColor,
+    Checker,
+    Image,
+    Noise,
+    Scale,
+    UVTransform,
+    Multiply,
+    Mix,
+    ColorRamp
+};
+
 class Texture {
   public:
     virtual ~Texture() = default;
     virtual TextureSample
     evaluate(const ShaderEvalContext &context) const = 0;
+    virtual TextureKind kind() const {
+        return TextureKind::Unsupported;
+    }
 };
 
 using TextureHandle = std::shared_ptr<const Texture>;
@@ -63,6 +81,8 @@ class SolidColorTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
+    const color &value() const;
 
   private:
     color m_value;
@@ -72,6 +92,7 @@ class VertexColorTexture final : public Texture {
   public:
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
 };
 
 class CheckerTexture final : public Texture {
@@ -81,6 +102,9 @@ class CheckerTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
+    const TextureHandle &even() const;
+    const TextureHandle &odd() const;
 
   private:
     TextureHandle m_even;
@@ -96,7 +120,11 @@ class ImageTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
     const std::shared_ptr<const ImageAsset> &image() const;
+    ColorSpace color_space() const;
+    const SamplerState &sampler() const;
+    TextureChannel channel() const;
 
   private:
     TextureSample texel(int x, int y) const;
@@ -115,6 +143,9 @@ class NoiseTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
+    double scale() const;
+    const perlin &noise_data() const;
 
   private:
     perlin m_noise;
@@ -127,6 +158,9 @@ class ScaleTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
+    const TextureHandle &input() const;
+    double scale() const;
 
   private:
     TextureHandle m_input;
@@ -140,6 +174,12 @@ class UVTransformTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
+    const TextureHandle &input() const;
+    const vec2 &offset() const;
+    const vec2 &scale() const;
+    double cos_rotation() const;
+    double sin_rotation() const;
 
   private:
     TextureHandle m_input;
@@ -155,6 +195,9 @@ class MultiplyTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
+    const TextureHandle &a() const;
+    const TextureHandle &b() const;
 
   private:
     TextureHandle m_a;
@@ -167,6 +210,10 @@ class MixTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
+    const TextureHandle &a() const;
+    const TextureHandle &b() const;
+    const TextureHandle &factor() const;
 
   private:
     TextureHandle m_a;
@@ -182,6 +229,12 @@ class ColorRampTexture final : public Texture {
 
     TextureSample
     evaluate(const ShaderEvalContext &context) const override;
+    TextureKind kind() const override;
+    const TextureHandle &input() const;
+    const color &low() const;
+    const color &high() const;
+    double min_value() const;
+    double max_value() const;
 
   private:
     TextureHandle m_input;

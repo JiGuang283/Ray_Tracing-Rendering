@@ -137,6 +137,21 @@ TEST_CASE(resource_registry_deduplicates_and_caches_missing_images) {
     std::filesystem::remove(path);
 }
 
+TEST_CASE(texture_resources_expose_read_only_compile_descriptions) {
+    const auto source =
+        std::make_shared<SolidColorTexture>(color(0.1, 0.2, 0.3));
+    const auto scaled = std::make_shared<ScaleTexture>(source, 2.5);
+    REQUIRE(source->kind() == TextureKind::SolidColor);
+    REQUIRE(scaled->kind() == TextureKind::Scale);
+    REQUIRE(scaled->input() == source);
+    REQUIRE_NEAR(scaled->scale(), 2.5, 1e-12);
+
+    NoiseTexture noise(3.0);
+    REQUIRE(noise.kind() == TextureKind::Noise);
+    REQUIRE(noise.noise_data().gradients().size() == 256);
+    REQUIRE(noise.noise_data().permutation_x().size() == 256);
+}
+
 TEST_CASE(shading_frame_preserves_mirrored_uv_handedness) {
     ShadingFrame frame;
     frame.build_from_tangent_space(vec3(0, 0, 1), vec3(1, 0, 0),

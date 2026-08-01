@@ -71,6 +71,23 @@ TEST_CASE(material_metadata_is_available_without_shader_evaluation) {
     REQUIRE_NEAR(output.emission.y(), 3.0, 1e-12);
 }
 
+TEST_CASE(material_factories_preserve_typed_host_descriptions) {
+    const auto albedo =
+        std::make_shared<SolidColorTexture>(color(0.2, 0.4, 0.6));
+    const MaterialHandle lambertian = make_lambertian_material(albedo);
+    REQUIRE(std::holds_alternative<LambertianMaterialDescription>(
+        lambertian->description()));
+    REQUIRE(std::get<LambertianMaterialDescription>(
+                lambertian->description())
+                .albedo == albedo);
+
+    const MaterialHandle metal =
+        make_metal_material(color(0.8, 0.7, 0.6), 2.0);
+    const auto &description =
+        std::get<MetalMaterialDescription>(metal->description());
+    REQUIRE_NEAR(description.roughness, 1.0, 1e-12);
+}
+
 TEST_CASE(principled_emission_can_be_double_sided) {
     const TextureHandle white =
         std::make_shared<SolidColorTexture>(color(1, 1, 1));

@@ -14,9 +14,10 @@ MaterialParameterBlock::operator[](std::size_t index) const {
 
 MaterialInstance::MaterialInstance(
     std::shared_ptr<const MaterialProgram> program,
-    MaterialParameterBlock parameters, MaterialMetadata metadata)
+    MaterialParameterBlock parameters, MaterialMetadata metadata,
+    MaterialDescription description)
     : m_program(std::move(program)), m_parameters(std::move(parameters)),
-      m_metadata(metadata) {
+      m_metadata(metadata), m_description(std::move(description)) {
     if (!m_program) {
         throw std::invalid_argument("MaterialInstance requires a program");
     }
@@ -46,4 +47,8 @@ const MaterialParameterBlock &MaterialInstance::parameters() const {
 const std::shared_ptr<const MaterialProgram> &
 MaterialInstance::program() const {
     return m_program;
+}
+
+const MaterialDescription &MaterialInstance::description() const {
+    return m_description;
 }

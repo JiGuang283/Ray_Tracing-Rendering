@@ -5,6 +5,8 @@
 #include "rtweekend.h"
 #include "vec3.h"
 
+#include <vector>
+
 class perlin {
   public:
     perlin() {
@@ -50,6 +52,22 @@ class perlin {
         }
 
         return fabs(accum);
+    }
+
+    const std::vector<vec3> &gradients() const {
+        return ranvec;
+    }
+
+    const std::vector<int> &permutation_x() const {
+        return perm_x;
+    }
+
+    const std::vector<int> &permutation_y() const {
+        return perm_y;
+    }
+
+    const std::vector<int> &permutation_z() const {
+        return perm_z;
     }
 
   private:

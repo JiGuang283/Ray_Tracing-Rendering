@@ -54,9 +54,21 @@ SolidColorTexture::evaluate(const ShaderEvalContext & /*context*/) const {
     return TextureSample{m_value, 1.0};
 }
 
+TextureKind SolidColorTexture::kind() const {
+    return TextureKind::SolidColor;
+}
+
+const color &SolidColorTexture::value() const {
+    return m_value;
+}
+
 TextureSample
 VertexColorTexture::evaluate(const ShaderEvalContext &context) const {
     return TextureSample{context.vertex_color, context.vertex_alpha};
+}
+
+TextureKind VertexColorTexture::kind() const {
+    return TextureKind::VertexColor;
 }
 
 CheckerTexture::CheckerTexture(TextureHandle even, TextureHandle odd)
@@ -75,6 +87,18 @@ CheckerTexture::evaluate(const ShaderEvalContext &context) const {
         std::sin(10.0 * p.x()) * std::sin(10.0 * p.y()) *
         std::sin(10.0 * p.z());
     return (pattern < 0.0 ? m_odd : m_even)->evaluate(context);
+}
+
+TextureKind CheckerTexture::kind() const {
+    return TextureKind::Checker;
+}
+
+const TextureHandle &CheckerTexture::even() const {
+    return m_even;
+}
+
+const TextureHandle &CheckerTexture::odd() const {
+    return m_odd;
 }
 
 ImageTexture::ImageTexture(std::shared_ptr<const ImageAsset> image,
@@ -130,6 +154,22 @@ TextureSample ImageTexture::evaluate(const ShaderEvalContext &context) const {
 
 const std::shared_ptr<const ImageAsset> &ImageTexture::image() const {
     return m_image;
+}
+
+TextureKind ImageTexture::kind() const {
+    return TextureKind::Image;
+}
+
+ColorSpace ImageTexture::color_space() const {
+    return m_color_space;
+}
+
+const SamplerState &ImageTexture::sampler() const {
+    return m_sampler;
+}
+
+TextureChannel ImageTexture::channel() const {
+    return m_channel;
 }
 
 TextureSample ImageTexture::texel(int x, int y) const {
@@ -192,6 +232,18 @@ TextureSample NoiseTexture::evaluate(const ShaderEvalContext &context) const {
     return TextureSample{color(value, value, value), 1.0};
 }
 
+TextureKind NoiseTexture::kind() const {
+    return TextureKind::Noise;
+}
+
+double NoiseTexture::scale() const {
+    return m_scale;
+}
+
+const perlin &NoiseTexture::noise_data() const {
+    return m_noise;
+}
+
 ScaleTexture::ScaleTexture(TextureHandle input, double scale)
     : m_input(std::move(input)), m_scale(scale) {
 }
@@ -200,6 +252,18 @@ TextureSample ScaleTexture::evaluate(const ShaderEvalContext &context) const {
     TextureSample sample = m_input->evaluate(context);
     sample.rgb *= m_scale;
     return sample;
+}
+
+TextureKind ScaleTexture::kind() const {
+    return TextureKind::Scale;
+}
+
+const TextureHandle &ScaleTexture::input() const {
+    return m_input;
+}
+
+double ScaleTexture::scale() const {
+    return m_scale;
 }
 
 UVTransformTexture::UVTransformTexture(TextureHandle input,
@@ -224,6 +288,30 @@ UVTransformTexture::evaluate(const ShaderEvalContext &context) const {
     return m_input->evaluate(transformed);
 }
 
+TextureKind UVTransformTexture::kind() const {
+    return TextureKind::UVTransform;
+}
+
+const TextureHandle &UVTransformTexture::input() const {
+    return m_input;
+}
+
+const vec2 &UVTransformTexture::offset() const {
+    return m_offset;
+}
+
+const vec2 &UVTransformTexture::scale() const {
+    return m_scale;
+}
+
+double UVTransformTexture::cos_rotation() const {
+    return m_cos_rotation;
+}
+
+double UVTransformTexture::sin_rotation() const {
+    return m_sin_rotation;
+}
+
 MultiplyTexture::MultiplyTexture(TextureHandle a, TextureHandle b)
     : m_a(std::move(a)), m_b(std::move(b)) {
 }
@@ -233,6 +321,18 @@ MultiplyTexture::evaluate(const ShaderEvalContext &context) const {
     const TextureSample a = m_a->evaluate(context);
     const TextureSample b = m_b->evaluate(context);
     return TextureSample{a.rgb * b.rgb, a.alpha * b.alpha};
+}
+
+TextureKind MultiplyTexture::kind() const {
+    return TextureKind::Multiply;
+}
+
+const TextureHandle &MultiplyTexture::a() const {
+    return m_a;
+}
+
+const TextureHandle &MultiplyTexture::b() const {
+    return m_b;
 }
 
 MixTexture::MixTexture(TextureHandle a, TextureHandle b,
@@ -248,6 +348,22 @@ TextureSample MixTexture::evaluate(const ShaderEvalContext &context) const {
         clamp(texture_scalar(m_factor, context), 0.0, 1.0);
     return TextureSample{lerp(a.rgb, b.rgb, factor),
                          (1.0 - factor) * a.alpha + factor * b.alpha};
+}
+
+TextureKind MixTexture::kind() const {
+    return TextureKind::Mix;
+}
+
+const TextureHandle &MixTexture::a() const {
+    return m_a;
+}
+
+const TextureHandle &MixTexture::b() const {
+    return m_b;
+}
+
+const TextureHandle &MixTexture::factor() const {
+    return m_factor;
 }
 
 ColorRampTexture::ColorRampTexture(TextureHandle input, const color &low,
@@ -266,4 +382,28 @@ ColorRampTexture::evaluate(const ShaderEvalContext &context) const {
             ? 0.0
             : clamp((value - m_min_value) / denominator, 0.0, 1.0);
     return TextureSample{lerp(m_low, m_high, factor), 1.0};
+}
+
+TextureKind ColorRampTexture::kind() const {
+    return TextureKind::ColorRamp;
+}
+
+const TextureHandle &ColorRampTexture::input() const {
+    return m_input;
+}
+
+const color &ColorRampTexture::low() const {
+    return m_low;
+}
+
+const color &ColorRampTexture::high() const {
+    return m_high;
+}
+
+double ColorRampTexture::min_value() const {
+    return m_min_value;
+}
+
+double ColorRampTexture::max_value() const {
+    return m_max_value;
 }

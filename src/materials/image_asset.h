@@ -24,6 +24,7 @@ class ImageAsset {
     int channels() const;
     bool is_hdr() const;
     float component(int x, int y, int channel) const;
+    const std::vector<float> &pixels() const;
 
   private:
     ImageAsset(int width, int height, int channels,
