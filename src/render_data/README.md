@@ -66,6 +66,13 @@ deterministically. `non_delta_light_indices` corresponds one-to-one with the
 global selection probability and CDF arrays. Selection uses 95% power
 importance plus a 5% uniform floor.
 
+`emitter_bindings` is parallel to `material_bindings`. Each instance material
+slot either contains the corresponding BSDF-hittable light ID or the invalid
+index. Reconstructed interactions carry this ID so an emissive hit can
+evaluate its complementary light-sampling PDF without searching every light.
+Each non-delta `PackedLight` also stores the same selection probability as its
+entry in the global probability table.
+
 For triangle and mesh emitters, `element_indices` addresses global packed
 triangles. `distribution` stores `N` probabilities followed by `N` CDF values.
 Probabilities use the current four-point emission estimate and the 95%
@@ -82,6 +89,12 @@ H+1 marginal CDF values
 
 Environment texels remain in the shared image buffers. Flags record LDR sRGB
 decoding and square light-probe mapping.
+
+`packed_light_core.h` is the shared host/device implementation for delta,
+quad, affine sphere, triangle/mesh, and environment sampling. Area densities
+are converted to solid-angle densities at the shading point. Square angular
+light probes use their own UV-to-solid-angle Jacobian rather than the
+equirectangular Jacobian.
 
 ## Media And Verification
 

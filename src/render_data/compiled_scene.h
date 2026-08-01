@@ -35,6 +35,7 @@ struct CompiledScene {
     std::vector<PackedTransform> transforms;
     std::vector<PackedInstance> instances;
     std::vector<std::uint32_t> material_bindings;
+    std::vector<std::uint32_t> emitter_bindings;
     std::vector<PackedAggregate> aggregates;
     std::vector<std::uint32_t> aggregate_instance_indices;
     std::vector<PackedBVHNode> bvh_nodes;
@@ -75,6 +76,7 @@ struct CompiledSceneView {
     PackedArrayView<PackedTransform> transforms;
     PackedArrayView<PackedInstance> instances;
     PackedArrayView<std::uint32_t> material_bindings;
+    PackedArrayView<std::uint32_t> emitter_bindings;
     PackedArrayView<PackedAggregate> aggregates;
     PackedArrayView<std::uint32_t> aggregate_instance_indices;
     PackedArrayView<PackedBVHNode> bvh_nodes;

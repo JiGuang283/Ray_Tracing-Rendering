@@ -10,6 +10,19 @@ namespace packed_reconstruction {
 
 using namespace packed_intersector;
 
+RT_HOST_DEVICE RT_FORCE_INLINE std::uint32_t resolve_emitter(
+    const CompiledSceneView &scene, const PackedInstance &instance,
+    std::uint32_t material_slot) {
+    if (material_slot >= instance.material_bindings.count) {
+        return kInvalidPackedIndex;
+    }
+    const std::uint32_t binding =
+        instance.material_bindings.offset + material_slot;
+    return binding < scene.emitter_bindings.count
+               ? scene.emitter_bindings[binding]
+               : kInvalidPackedIndex;
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE Float3 packed_position(
     const CompiledSceneView &scene, const PackedMesh &mesh,
     std::uint32_t index) {
@@ -187,6 +200,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle(
                     (front_face ? PACKED_HIT_FRONT_FACE : 0u);
     surface.material_id =
         resolve_material(scene, instance, triangle.material_slot);
+    surface.emitter_id =
+        resolve_emitter(scene, instance, triangle.material_slot);
     surface.primitive_id = triangle.primitive_id;
     if (surface.material_id >= scene.materials.count) {
         return PackedShadingStatus::InvalidMaterial;
@@ -278,6 +293,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere(
     surface.flags = PACKED_HIT_SPHERE |
                     (front_face ? PACKED_HIT_FRONT_FACE : 0u);
     surface.material_id = resolve_material(scene, instance, 0);
+    surface.emitter_id = resolve_emitter(scene, instance, 0);
     surface.primitive_id = instance.source_object_id;
     if (surface.material_id >= scene.materials.count) {
         return PackedShadingStatus::InvalidMaterial;

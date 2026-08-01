@@ -98,6 +98,7 @@ DeviceSceneUploadStats DeviceSceneStorage::upload(
     UPLOAD_BUFFER(transforms);
     UPLOAD_BUFFER(instances);
     UPLOAD_BUFFER(material_bindings);
+    UPLOAD_BUFFER(emitter_bindings);
     UPLOAD_BUFFER(aggregates);
     UPLOAD_BUFFER(aggregate_instance_indices);
     UPLOAD_BUFFER(bvh_nodes);
@@ -154,6 +155,7 @@ DeviceSceneView DeviceSceneStorage::view() const noexcept {
     scene.transforms = view_of(m_transforms);
     scene.instances = view_of(m_instances);
     scene.material_bindings = view_of(m_material_bindings);
+    scene.emitter_bindings = view_of(m_emitter_bindings);
     scene.aggregates = view_of(m_aggregates);
     scene.aggregate_instance_indices =
         view_of(m_aggregate_instance_indices);
@@ -192,6 +194,7 @@ std::size_t DeviceSceneStorage::allocated_bytes() const noexcept {
     ADD_BUFFER_BYTES(transforms);
     ADD_BUFFER_BYTES(instances);
     ADD_BUFFER_BYTES(material_bindings);
+    ADD_BUFFER_BYTES(emitter_bindings);
     ADD_BUFFER_BYTES(aggregates);
     ADD_BUFFER_BYTES(aggregate_instance_indices);
     ADD_BUFFER_BYTES(bvh_nodes);

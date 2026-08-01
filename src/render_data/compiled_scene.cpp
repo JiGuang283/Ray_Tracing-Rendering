@@ -109,6 +109,7 @@ CompiledSceneView make_scene_view(const CompiledScene &scene) {
     view.transforms = view_of(scene.transforms);
     view.instances = view_of(scene.instances);
     view.material_bindings = view_of(scene.material_bindings);
+    view.emitter_bindings = view_of(scene.emitter_bindings);
     view.aggregates = view_of(scene.aggregates);
     view.aggregate_instance_indices =
         view_of(scene.aggregate_instance_indices);
@@ -157,6 +158,7 @@ CompiledSceneStats compiled_scene_stats(const CompiledScene &scene) {
     ADD_BUFFER_BYTES(transforms);
     ADD_BUFFER_BYTES(instances);
     ADD_BUFFER_BYTES(material_bindings);
+    ADD_BUFFER_BYTES(emitter_bindings);
     ADD_BUFFER_BYTES(aggregates);
     ADD_BUFFER_BYTES(aggregate_instance_indices);
     ADD_BUFFER_BYTES(bvh_nodes);
@@ -195,6 +197,10 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         scene.vertex_colors.size() != vertex_count) {
         report.errors.push_back(
             "compiled vertex attribute buffers have different sizes");
+    }
+    if (scene.emitter_bindings.size() != scene.material_bindings.size()) {
+        report.errors.push_back(
+            "material and emitter binding buffers have different sizes");
     }
     for (std::size_t index = 0; index < scene.transforms.size(); ++index) {
         const PackedTransform &transform = scene.transforms[index];
@@ -296,6 +302,32 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
                     add_index_error(report, "instance", "material_id",
                                     index);
                     break;
+                }
+            }
+            if (valid_range(instance.material_bindings,
+                            scene.emitter_bindings.size())) {
+                for (std::uint32_t binding = 0;
+                     binding < instance.material_bindings.count; ++binding) {
+                    const std::uint32_t emitter = scene.emitter_bindings[
+                        instance.material_bindings.offset + binding];
+                    if (!valid_optional_index(emitter,
+                                              scene.lights.size())) {
+                        add_index_error(report, "instance", "emitter_id",
+                                        index);
+                        break;
+                    }
+                    if (emitter != kInvalidPackedIndex) {
+                        const PackedLight &light = scene.lights[emitter];
+                        const std::uint32_t material = scene.material_bindings[
+                            instance.material_bindings.offset + binding];
+                        if ((light.flags & PACKED_LIGHT_BSDF_HITTABLE) == 0 ||
+                            light.instance_id != index ||
+                            light.material_id != material) {
+                            add_index_error(report, "instance",
+                                            "emitter_binding", index);
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -430,6 +462,18 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
             break;
         }
     }
+    for (std::size_t index = 0;
+         index < scene.non_delta_light_indices.size(); ++index) {
+        const std::uint32_t light_id = scene.non_delta_light_indices[index];
+        if (light_id < scene.lights.size() &&
+            index < scene.light_selection_probabilities.size() &&
+            std::abs(scene.lights[light_id].selection_probability -
+                     scene.light_selection_probabilities[index]) > 1e-6f) {
+            report.errors.push_back(
+                "packed light selection probability is inconsistent");
+            break;
+        }
+    }
     for (std::size_t index = 0; index < scene.lights.size(); ++index) {
         const PackedLight &light = scene.lights[index];
         if (!valid_range(light.distribution,
@@ -451,7 +495,9 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         }
         if (!finite(light.data0) || !finite(light.data1) ||
             !finite(light.data2) || !finite(light.radiance) ||
-            !finite(light.power)) {
+            !finite(light.power) ||
+            !std::isfinite(light.selection_probability) ||
+            light.selection_probability < 0.0f) {
             add_index_error(report, "light", "numeric_data", index);
         }
         if (valid_range(light.element_indices,
@@ -495,6 +541,23 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
                                     index);
                 }
             }
+            if (light.instance_id < scene.instances.size()) {
+                const PackedInstance &instance =
+                    scene.instances[light.instance_id];
+                bool bound = false;
+                for (std::uint32_t local = 0;
+                     local < instance.material_bindings.count; ++local) {
+                    const std::uint32_t binding =
+                        instance.material_bindings.offset + local;
+                    bound = bound ||
+                            (binding < scene.emitter_bindings.size() &&
+                             scene.emitter_bindings[binding] == index);
+                }
+                if (!bound) {
+                    add_index_error(report, "light", "emitter_binding",
+                                    index);
+                }
+            }
         } else if (light.type == PackedLightType::Environment) {
             const std::uint64_t width =
                 static_cast<std::uint32_t>(light.data0.x);
@@ -506,6 +569,14 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
                 light.distribution.count != expected) {
                 add_index_error(report, "light", "environment_distribution",
                                 index);
+            }
+        } else if (light.type == PackedLightType::SphereEmitter &&
+                   light.instance_id < scene.instances.size()) {
+            const PackedInstance &instance = scene.instances[light.instance_id];
+            const std::uint32_t binding = instance.material_bindings.offset;
+            if (binding >= scene.emitter_bindings.size() ||
+                scene.emitter_bindings[binding] != index) {
+                add_index_error(report, "light", "emitter_binding", index);
             }
         }
     }

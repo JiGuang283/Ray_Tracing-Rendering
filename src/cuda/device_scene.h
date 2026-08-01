@@ -65,6 +65,7 @@ private:
     DeviceBuffer<PackedTransform> m_transforms;
     DeviceBuffer<PackedInstance> m_instances;
     DeviceBuffer<std::uint32_t> m_material_bindings;
+    DeviceBuffer<std::uint32_t> m_emitter_bindings;
     DeviceBuffer<PackedAggregate> m_aggregates;
     DeviceBuffer<std::uint32_t> m_aggregate_instance_indices;
     DeviceBuffer<PackedBVHNode> m_bvh_nodes;

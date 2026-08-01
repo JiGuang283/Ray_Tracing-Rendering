@@ -130,6 +130,15 @@ enum class PackedBSDFStatus : std::uint32_t {
     NonFinite = 4
 };
 
+enum class PackedLightStatus : std::uint32_t {
+    Success = 0,
+    NoSample = 1,
+    InvalidInput = 2,
+    InvalidDistribution = 3,
+    TextureFailure = 4,
+    NonFinite = 5
+};
+
 enum PackedInstanceFlags : std::uint32_t {
     PACKED_INSTANCE_NONE = 0,
     PACKED_INSTANCE_FLIP_FACE = 1u << 0
@@ -259,7 +268,8 @@ struct alignas(16) PackedSurfaceInteraction {
     Float3 dpdv;
     float vertex_alpha = 1.0f;
     Float2 uv;
-    Float2 padding{};
+    std::uint32_t emitter_id = kInvalidPackedIndex;
+    std::uint32_t padding = 0;
     Float4 vertex_color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
@@ -308,6 +318,40 @@ struct alignas(16) PackedBSDFSample {
 
     RT_HOST_DEVICE bool is_phase() const noexcept {
         return (flags & PACKED_BSDF_PHASE) != 0;
+    }
+};
+
+struct alignas(16) PackedLightSample {
+    Float3 wi{0.0f, 0.0f, 1.0f};
+    float distance = std::numeric_limits<float>::infinity();
+    Float3 radiance{};
+    float pdf = 0.0f;
+    std::uint32_t light_id = kInvalidPackedIndex;
+    std::uint32_t flags = PACKED_LIGHT_NONE;
+    std::uint32_t element_id = kInvalidPackedIndex;
+    std::uint32_t padding = 0;
+
+    RT_HOST_DEVICE bool is_delta() const noexcept {
+        return (flags & PACKED_LIGHT_DELTA) != 0;
+    }
+
+    RT_HOST_DEVICE bool is_infinite() const noexcept {
+        return (flags & PACKED_LIGHT_INFINITE) != 0;
+    }
+
+    RT_HOST_DEVICE bool is_bsdf_hittable() const noexcept {
+        return (flags & PACKED_LIGHT_BSDF_HITTABLE) != 0;
+    }
+};
+
+struct alignas(16) SelectedPackedLightSample {
+    PackedLightSample sample;
+    float selection_probability = 0.0f;
+    std::uint32_t selection_index = kInvalidPackedIndex;
+    std::uint32_t padding[2]{};
+
+    RT_HOST_DEVICE float combined_pdf() const noexcept {
+        return sample.pdf * selection_probability;
     }
 };
 
@@ -428,7 +472,7 @@ struct alignas(16) PackedLight {
     std::uint32_t material_id = kInvalidPackedIndex;
     Range32 distribution;
     std::uint32_t image_id = kInvalidPackedIndex;
-    std::uint32_t padding0 = 0;
+    float selection_probability = 0.0f;
     Range32 element_indices;
     std::uint32_t padding1[2]{};
     Float4 data0;
@@ -460,6 +504,8 @@ static_assert(sizeof(PackedShadingFrame) == 32);
 static_assert(sizeof(PackedClosure) == 32);
 static_assert(sizeof(PackedMaterialOutput) == 320);
 static_assert(sizeof(PackedBSDFSample) == 48);
+static_assert(sizeof(PackedLightSample) == 48);
+static_assert(sizeof(SelectedPackedLightSample) == 64);
 static_assert(sizeof(PackedTransform) == 96);
 static_assert(std::is_trivially_copyable_v<PackedBVHNode>);
 static_assert(std::is_trivially_copyable_v<Range32>);
@@ -468,11 +514,14 @@ static_assert(std::is_trivially_copyable_v<PackedHit>);
 static_assert(std::is_trivially_copyable_v<PackedTraversalStatus>);
 static_assert(std::is_trivially_copyable_v<PackedShadingStatus>);
 static_assert(std::is_trivially_copyable_v<PackedBSDFStatus>);
+static_assert(std::is_trivially_copyable_v<PackedLightStatus>);
 static_assert(std::is_trivially_copyable_v<PackedSurfaceInteraction>);
 static_assert(std::is_trivially_copyable_v<PackedShadingFrame>);
 static_assert(std::is_trivially_copyable_v<PackedClosure>);
 static_assert(std::is_trivially_copyable_v<PackedMaterialOutput>);
 static_assert(std::is_trivially_copyable_v<PackedBSDFSample>);
+static_assert(std::is_trivially_copyable_v<PackedLightSample>);
+static_assert(std::is_trivially_copyable_v<SelectedPackedLightSample>);
 static_assert(std::is_trivially_copyable_v<PackedTransform>);
 static_assert(std::is_trivially_copyable_v<PackedTriangle>);
 static_assert(std::is_trivially_copyable_v<PackedSphere>);

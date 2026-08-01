@@ -353,6 +353,7 @@ class SceneCompiler {
         for (const MaterialHandle &material_handle : materials) {
             m_scene.material_bindings.push_back(
                 m_resources.compile_material(material_handle).value);
+            m_scene.emitter_bindings.push_back(kInvalidPackedIndex);
         }
         return checked_range(offset, materials.size(), "material bindings");
     }
@@ -858,7 +859,9 @@ class SceneCompiler {
             checked_float(side_factor * pi * integrated[2],
                           "emitter power"),
             0.0f};
-        append_light(light);
+        const std::uint32_t light_id = append_light(light);
+        m_scene.emitter_bindings[instance.material_bindings.offset +
+                                 material_slot] = light_id;
     }
 
     void append_sphere_emitter(std::uint32_t instance_id,
@@ -953,7 +956,9 @@ class SceneCompiler {
             checked_float(side_factor * pi * integrated[2],
                           "sphere emitter power"),
             0.0f};
-        append_light(light);
+        const std::uint32_t light_id = append_light(light);
+        m_scene.emitter_bindings[instance.material_bindings.offset] =
+            light_id;
     }
 
     void append_environment_light(const EnvironmentLightIR &environment) {
@@ -976,15 +981,32 @@ class SceneCompiler {
             static_cast<std::size_t>(width) * height);
         std::vector<double> row_sums(static_cast<std::size_t>(height), 0.0);
         double total_weight = 0.0;
+        const bool is_probe = width == height;
         for (int y = 0; y < height; ++y) {
-            const double sin_theta =
-                std::sin(pi * (static_cast<double>(y) + 0.5) / height);
             for (int x = 0; x < width; ++x) {
                 const double luminance =
                     0.2126 * linear_component(x, y, 0) +
                     0.7152 * linear_component(x, y, 1) +
                     0.0722 * linear_component(x, y, 2);
-                const double weight = std::max(0.0, luminance * sin_theta);
+                double solid_angle_weight = 0.0;
+                if (is_probe) {
+                    const double centered_x =
+                        2.0 * (static_cast<double>(x) + 0.5) / width - 1.0;
+                    const double centered_y =
+                        1.0 - 2.0 * (static_cast<double>(y) + 0.5) / height;
+                    const double radial = std::sqrt(
+                        centered_x * centered_x + centered_y * centered_y);
+                    if (radial <= 1.0) {
+                        solid_angle_weight =
+                            radial > 1e-12 ? std::sin(pi * radial) / radial
+                                           : pi;
+                    }
+                } else {
+                    solid_angle_weight = std::sin(
+                        pi * (static_cast<double>(y) + 0.5) / height);
+                }
+                const double weight =
+                    std::max(0.0, luminance * solid_angle_weight);
                 weights[static_cast<std::size_t>(y) * width + x] = weight;
                 row_sums[static_cast<std::size_t>(y)] += weight;
                 total_weight += weight;
@@ -1039,7 +1061,7 @@ class SceneCompiler {
         PackedLight light;
         light.type = PackedLightType::Environment;
         light.flags = PACKED_LIGHT_INFINITE | PACKED_LIGHT_BSDF_HITTABLE;
-        if (width == height) {
+        if (is_probe) {
             light.flags |= PACKED_LIGHT_ENVIRONMENT_PROBE;
         }
         if (!image->is_hdr()) {
@@ -1051,8 +1073,9 @@ class SceneCompiler {
             "environment distribution");
         light.data0 = {static_cast<float>(width),
                        static_cast<float>(height), 0.0f, 0.0f};
+        const double jacobian_scale = is_probe ? 4.0 * pi : 2.0 * pi * pi;
         const double total_power =
-            total_weight * (2.0 * pi * pi) /
+            total_weight * jacobian_scale /
             (static_cast<double>(width) * height);
         light.power = {checked_float(total_power, "environment power"),
                        checked_float(total_power, "environment power"),
@@ -1174,15 +1197,33 @@ class SceneCompiler {
         }
         const double uniform =
             1.0 / static_cast<double>(weights.size());
-        float cumulative = 0.0f;
-        for (double weight : weights) {
+        std::vector<float> probabilities;
+        probabilities.reserve(weights.size());
+        float float_sum = 0.0f;
+        std::size_t largest_index = 0;
+        for (std::size_t index = 0; index < weights.size(); ++index) {
+            const double weight = weights[index];
             const double power_probability =
                 total > 0.0 ? weight / total : uniform;
             const float probability = static_cast<float>(
                 0.95 * power_probability + 0.05 * uniform);
+            probabilities.push_back(probability);
+            float_sum += probability;
+            if (probability > probabilities[largest_index]) {
+                largest_index = index;
+            }
+        }
+        probabilities[largest_index] += 1.0f - float_sum;
+
+        float cumulative = 0.0f;
+        for (std::size_t index = 0; index < probabilities.size(); ++index) {
+            const float probability = probabilities[index];
             m_scene.light_selection_probabilities.push_back(probability);
             cumulative += probability;
             m_scene.light_cdf.push_back(cumulative);
+            const std::uint32_t light_id =
+                m_scene.non_delta_light_indices[index];
+            m_scene.lights[light_id].selection_probability = probability;
         }
         m_scene.light_cdf.back() = 1.0f;
     }

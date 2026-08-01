@@ -3,8 +3,9 @@
 This module uploads an immutable `CompiledScene` and runs the shared packed
 geometry and material evaluation code over batches of rays. It currently
 provides intersection, surface reconstruction, fixed-stack texture evaluation,
-normal mapping, and material closure generation. It does not yet implement
-camera sampling, BSDF sampling, light transport, or film accumulation.
+normal mapping, material closure generation, BSDF sample/eval/pdf, and light
+sampling. It does not yet implement camera path generation, complete light
+transport, or film accumulation.
 
 ## Ownership
 
@@ -32,7 +33,7 @@ state pointer skips media, matching the CPU flat-intersector contract.
 
 ## Shading
 
-CPU and CUDA shading include the same three host/device headers:
+CPU and CUDA shading include the same host/device headers:
 
 - `surface_reconstruction_core.h` rebuilds position, UV, normals, tangent
   derivatives, material IDs, and vertex colors from a compact `PackedHit`.
@@ -40,15 +41,19 @@ CPU and CUDA shading include the same three host/device headers:
   16-entry traversal stack and no allocation or recursion.
 - `packed_material_core.h` applies normal maps and emits a fixed-capacity
   `PackedMaterialOutput` containing emission and up to eight typed closures.
+- `packed_bsdf_core.h` samples and evaluates those closures, including delta
+  event probabilities, dielectric eta tracking, and GGX VNDF sampling.
+- `packed_light_core.h` evaluates deterministic delta lights and samples the
+  global non-delta distribution, textured geometry emitters, and environment
+  maps with matching MIS PDFs.
 
 `reconstruct_hits_cuda()` and `evaluate_materials_cuda()` remain separate
 launches. This keeps status reporting and CPU/GPU validation precise. A future
 path tracing kernel may fuse them after the transport implementation is
 verified.
 
-The packed closure output is a data boundary, not a completed GPU BSDF. The
-next transport stage still needs matching closure sample/eval/pdf routines,
-light sampling, path state, Russian roulette, and Film accumulation.
+The next transport stage still needs path state, visibility rays, Russian
+roulette, queue compaction, and Film accumulation.
 
 ## Build And Check
 
@@ -61,6 +66,8 @@ cmake --build build-cuda -j2
 ctest --test-dir build-cuda --output-on-failure
 ./build-cuda/cuda_scene_check
 ./build-cuda/cuda_scene_check --all
+./build-cuda/cuda_light_check
+./build-cuda/cuda_light_check --all
 ./build-cuda/cuda_shading_check
 ./build-cuda/cuda_shading_check --all
 ```
@@ -69,6 +76,9 @@ ctest --test-dir build-cuda --output-on-failure
 surface attributes, material status, texture stack depth, emission, shading
 frames, and every closure field. It also evaluates one synthetic interaction
 for every material so validation is not limited to camera-visible surfaces.
+
+`cuda_light_check` compares every packed light type, conditional PDFs, global
+non-delta selection, and final RNG states on the CPU and GPU.
 
 The CUDA option defaults to `OFF`, so normal CPU builds do not require a CUDA
 compiler or runtime.

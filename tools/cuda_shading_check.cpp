@@ -202,6 +202,7 @@ float normalized_dot(Float3 a, Float3 b) {
 std::string compare_surface(const PackedSurfaceInteraction &cpu,
                             const PackedSurfaceInteraction &gpu) {
     if (cpu.material_id != gpu.material_id ||
+        cpu.emitter_id != gpu.emitter_id ||
         cpu.instance_id != gpu.instance_id ||
         cpu.primitive_id != gpu.primitive_id || cpu.flags != gpu.flags) {
         return "surface identifiers differ";
