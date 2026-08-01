@@ -139,6 +139,25 @@ enum class PackedLightStatus : std::uint32_t {
     NonFinite = 5
 };
 
+enum class PackedIntegratorType : std::uint32_t {
+    Path = 0,
+    RussianRoulette = 1,
+    PBRPath = 2,
+    DirectLighting = 3,
+    MISPath = 4
+};
+
+enum class PackedTransportStatus : std::uint32_t {
+    Success = 0,
+    InvalidInput = 1,
+    TraversalFailure = 2,
+    ReconstructionFailure = 3,
+    MaterialFailure = 4,
+    LightFailure = 5,
+    BSDFFailure = 6,
+    NonFinite = 7
+};
+
 enum PackedInstanceFlags : std::uint32_t {
     PACKED_INSTANCE_NONE = 0,
     PACKED_INSTANCE_FLIP_FACE = 1u << 0
@@ -355,6 +374,22 @@ struct alignas(16) SelectedPackedLightSample {
     }
 };
 
+struct alignas(16) PackedTransportSettings {
+    PackedIntegratorType integrator = PackedIntegratorType::MISPath;
+    std::uint32_t max_depth = 50;
+    std::uint32_t rr_start_depth = 3;
+    std::uint32_t padding = 0;
+};
+
+struct alignas(16) PackedTransportResult {
+    Float3 radiance{};
+    PackedTransportStatus status = PackedTransportStatus::Success;
+    std::uint32_t depth = 0;
+    std::uint32_t shadow_rays = 0;
+    std::uint32_t traversal_steps = 0;
+    std::uint32_t padding = 0;
+};
+
 struct alignas(16) PackedTransform {
     float object_to_world[12]{};
     float world_to_object[12]{};
@@ -506,6 +541,8 @@ static_assert(sizeof(PackedMaterialOutput) == 320);
 static_assert(sizeof(PackedBSDFSample) == 48);
 static_assert(sizeof(PackedLightSample) == 48);
 static_assert(sizeof(SelectedPackedLightSample) == 64);
+static_assert(sizeof(PackedTransportSettings) == 16);
+static_assert(sizeof(PackedTransportResult) == 32);
 static_assert(sizeof(PackedTransform) == 96);
 static_assert(std::is_trivially_copyable_v<PackedBVHNode>);
 static_assert(std::is_trivially_copyable_v<Range32>);
@@ -515,6 +552,8 @@ static_assert(std::is_trivially_copyable_v<PackedTraversalStatus>);
 static_assert(std::is_trivially_copyable_v<PackedShadingStatus>);
 static_assert(std::is_trivially_copyable_v<PackedBSDFStatus>);
 static_assert(std::is_trivially_copyable_v<PackedLightStatus>);
+static_assert(std::is_trivially_copyable_v<PackedIntegratorType>);
+static_assert(std::is_trivially_copyable_v<PackedTransportStatus>);
 static_assert(std::is_trivially_copyable_v<PackedSurfaceInteraction>);
 static_assert(std::is_trivially_copyable_v<PackedShadingFrame>);
 static_assert(std::is_trivially_copyable_v<PackedClosure>);
@@ -522,6 +561,8 @@ static_assert(std::is_trivially_copyable_v<PackedMaterialOutput>);
 static_assert(std::is_trivially_copyable_v<PackedBSDFSample>);
 static_assert(std::is_trivially_copyable_v<PackedLightSample>);
 static_assert(std::is_trivially_copyable_v<SelectedPackedLightSample>);
+static_assert(std::is_trivially_copyable_v<PackedTransportSettings>);
+static_assert(std::is_trivially_copyable_v<PackedTransportResult>);
 static_assert(std::is_trivially_copyable_v<PackedTransform>);
 static_assert(std::is_trivially_copyable_v<PackedTriangle>);
 static_assert(std::is_trivially_copyable_v<PackedSphere>);

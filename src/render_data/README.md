@@ -96,6 +96,19 @@ are converted to solid-angle densities at the shading point. Square angular
 light probes use their own UV-to-solid-angle Jacobian rather than the
 equirectangular Jacobian.
 
+## Transport Reference
+
+`packed_transport_core.h` joins flat traversal, reconstruction, packed
+materials, BSDFs, lights, visibility, MIS, eta-aware Russian roulette, and
+camera ray generation. The host wrapper is a migration reference and does not
+replace the polymorphic CPU renderer. Integrator IDs 0 through 4 retain their
+existing path, roulette, direct-light, and MIS policies.
+
+Camera samples use an explicit per-path RNG. `PackedTransportResult` reports a
+typed failure instead of turning traversal, shading, or non-finite errors into
+black pixels. The future CUDA wavefront stages must preserve these state
+transitions even though they will execute them across multiple kernels.
+
 ## Media And Verification
 
 Each constant medium references a private boundary aggregate, density, and
@@ -107,6 +120,7 @@ Useful checks:
 ```bash
 ./build/scene_data_check --catalog assets/scenes/catalog.json
 ./build/scene_intersection_check
+./build/packed_transport_check
 ./build-cuda/cuda_scene_check
 ```
 

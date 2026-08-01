@@ -127,6 +127,14 @@ target_include_directories(scene_intersection_check PRIVATE
 )
 target_link_libraries(scene_intersection_check PRIVATE raytracer_core)
 
+add_executable(packed_transport_check
+    ${PROJECT_SOURCE_DIR}/tools/packed_transport_check.cpp
+)
+target_include_directories(packed_transport_check PRIVATE
+    ${PROJECT_INCLUDE_DIRS}
+)
+target_link_libraries(packed_transport_check PRIVATE raytracer_core)
+
 if(RAYTRACER_ENABLE_CUDA)
     add_executable(cuda_scene_check
         ${PROJECT_SOURCE_DIR}/tools/cuda_scene_check.cpp
@@ -165,6 +173,14 @@ if(BUILD_TESTING)
     )
     target_link_libraries(raytracer_tests PRIVATE raytracer_core)
     add_test(NAME raytracer_tests COMMAND raytracer_tests)
+    add_test(
+        NAME packed_transport_check
+        COMMAND packed_transport_check --ids 7,23 --width 8 --spp 1
+                --max-depth 4 --integrator 4 --seed 123
+    )
+    set_tests_properties(packed_transport_check PROPERTIES
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    )
     if(RAYTRACER_ENABLE_CUDA)
         add_test(
             NAME cuda_scene_check
