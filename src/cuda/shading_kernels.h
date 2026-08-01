@@ -29,6 +29,16 @@ CudaShadingStageStats evaluate_materials_cuda(
     std::uint32_t *device_texture_stack_usage,
     std::uint32_t interaction_count, std::uint32_t block_size = 128);
 
+CudaShadingStageStats evaluate_bsdfs_cuda(
+    const PackedMaterialOutput *device_material_outputs,
+    const PackedShadingStatus *device_input_status,
+    const Float3 *device_outgoing_directions,
+    std::uint32_t *device_rng_states,
+    PackedBSDFSample *device_samples,
+    PackedBSDFStatus *device_sample_status,
+    Float3 *device_evaluated_values, float *device_evaluated_pdfs,
+    std::uint32_t interaction_count, std::uint32_t block_size = 128);
+
 } // namespace cuda_backend
 
 #endif

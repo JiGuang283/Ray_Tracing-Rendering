@@ -122,6 +122,14 @@ enum class PackedShadingStatus : std::uint32_t {
     NonFinite = 7
 };
 
+enum class PackedBSDFStatus : std::uint32_t {
+    Success = 0,
+    Empty = 1,
+    InvalidInput = 2,
+    NoSample = 3,
+    NonFinite = 4
+};
+
 enum PackedInstanceFlags : std::uint32_t {
     PACKED_INSTANCE_NONE = 0,
     PACKED_INSTANCE_FLIP_FACE = 1u << 0
@@ -151,6 +159,16 @@ enum PackedHitFlags : std::uint32_t {
 enum PackedClosureFlags : std::uint32_t {
     PACKED_CLOSURE_NONE = 0,
     PACKED_CLOSURE_FRONT_FACE = 1u << 0
+};
+
+enum PackedBSDFSampleFlags : std::uint32_t {
+    PACKED_BSDF_NONE = 0,
+    PACKED_BSDF_DIFFUSE = 1u << 0,
+    PACKED_BSDF_GLOSSY = 1u << 1,
+    PACKED_BSDF_DELTA = 1u << 2,
+    PACKED_BSDF_REFLECTION = 1u << 3,
+    PACKED_BSDF_TRANSMISSION = 1u << 4,
+    PACKED_BSDF_PHASE = 1u << 5
 };
 
 enum class PackedTraversalStatus : std::uint32_t {
@@ -269,6 +287,28 @@ struct alignas(16) PackedMaterialOutput {
     Float3 emission{};
     float opacity = 1.0f;
     PackedClosure closures[kMaxClosures]{};
+};
+
+struct alignas(16) PackedBSDFSample {
+    Float3 wi{};
+    float pdf = 0.0f;
+    Float3 f{};
+    float eta = 1.0f;
+    std::uint32_t flags = PACKED_BSDF_NONE;
+    std::uint32_t closure_index = kInvalidPackedIndex;
+    std::uint32_t padding[2]{};
+
+    RT_HOST_DEVICE bool is_delta() const noexcept {
+        return (flags & PACKED_BSDF_DELTA) != 0;
+    }
+
+    RT_HOST_DEVICE bool is_transmission() const noexcept {
+        return (flags & PACKED_BSDF_TRANSMISSION) != 0;
+    }
+
+    RT_HOST_DEVICE bool is_phase() const noexcept {
+        return (flags & PACKED_BSDF_PHASE) != 0;
+    }
 };
 
 struct alignas(16) PackedTransform {
@@ -419,6 +459,7 @@ static_assert(sizeof(PackedSurfaceInteraction) == 112);
 static_assert(sizeof(PackedShadingFrame) == 32);
 static_assert(sizeof(PackedClosure) == 32);
 static_assert(sizeof(PackedMaterialOutput) == 320);
+static_assert(sizeof(PackedBSDFSample) == 48);
 static_assert(sizeof(PackedTransform) == 96);
 static_assert(std::is_trivially_copyable_v<PackedBVHNode>);
 static_assert(std::is_trivially_copyable_v<Range32>);
@@ -426,10 +467,12 @@ static_assert(std::is_trivially_copyable_v<PackedRay>);
 static_assert(std::is_trivially_copyable_v<PackedHit>);
 static_assert(std::is_trivially_copyable_v<PackedTraversalStatus>);
 static_assert(std::is_trivially_copyable_v<PackedShadingStatus>);
+static_assert(std::is_trivially_copyable_v<PackedBSDFStatus>);
 static_assert(std::is_trivially_copyable_v<PackedSurfaceInteraction>);
 static_assert(std::is_trivially_copyable_v<PackedShadingFrame>);
 static_assert(std::is_trivially_copyable_v<PackedClosure>);
 static_assert(std::is_trivially_copyable_v<PackedMaterialOutput>);
+static_assert(std::is_trivially_copyable_v<PackedBSDFSample>);
 static_assert(std::is_trivially_copyable_v<PackedTransform>);
 static_assert(std::is_trivially_copyable_v<PackedTriangle>);
 static_assert(std::is_trivially_copyable_v<PackedSphere>);

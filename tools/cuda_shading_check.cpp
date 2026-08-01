@@ -4,6 +4,7 @@
 #include "cuda/shading_kernels.h"
 #include "external/json.hpp"
 #include "render_data/flat_intersector.h"
+#include "render_data/packed_bsdf.h"
 #include "render_data/packed_material.h"
 #include "render_data/scene_compiler.h"
 
@@ -43,6 +44,7 @@ struct CheckResult {
     float intersection_ms = 0.0f;
     float reconstruction_ms = 0.0f;
     float material_ms = 0.0f;
+    float bsdf_ms = 0.0f;
 };
 
 std::set<int> parse_ids(const std::string &value) {
@@ -254,6 +256,29 @@ std::string compare_material_output(const PackedMaterialOutput &cpu,
                           gpu_closure.sample_weight)) {
             return "closure parameters differ";
         }
+    }
+    return {};
+}
+
+std::string compare_bsdf_sample(const PackedBSDFSample &cpu,
+                                const PackedBSDFSample &gpu) {
+    if (cpu.flags != gpu.flags ||
+        cpu.closure_index != gpu.closure_index) {
+        return "BSDF sample flags or closure differ";
+    }
+    if (!nearly_equal(cpu.wi, gpu.wi, 1e-3f) ||
+        !nearly_equal(cpu.f, gpu.f, 5e-3f) ||
+        !nearly_equal(cpu.pdf, gpu.pdf, 5e-3f, 5e-3f) ||
+        !nearly_equal(cpu.eta, gpu.eta, 1e-4f, 1e-4f)) {
+        std::ostringstream stream;
+        stream << "BSDF sample values differ cpu_wi=(" << cpu.wi.x << ','
+               << cpu.wi.y << ',' << cpu.wi.z << ") gpu_wi=(" << gpu.wi.x
+               << ',' << gpu.wi.y << ',' << gpu.wi.z << ") cpu_f=("
+               << cpu.f.x << ',' << cpu.f.y << ',' << cpu.f.z
+               << ") gpu_f=(" << gpu.f.x << ',' << gpu.f.y << ','
+               << gpu.f.z << ") cpu_pdf=" << cpu.pdf
+               << " gpu_pdf=" << gpu.pdf;
+        return stream.str();
     }
     return {};
 }
@@ -506,6 +531,107 @@ CheckResult check_scene(const std::filesystem::path &path,
             }
         }
     }
+
+    const std::size_t material_count = packed.materials.size();
+    std::vector<Float3> outgoing_directions(material_count);
+    std::vector<std::uint32_t> bsdf_rng_states(material_count);
+    std::vector<PackedBSDFSample> cpu_bsdf_samples(material_count);
+    std::vector<PackedBSDFStatus> cpu_bsdf_statuses(material_count);
+    std::vector<Float3> cpu_bsdf_values(material_count);
+    std::vector<float> cpu_bsdf_pdfs(material_count, 0.0f);
+    std::vector<std::uint32_t> cpu_final_rng_states(material_count);
+    for (std::size_t index = 0; index < material_count; ++index) {
+        outgoing_directions[index] = cpu_material_outputs[index].frame.normal;
+        bsdf_rng_states[index] = mix_seed(
+            0x42534446u, static_cast<std::uint32_t>(index + 1));
+        RNG rng(bsdf_rng_states[index]);
+        if (cpu_material_statuses[index] != PackedShadingStatus::Success) {
+            cpu_bsdf_statuses[index] = PackedBSDFStatus::InvalidInput;
+        } else {
+            cpu_bsdf_statuses[index] = sample_packed_bsdf(
+                cpu_material_outputs[index], outgoing_directions[index], rng,
+                cpu_bsdf_samples[index]);
+            if (cpu_bsdf_statuses[index] == PackedBSDFStatus::Success) {
+                const PackedBSDFStatus eval_status = evaluate_packed_bsdf(
+                    cpu_material_outputs[index], outgoing_directions[index],
+                    cpu_bsdf_samples[index].wi, cpu_bsdf_values[index]);
+                const PackedBSDFStatus pdf_status = packed_bsdf_pdf(
+                    cpu_material_outputs[index], outgoing_directions[index],
+                    cpu_bsdf_samples[index].wi, cpu_bsdf_pdfs[index]);
+                if (eval_status != PackedBSDFStatus::Success ||
+                    pdf_status != PackedBSDFStatus::Success) {
+                    cpu_bsdf_statuses[index] =
+                        eval_status != PackedBSDFStatus::Success
+                            ? eval_status
+                            : pdf_status;
+                }
+            }
+        }
+        cpu_final_rng_states[index] = rng.state;
+    }
+
+    cuda_backend::DeviceBuffer<Float3> device_outgoing_directions;
+    cuda_backend::DeviceBuffer<PackedMaterialOutput>
+        device_bsdf_material_outputs;
+    cuda_backend::DeviceBuffer<PackedShadingStatus>
+        device_bsdf_input_statuses;
+    cuda_backend::DeviceBuffer<std::uint32_t> device_bsdf_rng_states;
+    cuda_backend::DeviceBuffer<PackedBSDFSample> device_bsdf_samples;
+    cuda_backend::DeviceBuffer<PackedBSDFStatus> device_bsdf_statuses;
+    cuda_backend::DeviceBuffer<Float3> device_bsdf_values;
+    cuda_backend::DeviceBuffer<float> device_bsdf_pdfs;
+    device_bsdf_material_outputs.upload(cpu_material_outputs);
+    device_bsdf_input_statuses.upload(cpu_material_statuses);
+    device_outgoing_directions.upload(outgoing_directions);
+    device_bsdf_rng_states.upload(bsdf_rng_states);
+    device_bsdf_samples.allocate(material_count);
+    device_bsdf_statuses.allocate(material_count);
+    device_bsdf_values.allocate(material_count);
+    device_bsdf_pdfs.allocate(material_count);
+    const cuda_backend::CudaShadingStageStats bsdf =
+        cuda_backend::evaluate_bsdfs_cuda(
+            device_bsdf_material_outputs.data(),
+            device_bsdf_input_statuses.data(),
+            device_outgoing_directions.data(),
+            device_bsdf_rng_states.data(), device_bsdf_samples.data(),
+            device_bsdf_statuses.data(), device_bsdf_values.data(),
+            device_bsdf_pdfs.data(),
+            static_cast<std::uint32_t>(material_count), options.block_size);
+    result.bsdf_ms = bsdf.milliseconds;
+
+    std::vector<PackedBSDFSample> gpu_bsdf_samples;
+    std::vector<PackedBSDFStatus> gpu_bsdf_statuses;
+    std::vector<Float3> gpu_bsdf_values;
+    std::vector<float> gpu_bsdf_pdfs;
+    std::vector<std::uint32_t> gpu_final_rng_states;
+    device_bsdf_samples.download(gpu_bsdf_samples);
+    device_bsdf_statuses.download(gpu_bsdf_statuses);
+    device_bsdf_values.download(gpu_bsdf_values);
+    device_bsdf_pdfs.download(gpu_bsdf_pdfs);
+    device_bsdf_rng_states.download(gpu_final_rng_states);
+    for (std::size_t index = 0; index < material_count; ++index) {
+        if (cpu_bsdf_statuses[index] != gpu_bsdf_statuses[index]) {
+            report("bsdf", index, "BSDF sample status differs");
+            continue;
+        }
+        if (cpu_final_rng_states[index] != gpu_final_rng_states[index]) {
+            report("bsdf", index, "BSDF RNG state differs");
+        }
+        if (cpu_bsdf_statuses[index] != PackedBSDFStatus::Success) {
+            continue;
+        }
+        const std::string mismatch = compare_bsdf_sample(
+            cpu_bsdf_samples[index], gpu_bsdf_samples[index]);
+        if (!mismatch.empty()) {
+            report("bsdf", index, mismatch);
+        }
+        if (!nearly_equal(cpu_bsdf_values[index], gpu_bsdf_values[index],
+                          5e-3f) ||
+            !nearly_equal(cpu_bsdf_pdfs[index], gpu_bsdf_pdfs[index],
+                          5e-3f, 5e-3f)) {
+            report("bsdf", index, "BSDF eval or PDF differs");
+        }
+    }
     return result;
 }
 
@@ -551,7 +677,8 @@ int main(int argc, char **argv) {
                       << " upload_ms=" << result.upload_ms
                       << " intersection_ms=" << result.intersection_ms
                       << " reconstruction_ms=" << result.reconstruction_ms
-                      << " material_ms=" << result.material_ms << '\n';
+                      << " material_ms=" << result.material_ms
+                      << " bsdf_ms=" << result.bsdf_ms << '\n';
         }
         if (selected == 0) {
             throw std::runtime_error("no matching scenes in catalog");
