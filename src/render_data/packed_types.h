@@ -106,7 +106,8 @@ enum PackedTriangleFlags : std::uint32_t {
     PACKED_TRIANGLE_NONE = 0,
     PACKED_TRIANGLE_HAS_NORMALS = 1u << 0,
     PACKED_TRIANGLE_HAS_UV = 1u << 1,
-    PACKED_TRIANGLE_HAS_COLOR = 1u << 2
+    PACKED_TRIANGLE_HAS_COLOR = 1u << 2,
+    PACKED_TRIANGLE_HAS_TANGENT = 1u << 3
 };
 
 enum PackedSphereFlags : std::uint32_t {
@@ -134,7 +135,9 @@ enum PackedLightFlags : std::uint32_t {
     PACKED_LIGHT_DELTA = 1u << 0,
     PACKED_LIGHT_INFINITE = 1u << 1,
     PACKED_LIGHT_BSDF_HITTABLE = 1u << 2,
-    PACKED_LIGHT_DOUBLE_SIDED = 1u << 3
+    PACKED_LIGHT_DOUBLE_SIDED = 1u << 3,
+    PACKED_LIGHT_ENVIRONMENT_PROBE = 1u << 4,
+    PACKED_LIGHT_ENVIRONMENT_SRGB = 1u << 5
 };
 
 enum PackedImageFlags : std::uint32_t {
@@ -188,6 +191,22 @@ struct alignas(16) PackedHit {
     std::uint32_t element_id = kInvalidPackedIndex;
     std::uint32_t material_id = kInvalidPackedIndex;
     std::uint32_t flags = 0;
+};
+
+struct alignas(16) PackedSurfaceInteraction {
+    Float3 position;
+    std::uint32_t material_id = kInvalidPackedIndex;
+    Float3 geometric_normal;
+    std::uint32_t instance_id = kInvalidPackedIndex;
+    Float3 shading_normal;
+    std::uint32_t primitive_id = kInvalidPackedIndex;
+    Float3 dpdu;
+    std::uint32_t flags = 0;
+    Float3 dpdv;
+    float vertex_alpha = 1.0f;
+    Float2 uv;
+    Float2 padding{};
+    Float4 vertex_color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct alignas(16) PackedTransform {
@@ -308,9 +327,12 @@ struct alignas(16) PackedLight {
     Range32 distribution;
     std::uint32_t image_id = kInvalidPackedIndex;
     std::uint32_t padding0 = 0;
+    Range32 element_indices;
+    std::uint32_t padding1[2]{};
     Float4 data0;
     Float4 data1;
     Float4 data2;
+    Float4 radiance;
     Float4 power;
 };
 
@@ -337,5 +359,6 @@ static_assert(std::is_trivially_copyable_v<PackedTransform>);
 static_assert(std::is_trivially_copyable_v<PackedTextureNode>);
 static_assert(std::is_trivially_copyable_v<PackedMaterial>);
 static_assert(std::is_trivially_copyable_v<PackedLight>);
+static_assert(std::is_trivially_copyable_v<PackedSurfaceInteraction>);
 
 #endif

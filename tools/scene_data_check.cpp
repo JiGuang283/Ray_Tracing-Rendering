@@ -92,6 +92,7 @@ int main(int argc, char **argv) {
                           << " triangles=" << stats.triangles
                           << " instances=" << stats.instances
                           << " textures=" << stats.textures
+                          << " lights=" << stats.lights
                           << " bytes=" << stats.bytes << '\n';
             } catch (const std::exception &error) {
                 ++failed;

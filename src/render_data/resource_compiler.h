@@ -13,9 +13,9 @@ class PackedResourceCompiler {
 
     TextureId compile_texture(const TextureHandle &texture);
     MaterialId compile_material(const MaterialHandle &material);
+    ImageId compile_image(const std::shared_ptr<const ImageAsset> &image);
 
   private:
-    ImageId compile_image(const std::shared_ptr<const ImageAsset> &image);
     PerlinId compile_perlin(const perlin &noise);
 
     CompiledScene &m_scene;

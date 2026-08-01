@@ -116,9 +116,12 @@ CompiledSceneView make_scene_view(const CompiledScene &scene) {
     view.perlin_gradients = view_of(scene.perlin_gradients);
     view.perlin_permutations = view_of(scene.perlin_permutations);
     view.lights = view_of(scene.lights);
+    view.delta_light_indices = view_of(scene.delta_light_indices);
+    view.non_delta_light_indices = view_of(scene.non_delta_light_indices);
     view.light_selection_probabilities =
         view_of(scene.light_selection_probabilities);
     view.light_cdf = view_of(scene.light_cdf);
+    view.light_element_indices = view_of(scene.light_element_indices);
     view.light_distributions = view_of(scene.light_distributions);
     return view;
 }
@@ -160,8 +163,11 @@ CompiledSceneStats compiled_scene_stats(const CompiledScene &scene) {
     ADD_BUFFER_BYTES(perlin_gradients);
     ADD_BUFFER_BYTES(perlin_permutations);
     ADD_BUFFER_BYTES(lights);
+    ADD_BUFFER_BYTES(delta_light_indices);
+    ADD_BUFFER_BYTES(non_delta_light_indices);
     ADD_BUFFER_BYTES(light_selection_probabilities);
     ADD_BUFFER_BYTES(light_cdf);
+    ADD_BUFFER_BYTES(light_element_indices);
     ADD_BUFFER_BYTES(light_distributions);
 #undef ADD_BUFFER_BYTES
     return stats;
@@ -363,8 +369,43 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
 
     if (scene.light_selection_probabilities.size() !=
             scene.light_cdf.size() ||
-        scene.light_selection_probabilities.size() > scene.lights.size()) {
+        scene.light_selection_probabilities.size() !=
+            scene.non_delta_light_indices.size()) {
         report.errors.push_back("light selection buffers are inconsistent");
+    }
+    for (std::uint32_t light : scene.delta_light_indices) {
+        if (light >= scene.lights.size() ||
+            (scene.lights[light].flags & PACKED_LIGHT_DELTA) == 0) {
+            report.errors.push_back("delta light index is invalid");
+            break;
+        }
+    }
+    for (std::uint32_t light : scene.non_delta_light_indices) {
+        if (light >= scene.lights.size() ||
+            (scene.lights[light].flags & PACKED_LIGHT_DELTA) != 0) {
+            report.errors.push_back("non-delta light index is invalid");
+            break;
+        }
+    }
+    for (std::size_t index = 0; index < scene.lights.size(); ++index) {
+        const PackedLight &light = scene.lights[index];
+        if (!valid_range(light.distribution,
+                         scene.light_distributions.size())) {
+            add_range_error(report, "light", "distribution", index);
+        }
+        if (!valid_range(light.element_indices,
+                         scene.light_element_indices.size())) {
+            add_range_error(report, "light", "element_indices", index);
+        }
+        if (!valid_optional_index(light.instance_id, scene.instances.size())) {
+            add_index_error(report, "light", "instance_id", index);
+        }
+        if (!valid_optional_index(light.material_id, scene.materials.size())) {
+            add_index_error(report, "light", "material_id", index);
+        }
+        if (!valid_optional_index(light.image_id, scene.images.size())) {
+            add_index_error(report, "light", "image_id", index);
+        }
     }
     return report;
 }

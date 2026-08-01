@@ -49,8 +49,11 @@ struct CompiledScene {
     std::vector<std::uint32_t> perlin_permutations;
 
     std::vector<PackedLight> lights;
+    std::vector<std::uint32_t> delta_light_indices;
+    std::vector<std::uint32_t> non_delta_light_indices;
     std::vector<float> light_selection_probabilities;
     std::vector<float> light_cdf;
+    std::vector<std::uint32_t> light_element_indices;
     std::vector<float> light_distributions;
 };
 
@@ -84,8 +87,11 @@ struct CompiledSceneView {
     PackedArrayView<Float4> perlin_gradients;
     PackedArrayView<std::uint32_t> perlin_permutations;
     PackedArrayView<PackedLight> lights;
+    PackedArrayView<std::uint32_t> delta_light_indices;
+    PackedArrayView<std::uint32_t> non_delta_light_indices;
     PackedArrayView<float> light_selection_probabilities;
     PackedArrayView<float> light_cdf;
+    PackedArrayView<std::uint32_t> light_element_indices;
     PackedArrayView<float> light_distributions;
 };
 
