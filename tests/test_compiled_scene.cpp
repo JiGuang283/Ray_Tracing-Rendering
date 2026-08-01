@@ -370,6 +370,20 @@ TEST_CASE(flat_intersector_hits_and_reconstructs_sphere_and_mesh) {
     REQUIRE(box_surface.material_id == 0);
 }
 
+TEST_CASE(flat_intersector_reports_invalid_ray_ranges) {
+    const CompiledScene scene = compile_scene(make_compiler_test_ir());
+    PackedRay ray;
+    ray.origin = {0.0f, 0.0f, -3.0f};
+    ray.direction = {0.0f, 0.0f, 1.0f};
+    ray.t_min = 2.0f;
+    ray.t_max = 1.0f;
+    PackedHit hit;
+    REQUIRE(intersect_compiled_scene_status(make_scene_view(scene), ray,
+                                            hit) ==
+            PackedTraversalStatus::InvalidInput);
+    REQUIRE(!intersect_compiled_scene(make_scene_view(scene), ray, hit));
+}
+
 TEST_CASE(flat_intersector_matches_reference_geometry_hits) {
     const SceneIR ir = make_compiler_test_ir();
     const SceneConfig reference = build_scene_config(ir);

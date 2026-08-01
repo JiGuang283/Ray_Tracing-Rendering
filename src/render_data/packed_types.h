@@ -1,6 +1,8 @@
 #ifndef PACKED_TYPES_H
 #define PACKED_TYPES_H
 
+#include "host_device.h"
+
 #include <cstdint>
 #include <limits>
 #include <type_traits>
@@ -11,7 +13,7 @@ constexpr std::uint32_t kInvalidPackedIndex =
 template <typename Tag> struct Handle32 {
     std::uint32_t value = kInvalidPackedIndex;
 
-    constexpr bool valid() const noexcept {
+    RT_HOST_DEVICE constexpr bool valid() const noexcept {
         return value != kInvalidPackedIndex;
     }
 };
@@ -123,6 +125,13 @@ enum PackedHitFlags : std::uint32_t {
     PACKED_HIT_MEDIUM = 1u << 3
 };
 
+enum class PackedTraversalStatus : std::uint32_t {
+    Miss = 0,
+    Hit = 1,
+    StackOverflow = 2,
+    InvalidInput = 3
+};
+
 enum PackedMaterialFlags : std::uint32_t {
     PACKED_MATERIAL_NONE = 0,
     PACKED_MATERIAL_EMISSIVE = 1u << 0,
@@ -164,11 +173,11 @@ struct alignas(16) PackedBVHNode {
     Float3 bounds_max;
     std::uint32_t meta = 0;
 
-    bool is_leaf() const noexcept {
+    RT_HOST_DEVICE bool is_leaf() const noexcept {
         return (meta & PACKED_BVH_LEAF_BIT) != 0;
     }
 
-    std::uint32_t primitive_count() const noexcept {
+    RT_HOST_DEVICE std::uint32_t primitive_count() const noexcept {
         return meta & PACKED_BVH_VALUE_MASK;
     }
 };
@@ -357,6 +366,7 @@ static_assert(std::is_trivially_copyable_v<PackedBVHNode>);
 static_assert(std::is_trivially_copyable_v<Range32>);
 static_assert(std::is_trivially_copyable_v<PackedRay>);
 static_assert(std::is_trivially_copyable_v<PackedHit>);
+static_assert(std::is_trivially_copyable_v<PackedTraversalStatus>);
 static_assert(std::is_trivially_copyable_v<PackedTransform>);
 static_assert(std::is_trivially_copyable_v<PackedTriangle>);
 static_assert(std::is_trivially_copyable_v<PackedSphere>);

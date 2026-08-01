@@ -2,8 +2,11 @@
 #define FLAT_INTERSECTOR_H
 
 #include "compiled_scene.h"
+#include "rng.h"
 
-struct RNG;
+PackedTraversalStatus intersect_compiled_scene_status(
+    const CompiledSceneView &scene, const PackedRay &ray, PackedHit &hit,
+    RNG *rng = nullptr);
 
 bool intersect_compiled_scene(const CompiledSceneView &scene,
                               const PackedRay &ray, PackedHit &hit,

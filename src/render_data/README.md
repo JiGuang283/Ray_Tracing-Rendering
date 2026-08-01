@@ -6,7 +6,8 @@
 JSON -> SceneIR (double, owning resources)
      -> CompiledScene (float32, indexed, owning arrays)
      -> CompiledSceneView (read-only pointers and uint32 counts)
-     -> future DeviceScene (device pointers with the same layout)
+     -> DeviceSceneStorage (CUDA ownership)
+     -> DeviceSceneView (device pointers with the same layout)
 ```
 
 The existing polymorphic CPU renderer remains the reference backend. Building
@@ -93,9 +94,14 @@ Useful checks:
 ```bash
 ./build/scene_data_check --catalog assets/scenes/catalog.json
 ./build/scene_intersection_check
+./build-cuda/cuda_scene_check
 ```
 
 The first command compiles and validates all catalog scenes and reports buffer
 sizes. The second compares fixed camera-ray corpora against the polymorphic
 double CPU reference for representative analytic, mesh, medium, textured, and
 complex glTF scenes.
+
+The CUDA check uploads every packed array and compares the shared float
+intersector on the CPU and GPU. CUDA remains an optional validation backend;
+the polymorphic CPU renderer is still the only production rendering path.

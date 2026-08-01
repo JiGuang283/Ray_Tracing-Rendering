@@ -12,7 +12,7 @@ template <typename T> struct PackedArrayView {
     const T *data = nullptr;
     std::uint32_t count = 0;
 
-    const T &operator[](std::uint32_t index) const noexcept {
+    RT_HOST_DEVICE const T &operator[](std::uint32_t index) const noexcept {
         return data[index];
     }
 };
@@ -94,6 +94,8 @@ struct CompiledSceneView {
     PackedArrayView<std::uint32_t> light_element_indices;
     PackedArrayView<float> light_distributions;
 };
+
+static_assert(std::is_trivially_copyable_v<CompiledSceneView>);
 
 struct CompiledSceneStats {
     std::uint64_t bytes = 0;
