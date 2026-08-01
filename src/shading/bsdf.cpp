@@ -16,14 +16,24 @@ bool is_black(const color &value) {
 
 } // namespace
 
-BSDF::BSDF() : m_frame(vec3(0, 0, 1)) {
+BSDF::BSDF() : m_frame(vec3(0, 0, 1)), m_geometry_normal(0, 0, 1) {
 }
 
-BSDF::BSDF(const ShadingFrame &frame) : m_frame(frame) {
+BSDF::BSDF(const ShadingFrame &frame)
+    : m_frame(frame), m_geometry_normal(frame.normal) {
+}
+
+BSDF::BSDF(const ShadingFrame &frame, const vec3 &geometry_normal)
+    : m_frame(frame), m_geometry_normal(unit_vector(geometry_normal)) {
 }
 
 void BSDF::reset(const ShadingFrame &frame) {
+    reset(frame, frame.normal);
+}
+
+void BSDF::reset(const ShadingFrame &frame, const vec3 &geometry_normal) {
     m_frame = frame;
+    m_geometry_normal = unit_vector(geometry_normal);
     m_count = 0;
 }
 
@@ -101,6 +111,9 @@ std::optional<BSDFSample> BSDF::sample(const vec3 &wo, RNG &rng) const {
     if (!candidate || candidate->pdf <= 0.0) {
         return std::nullopt;
     }
+    if (!valid_event(unit_vector(wo), candidate->wi, candidate->flags)) {
+        return std::nullopt;
+    }
 
     if (candidate->is_delta()) {
         candidate->f *= entry.weight;
@@ -120,6 +133,11 @@ color BSDF::eval(const vec3 &wo, const vec3 &wi) const {
     color result(0, 0, 0);
     const vec3 unit_wo = unit_vector(wo);
     const vec3 unit_wi = unit_vector(wi);
+    if (!is_phase() &&
+        !valid_event(unit_wo, unit_wi,
+                     BSDF_REFLECTION | BSDF_GLOSSY)) {
+        return result;
+    }
     for (std::size_t i = 0; i < m_count; ++i) {
         const ClosureEntry &entry = m_closures[i];
         result += entry.weight *
@@ -138,6 +156,11 @@ double BSDF::pdf(const vec3 &wo, const vec3 &wi) const {
     double result = 0.0;
     const vec3 unit_wo = unit_vector(wo);
     const vec3 unit_wi = unit_vector(wi);
+    if (!is_phase() &&
+        !valid_event(unit_wo, unit_wi,
+                     BSDF_REFLECTION | BSDF_GLOSSY)) {
+        return 0.0;
+    }
     for (std::size_t i = 0; i < m_count; ++i) {
         const ClosureEntry &entry = m_closures[i];
         const double selection_pdf = entry.sample_weight / total_weight;
@@ -190,4 +213,20 @@ std::size_t BSDF::choose_closure(double u) const {
         }
     }
     return m_count - 1;
+}
+
+bool BSDF::valid_event(const vec3 &wo, const vec3 &wi, int flags) const {
+    if (has_flag(flags, BSDF_PHASE)) {
+        return true;
+    }
+    const double outgoing_side = dot(wo, m_geometry_normal);
+    const double incoming_side = dot(wi, m_geometry_normal);
+    if (std::abs(outgoing_side) <= 1e-12 ||
+        std::abs(incoming_side) <= 1e-12) {
+        return false;
+    }
+    if (has_flag(flags, BSDF_TRANSMISSION)) {
+        return outgoing_side * incoming_side < 0.0;
+    }
+    return outgoing_side * incoming_side > 0.0;
 }

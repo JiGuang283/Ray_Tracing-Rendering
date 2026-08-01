@@ -19,8 +19,10 @@ class BSDF {
 
     BSDF();
     explicit BSDF(const ShadingFrame &frame);
+    BSDF(const ShadingFrame &frame, const vec3 &geometry_normal);
 
     void reset(const ShadingFrame &frame);
+    void reset(const ShadingFrame &frame, const vec3 &geometry_normal);
     bool empty() const;
     std::size_t size() const;
 
@@ -48,8 +50,10 @@ class BSDF {
                      double sample_weight);
     double total_sample_weight() const;
     std::size_t choose_closure(double u) const;
+    bool valid_event(const vec3 &wo, const vec3 &wi, int flags) const;
 
     ShadingFrame m_frame;
+    vec3 m_geometry_normal{0, 0, 1};
     std::array<ClosureEntry, kMaxClosures> m_closures;
     std::size_t m_count = 0;
 };

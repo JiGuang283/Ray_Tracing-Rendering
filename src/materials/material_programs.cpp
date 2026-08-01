@@ -44,7 +44,7 @@ class LambertianProgram final : public MaterialProgram {
     void evaluate(const ShaderEvalContext &context,
                   const MaterialParameterBlock &parameters, ShaderScratch &,
                   MaterialOutput &output) const override {
-        output.reset(context.frame);
+        output.reset(context.frame, context.geometry_normal);
         output.bsdf.add_lambertian(
             evaluate_color(parameters.get<TextureHandle>(0), context));
     }
@@ -65,7 +65,7 @@ class MetalProgram final : public MaterialProgram {
     void evaluate(const ShaderEvalContext &context,
                   const MaterialParameterBlock &parameters, ShaderScratch &,
                   MaterialOutput &output) const override {
-        output.reset(context.frame);
+        output.reset(context.frame, context.geometry_normal);
         const color &albedo = parameters.get<color>(0);
         const double roughness =
             clamp(parameters.get<double>(1), 0.0, 1.0);
@@ -92,7 +92,7 @@ class DielectricProgram final : public MaterialProgram {
     void evaluate(const ShaderEvalContext &context,
                   const MaterialParameterBlock &parameters, ShaderScratch &,
                   MaterialOutput &output) const override {
-        output.reset(context.frame);
+        output.reset(context.frame, context.geometry_normal);
         output.bsdf.add_specular_dielectric(parameters.get<double>(0),
                                             context.front_face);
     }
@@ -116,7 +116,7 @@ class DiffuseLightProgram final : public MaterialProgram {
     void evaluate(const ShaderEvalContext &context,
                   const MaterialParameterBlock &parameters, ShaderScratch &,
                   MaterialOutput &output) const override {
-        output.reset(context.frame);
+        output.reset(context.frame, context.geometry_normal);
         if (context.front_face) {
             output.set_emission(evaluate_color(
                 parameters.get<TextureHandle>(0), context));
@@ -147,7 +147,7 @@ class PrincipledProgram final : public MaterialProgram {
         settings.strength = parameters.get<double>(9);
         const ShadingFrame frame = apply_normal_map(
             context, parameters.get<TextureHandle>(3), settings);
-        output.reset(frame);
+        output.reset(frame, context.geometry_normal);
 
         const color base =
             evaluate_color(parameters.get<TextureHandle>(0), context);
@@ -225,7 +225,7 @@ class IsotropicProgram final : public MaterialProgram {
     void evaluate(const ShaderEvalContext &context,
                   const MaterialParameterBlock &parameters, ShaderScratch &,
                   MaterialOutput &output) const override {
-        output.reset(context.frame);
+        output.reset(context.frame, context.geometry_normal);
         output.bsdf.add_isotropic_phase(
             evaluate_color(parameters.get<TextureHandle>(0), context));
     }

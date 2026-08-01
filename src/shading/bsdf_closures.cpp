@@ -60,6 +60,42 @@ double smith_g1(double n_dot_v, double alpha) {
            (1.0 + std::sqrt(1.0 + alpha * alpha * tangent2));
 }
 
+bool finite_vector(const vec3 &value) {
+    return std::isfinite(value.x()) && std::isfinite(value.y()) &&
+           std::isfinite(value.z());
+}
+
+vec3 sample_visible_ggx_normal(const vec3 &local_wo, double alpha,
+                               const vec2 &u) {
+    const vec3 stretched =
+        unit_vector(vec3(alpha * local_wo.x(), alpha * local_wo.y(),
+                         local_wo.z()));
+    const double lensq = stretched.x() * stretched.x() +
+                         stretched.y() * stretched.y();
+    const vec3 tangent1 =
+        lensq > 1e-20
+            ? vec3(-stretched.y(), stretched.x(), 0.0) / std::sqrt(lensq)
+            : vec3(1, 0, 0);
+    const vec3 tangent2 = cross(stretched, tangent1);
+
+    const double radius = std::sqrt(clamp(u.x(), 0.0, 1.0));
+    const double phi = 2.0 * pi * clamp(u.y(), 0.0, 1.0);
+    const double disk_x = radius * std::cos(phi);
+    double disk_y = radius * std::sin(phi);
+    const double blend = 0.5 * (1.0 + stretched.z());
+    disk_y = (1.0 - blend) *
+                 std::sqrt(std::max(0.0, 1.0 - disk_x * disk_x)) +
+             blend * disk_y;
+
+    const double disk_z = std::sqrt(
+        std::max(0.0, 1.0 - disk_x * disk_x - disk_y * disk_y));
+    const vec3 visible_normal =
+        disk_x * tangent1 + disk_y * tangent2 + disk_z * stretched;
+    return unit_vector(vec3(alpha * visible_normal.x(),
+                            alpha * visible_normal.y(),
+                            std::max(visible_normal.z(), 1e-8)));
+}
+
 template <typename Closure>
 std::optional<BSDFSample> sample_impl(const Closure &, const ShadingFrame &,
                                       const vec3 &, RNG &) {
@@ -149,25 +185,19 @@ template <typename Closure>
 std::optional<BSDFSample>
 sample_ggx(const Closure &closure, const color &f0,
            const ShadingFrame &frame, const vec3 &wo, RNG &rng) {
-    if (dot(frame.normal, wo) <= 0.0) {
+    const vec3 local_wo = frame.to_local(wo);
+    if (local_wo.z() <= 0.0 || !finite_vector(local_wo)) {
         return std::nullopt;
     }
 
     const double alpha = ggx_alpha(closure.roughness);
-    const double phi = 2.0 * pi * rng.next();
-    const double u = rng.next();
-    const double cosine =
-        std::sqrt((1.0 - u) / (1.0 + (alpha * alpha - 1.0) * u));
-    const double sine = std::sqrt(std::max(0.0, 1.0 - cosine * cosine));
-    vec3 half_vector = unit_vector(frame.to_world(
-        vec3(sine * std::cos(phi), sine * std::sin(phi), cosine)));
-    if (dot(half_vector, wo) < 0.0) {
-        half_vector = -half_vector;
-    }
+    const vec3 local_half = sample_visible_ggx_normal(
+        unit_vector(local_wo), alpha, vec2(rng.next(), rng.next()));
+    const vec3 half_vector = unit_vector(frame.to_world(local_half));
 
     BSDFSample sample;
     sample.wi = unit_vector(reflect(-wo, half_vector));
-    if (dot(frame.normal, sample.wi) <= 0.0) {
+    if (!finite_vector(sample.wi) || dot(frame.normal, sample.wi) <= 0.0) {
         return std::nullopt;
     }
 
@@ -180,10 +210,14 @@ sample_ggx(const Closure &closure, const color &f0,
         smith_g1(n_dot_o, alpha) * smith_g1(n_dot_i, alpha);
     sample.f = fresnel_schlick(o_dot_h, f0) * d * g /
                std::max(4.0 * n_dot_o * n_dot_i, 1e-12);
-    sample.pdf = d * n_dot_h / std::max(4.0 * o_dot_h, 1e-12);
+    sample.pdf = d * smith_g1(n_dot_o, alpha) /
+                 std::max(4.0 * n_dot_o, 1e-12);
     sample.flags = BSDF_GLOSSY | BSDF_REFLECTION;
-    return sample.pdf > 0.0 ? std::optional<BSDFSample>(sample)
-                            : std::nullopt;
+    if (!std::isfinite(sample.pdf) || sample.pdf <= 0.0 ||
+        !finite_vector(sample.f)) {
+        return std::nullopt;
+    }
+    return sample;
 }
 
 template <>
@@ -299,7 +333,11 @@ double pdf_ggx(const Closure &closure, const ShadingFrame &frame,
     const double n_dot_h = std::max(dot(frame.normal, half_vector), 0.0);
     const double d =
         distribution_ggx(n_dot_h, ggx_alpha(closure.roughness));
-    return d * n_dot_h / std::max(4.0 * o_dot_h, 1e-12);
+    const double result =
+        d * smith_g1(dot(frame.normal, wo),
+                     ggx_alpha(closure.roughness)) /
+        std::max(4.0 * dot(frame.normal, wo), 1e-12);
+    return std::isfinite(result) ? result : 0.0;
 }
 
 template <>

@@ -111,6 +111,51 @@ TEST_CASE(ggx_samples_are_finite_and_nonnegative) {
     }
 }
 
+TEST_CASE(ggx_vndf_sample_matches_pdf_at_grazing_angles) {
+    BSDF bsdf(ShadingFrame(vec3(0, 0, 1)));
+    bsdf.add_microfacet_ggx(color(0.9, 0.7, 0.3), 0.25, 0.9);
+    const vec3 wo = unit_vector(vec3(1.0, 0.0, 1e-5));
+    RNG rng(8102);
+    int valid_samples = 0;
+
+    for (int i = 0; i < 50000; ++i) {
+        const auto sample = bsdf.sample(wo, rng);
+        if (!sample) {
+            continue;
+        }
+        ++valid_samples;
+        REQUIRE(std::isfinite(sample->pdf));
+        REQUIRE(sample->pdf > 0.0);
+        REQUIRE(finite_color(sample->f));
+        REQUIRE_NEAR(sample->pdf, bsdf.pdf(wo, sample->wi), 1e-10);
+    }
+    REQUIRE(valid_samples > 1000);
+}
+
+TEST_CASE(shading_normal_cannot_reflect_through_geometry) {
+    ShadingFrame tilted(unit_vector(vec3(1.0, 0.0, 0.1)));
+    BSDF mirror(tilted, vec3(0, 0, 1));
+    mirror.add_specular_reflection(color(1, 1, 1));
+    RNG mirror_rng(17);
+    REQUIRE(!mirror.sample(vec3(0, 0, 1), mirror_rng).has_value());
+
+    BSDF ggx(tilted, vec3(0, 0, 1));
+    ggx.add_microfacet_ggx(color(0.8, 0.8, 0.8), 0.4, 1.0);
+    const vec3 wo(0, 0, 1);
+    const vec3 below_geometry = unit_vector(vec3(1, 0, -0.05));
+    REQUIRE(dot(tilted.normal, below_geometry) > 0.0);
+    REQUIRE_NEAR(ggx.eval(wo, below_geometry).length_squared(), 0.0, 1e-12);
+    REQUIRE_NEAR(ggx.pdf(wo, below_geometry), 0.0, 1e-12);
+
+    RNG ggx_rng(91);
+    for (int i = 0; i < 20000; ++i) {
+        const auto sample = ggx.sample(wo, ggx_rng);
+        if (sample) {
+            REQUIRE(dot(sample->wi, vec3(0, 0, 1)) > 0.0);
+        }
+    }
+}
+
 TEST_CASE(mixed_diffuse_and_mirror_estimator_is_unbiased) {
     BSDF bsdf(ShadingFrame(vec3(0, 0, 1)));
     bsdf.add_lambertian(color(0.4, 0.4, 0.4), 1.0);

@@ -21,6 +21,13 @@ struct MaterialOutput {
         has_emission = false;
     }
 
+    void reset(const ShadingFrame &frame, const vec3 &geometry_normal) {
+        bsdf.reset(frame, geometry_normal);
+        emission = color(0, 0, 0);
+        opacity = 1.0;
+        has_emission = false;
+    }
+
     void set_emission(const color &value) {
         emission = value;
         has_emission = value.length_squared() > 0.0;
