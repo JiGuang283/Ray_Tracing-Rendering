@@ -1,0 +1,313 @@
+#ifndef PACKED_TYPES_H
+#define PACKED_TYPES_H
+
+#include <cstdint>
+#include <limits>
+#include <type_traits>
+
+constexpr std::uint32_t kInvalidPackedIndex =
+    std::numeric_limits<std::uint32_t>::max();
+
+template <typename Tag> struct Handle32 {
+    std::uint32_t value = kInvalidPackedIndex;
+
+    constexpr bool valid() const noexcept {
+        return value != kInvalidPackedIndex;
+    }
+};
+
+struct MeshTag;
+struct InstanceTag;
+struct TransformTag;
+struct AggregateTag;
+struct MaterialTag;
+struct TextureTag;
+struct ImageTag;
+struct PerlinTag;
+
+using MeshId = Handle32<MeshTag>;
+using InstanceId = Handle32<InstanceTag>;
+using TransformId = Handle32<TransformTag>;
+using AggregateId = Handle32<AggregateTag>;
+using MaterialId = Handle32<MaterialTag>;
+using TextureId = Handle32<TextureTag>;
+using ImageId = Handle32<ImageTag>;
+using PerlinId = Handle32<PerlinTag>;
+
+struct Range32 {
+    std::uint32_t offset = 0;
+    std::uint32_t count = 0;
+};
+
+struct Float2 {
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
+struct Float3 {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
+struct Float4 {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    float w = 0.0f;
+};
+
+enum class PackedGeometryType : std::uint32_t {
+    Mesh = 0,
+    Sphere = 1,
+    MovingSphere = 2,
+    Medium = 3
+};
+
+enum class PackedMaterialType : std::uint32_t {
+    Lambertian = 0,
+    Metal = 1,
+    Dielectric = 2,
+    DiffuseLight = 3,
+    Principled = 4,
+    Isotropic = 5
+};
+
+enum class PackedTextureType : std::uint32_t {
+    Constant = 0,
+    VertexColor = 1,
+    Checker = 2,
+    Noise = 3,
+    Image = 4,
+    Scale = 5,
+    UVTransform = 6,
+    Multiply = 7,
+    Mix = 8,
+    ColorRamp = 9
+};
+
+enum class PackedLightType : std::uint32_t {
+    Point = 0,
+    Directional = 1,
+    Spot = 2,
+    Quad = 3,
+    Environment = 4,
+    SphereEmitter = 5,
+    TriangleEmitter = 6,
+    MeshEmitter = 7
+};
+
+enum PackedInstanceFlags : std::uint32_t {
+    PACKED_INSTANCE_NONE = 0,
+    PACKED_INSTANCE_FLIP_FACE = 1u << 0
+};
+
+enum PackedMaterialFlags : std::uint32_t {
+    PACKED_MATERIAL_NONE = 0,
+    PACKED_MATERIAL_EMISSIVE = 1u << 0,
+    PACKED_MATERIAL_DOUBLE_SIDED = 1u << 1,
+    PACKED_MATERIAL_NORMAL_DIRECTX = 1u << 2
+};
+
+enum PackedLightFlags : std::uint32_t {
+    PACKED_LIGHT_NONE = 0,
+    PACKED_LIGHT_DELTA = 1u << 0,
+    PACKED_LIGHT_INFINITE = 1u << 1,
+    PACKED_LIGHT_BSDF_HITTABLE = 1u << 2,
+    PACKED_LIGHT_DOUBLE_SIDED = 1u << 3
+};
+
+enum PackedImageFlags : std::uint32_t {
+    PACKED_IMAGE_NONE = 0,
+    PACKED_IMAGE_HDR = 1u << 0
+};
+
+enum PackedBVHMeta : std::uint32_t {
+    PACKED_BVH_LEAF_BIT = 0x80000000u,
+    PACKED_BVH_VALUE_MASK = 0x7fffffffu
+};
+
+struct alignas(16) PackedBVHNode {
+    Float3 bounds_min;
+    std::uint32_t first = 0;
+    Float3 bounds_max;
+    std::uint32_t meta = 0;
+
+    bool is_leaf() const noexcept {
+        return (meta & PACKED_BVH_LEAF_BIT) != 0;
+    }
+
+    std::uint32_t primitive_count() const noexcept {
+        return meta & PACKED_BVH_VALUE_MASK;
+    }
+};
+
+struct alignas(16) PackedRay {
+    Float3 origin;
+    float t_min = 0.0f;
+    Float3 direction;
+    float t_max = std::numeric_limits<float>::infinity();
+    float time = 0.0f;
+    std::uint32_t padding[3]{};
+};
+
+struct alignas(16) PackedHit {
+    float t = std::numeric_limits<float>::infinity();
+    float barycentric_u = 0.0f;
+    float barycentric_v = 0.0f;
+    std::uint32_t instance_id = kInvalidPackedIndex;
+    std::uint32_t primitive_id = kInvalidPackedIndex;
+    std::uint32_t element_id = kInvalidPackedIndex;
+    std::uint32_t material_id = kInvalidPackedIndex;
+    std::uint32_t flags = 0;
+};
+
+struct alignas(16) PackedTransform {
+    float object_to_world[12]{};
+    float world_to_object[12]{};
+};
+
+struct PackedTriangle {
+    std::uint32_t vertex0 = 0;
+    std::uint32_t vertex1 = 0;
+    std::uint32_t vertex2 = 0;
+    std::uint32_t material_slot = 0;
+    std::uint32_t primitive_id = 0;
+    std::uint32_t flags = 0;
+};
+
+struct alignas(16) PackedSphere {
+    Float3 center;
+    float radius = 1.0f;
+    std::uint32_t flags = 0;
+    std::uint32_t padding[3]{};
+};
+
+struct alignas(16) PackedMovingSphere {
+    Float3 center0;
+    float time0 = 0.0f;
+    Float3 center1;
+    float time1 = 1.0f;
+    float radius = 1.0f;
+    std::uint32_t flags = 0;
+    std::uint32_t padding[2]{};
+};
+
+struct alignas(16) PackedMesh {
+    Range32 vertices;
+    Range32 triangles;
+    Range32 bvh_nodes;
+    std::uint32_t material_slot_count = 0;
+    std::uint32_t flags = 0;
+    Float3 bounds_min;
+    std::uint32_t padding0 = 0;
+    Float3 bounds_max;
+    std::uint32_t padding1 = 0;
+};
+
+struct alignas(16) PackedInstance {
+    PackedGeometryType geometry_type = PackedGeometryType::Mesh;
+    std::uint32_t geometry_index = kInvalidPackedIndex;
+    std::uint32_t transform_id = kInvalidPackedIndex;
+    std::uint32_t flags = 0;
+    Range32 material_bindings;
+    std::uint32_t source_object_id = kInvalidPackedIndex;
+    std::uint32_t padding0 = 0;
+    Float3 bounds_min;
+    std::uint32_t padding1 = 0;
+    Float3 bounds_max;
+    std::uint32_t padding2 = 0;
+};
+
+struct PackedAggregate {
+    Range32 bvh_nodes;
+    Range32 instance_indices;
+};
+
+struct PackedMedium {
+    std::uint32_t boundary_aggregate = kInvalidPackedIndex;
+    std::uint32_t phase_material = kInvalidPackedIndex;
+    float neg_inv_density = -1.0f;
+    std::uint32_t flags = 0;
+};
+
+struct alignas(16) PackedTextureNode {
+    PackedTextureType type = PackedTextureType::Constant;
+    std::uint32_t input0 = kInvalidPackedIndex;
+    std::uint32_t input1 = kInvalidPackedIndex;
+    std::uint32_t input2 = kInvalidPackedIndex;
+    std::uint32_t image_id = kInvalidPackedIndex;
+    std::uint32_t perlin_id = kInvalidPackedIndex;
+    std::uint32_t sampler_flags = 0;
+    std::uint32_t channel = 0;
+    Float4 value0;
+    Float4 value1;
+    Float4 value2;
+};
+
+struct alignas(16) PackedMaterial {
+    PackedMaterialType type = PackedMaterialType::Lambertian;
+    std::uint32_t flags = 0;
+    std::uint32_t texture_ids[8]{
+        kInvalidPackedIndex, kInvalidPackedIndex, kInvalidPackedIndex,
+        kInvalidPackedIndex, kInvalidPackedIndex, kInvalidPackedIndex,
+        kInvalidPackedIndex, kInvalidPackedIndex};
+    std::uint32_t padding[2]{};
+    Float4 parameters[4]{};
+    Float4 emission_estimate{};
+};
+
+struct PackedImageDesc {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t channels = 0;
+    std::uint32_t flags = 0;
+    Range32 texels;
+};
+
+struct PackedPerlinDesc {
+    Range32 gradients;
+    Range32 permutation_x;
+    Range32 permutation_y;
+    Range32 permutation_z;
+};
+
+struct alignas(16) PackedLight {
+    PackedLightType type = PackedLightType::Point;
+    std::uint32_t flags = 0;
+    std::uint32_t instance_id = kInvalidPackedIndex;
+    std::uint32_t material_id = kInvalidPackedIndex;
+    Range32 distribution;
+    std::uint32_t image_id = kInvalidPackedIndex;
+    std::uint32_t padding0 = 0;
+    Float4 data0;
+    Float4 data1;
+    Float4 data2;
+    Float4 power;
+};
+
+struct alignas(16) PackedCamera {
+    Float3 origin;
+    float lens_radius = 0.0f;
+    Float3 lower_left_corner;
+    float time0 = 0.0f;
+    Float3 horizontal;
+    float time1 = 0.0f;
+    Float3 vertical;
+    float padding = 0.0f;
+};
+
+static_assert(sizeof(Float2) == 8);
+static_assert(sizeof(Float3) == 12);
+static_assert(sizeof(Float4) == 16);
+static_assert(sizeof(PackedBVHNode) == 32);
+static_assert(sizeof(PackedRay) == 48);
+static_assert(sizeof(PackedHit) == 32);
+static_assert(sizeof(PackedTransform) == 96);
+static_assert(std::is_trivially_copyable_v<PackedBVHNode>);
+static_assert(std::is_trivially_copyable_v<PackedTransform>);
+static_assert(std::is_trivially_copyable_v<PackedTextureNode>);
+static_assert(std::is_trivially_copyable_v<PackedMaterial>);
+static_assert(std::is_trivially_copyable_v<PackedLight>);
+
+#endif
