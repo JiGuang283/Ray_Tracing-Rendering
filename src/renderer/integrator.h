@@ -3,6 +3,7 @@
 
 #include "hittable.h"
 #include "light.h"
+#include "light_sampler.h"
 #include "ray.h"
 #include "shading/shading.h"
 #include "vec3.h"
@@ -10,6 +11,7 @@
 struct IntegratorContext {
     RNG &rng;
     ShaderScratch &shader_scratch;
+    const LightSampler *light_sampler = nullptr;
 };
 
 class Integrator {
@@ -28,8 +30,9 @@ class Integrator {
              const std::vector<shared_ptr<Light>> &lights) const {
         RNG rng(make_thread_seed());
         ShaderScratch scratch;
-        IntegratorContext context{rng, scratch};
-        return Li(r, scene, background, lights, context);
+        const LightSampler light_sampler(lights);
+        IntegratorContext context{rng, scratch, &light_sampler};
+        return Li(r, scene, background, context);
     }
 
     color Li(const ray &r, const hittable &scene, const color &background,
@@ -42,8 +45,9 @@ class Integrator {
     color Li(const ray &r, const hittable &scene, const color &background,
              const std::vector<shared_ptr<Light>> &lights, RNG &rng) const {
         ShaderScratch scratch;
-        IntegratorContext context{rng, scratch};
-        return Li(r, scene, background, lights, context);
+        const LightSampler light_sampler(lights);
+        IntegratorContext context{rng, scratch, &light_sampler};
+        return Li(r, scene, background, context);
     }
 
     virtual color Li(const ray &r, const hittable &scene,

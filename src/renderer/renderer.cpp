@@ -44,12 +44,14 @@ Renderer::render(shared_ptr<hittable> world, shared_ptr<camera> cam,
     };
     std::vector<WorkerStats> worker_stats(
         static_cast<std::size_t>(num_threads));
+    const LightSampler light_sampler(lights);
 
     auto render_worker = [&](int worker_id) {
         Sampler sampler(
             mix_seed(m_settings.seed, static_cast<uint32_t>(worker_id + 1)));
         ShaderScratch shader_scratch;
-        IntegratorContext integrator_context{sampler.rng(), shader_scratch};
+        IntegratorContext integrator_context{sampler.rng(), shader_scratch,
+                                             &light_sampler};
         while (true) {
             int tile_index = next_tile_index.fetch_add(1);
             if (tile_index >= total_tiles) {
@@ -77,9 +79,8 @@ Renderer::render(shared_ptr<hittable> world, shared_ptr<camera> cam,
                         if (m_integrator) {
                             const FilteredCameraSample filtered =
                                 filter_camera_sample(
-                                    m_integrator->Li(
-                                        r, *world, background, lights,
-                                        integrator_context),
+                                    m_integrator->Li(r, *world, background,
+                                                     integrator_context),
                                     m_settings.sample_clamp);
                             worker_stats[worker_id].clamped_samples +=
                                 filtered.clamped ? 1 : 0;

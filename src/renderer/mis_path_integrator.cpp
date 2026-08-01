@@ -21,13 +21,24 @@ void MISPathIntegrator::set_rr_start_depth(int depth) {
 color MISPathIntegrator::Li(const ray &r, const hittable &scene,
                             const color &background,
                             IntegratorContext &context) const {
-    return Li(r, scene, background, {}, context);
+    static const LightSampler empty_sampler({});
+    return Li_with_sampler(
+        r, scene, background,
+        context.light_sampler ? *context.light_sampler : empty_sampler,
+        context);
 }
 
 color MISPathIntegrator::Li(
     const ray &r, const hittable &scene, const color &background,
     const std::vector<shared_ptr<Light>> &lights,
     IntegratorContext &context) const {
+    const LightSampler light_sampler(lights);
+    return Li_with_sampler(r, scene, background, light_sampler, context);
+}
+
+color MISPathIntegrator::Li_with_sampler(
+    const ray &r, const hittable &scene, const color &background,
+    const LightSampler &light_sampler, IntegratorContext &context) const {
     RNG &rng = context.rng;
     color throughput(1.0, 1.0, 1.0);
     color L(0.0, 0.0, 0.0);
@@ -35,7 +46,6 @@ color MISPathIntegrator::Li(
     bool delta_bounce = false;
     double prev_bsdf_pdf = 0.0;
     double eta_scale = 1.0;
-    LightSampler light_sampler(lights);
 
     for (int depth = 0; depth < m_max_depth; ++depth) {
         hit_record rec;

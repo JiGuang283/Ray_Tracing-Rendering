@@ -23,6 +23,11 @@ class DirectLightIntegrator : public Integrator {
        IntegratorContext &context) const override;
 
   private:
+    color Li_with_sampler(const ray &r, const hittable &scene,
+                          const color &background,
+                          const LightSampler &light_sampler,
+                          IntegratorContext &context) const;
+
     int m_max_depth = 50;
     int m_rr_start_depth = 3;
 };
