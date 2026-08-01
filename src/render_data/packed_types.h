@@ -102,6 +102,26 @@ enum PackedInstanceFlags : std::uint32_t {
     PACKED_INSTANCE_FLIP_FACE = 1u << 0
 };
 
+enum PackedTriangleFlags : std::uint32_t {
+    PACKED_TRIANGLE_NONE = 0,
+    PACKED_TRIANGLE_HAS_NORMALS = 1u << 0,
+    PACKED_TRIANGLE_HAS_UV = 1u << 1,
+    PACKED_TRIANGLE_HAS_COLOR = 1u << 2
+};
+
+enum PackedSphereFlags : std::uint32_t {
+    PACKED_SPHERE_NONE = 0,
+    PACKED_SPHERE_FLIP_ORIENTATION = 1u << 0
+};
+
+enum PackedHitFlags : std::uint32_t {
+    PACKED_HIT_NONE = 0,
+    PACKED_HIT_FRONT_FACE = 1u << 0,
+    PACKED_HIT_TRIANGLE = 1u << 1,
+    PACKED_HIT_SPHERE = 1u << 2,
+    PACKED_HIT_MEDIUM = 1u << 3
+};
+
 enum PackedMaterialFlags : std::uint32_t {
     PACKED_MATERIAL_NONE = 0,
     PACKED_MATERIAL_EMISSIVE = 1u << 0,
@@ -120,6 +140,14 @@ enum PackedLightFlags : std::uint32_t {
 enum PackedImageFlags : std::uint32_t {
     PACKED_IMAGE_NONE = 0,
     PACKED_IMAGE_HDR = 1u << 0
+};
+
+enum PackedSamplerFlags : std::uint32_t {
+    PACKED_SAMPLER_WRAP_U_SHIFT = 0,
+    PACKED_SAMPLER_WRAP_V_SHIFT = 2,
+    PACKED_SAMPLER_FILTER_SHIFT = 4,
+    PACKED_SAMPLER_FLIP_V = 1u << 6,
+    PACKED_SAMPLER_SRGB = 1u << 7
 };
 
 enum PackedBVHMeta : std::uint32_t {

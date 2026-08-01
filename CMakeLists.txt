@@ -68,6 +68,12 @@ target_link_libraries(${PROJECT_NAME}
         SDL2main
 )
 
+add_executable(scene_data_check
+    ${PROJECT_SOURCE_DIR}/tools/scene_data_check.cpp
+)
+target_include_directories(scene_data_check PRIVATE ${PROJECT_INCLUDE_DIRS})
+target_link_libraries(scene_data_check PRIVATE raytracer_core)
+
 include(CTest)
 if(BUILD_TESTING)
     file(GLOB TEST_SOURCES CONFIGURE_DEPENDS

@@ -26,12 +26,61 @@ bool valid_range(Range32 range, std::size_t size) {
     return range.offset <= size && range.count <= size - range.offset;
 }
 
+bool valid_optional_index(std::uint32_t index, std::size_t size) {
+    return index == kInvalidPackedIndex || index < size;
+}
+
 void add_range_error(ValidationReport &report, const char *owner,
                      const char *field, std::size_t index) {
     std::ostringstream message;
     message << owner << '[' << index << "]." << field
             << " references data outside its buffer";
     report.errors.push_back(message.str());
+}
+
+void add_index_error(ValidationReport &report, const char *owner,
+                     const char *field, std::size_t index) {
+    std::ostringstream message;
+    message << owner << '[' << index << "]." << field
+            << " contains an invalid index";
+    report.errors.push_back(message.str());
+}
+
+void validate_bvh_range(ValidationReport &report,
+                        const CompiledScene &scene, Range32 nodes,
+                        Range32 payloads, const char *owner,
+                        std::size_t owner_index) {
+    if (!valid_range(nodes, scene.bvh_nodes.size()) || nodes.count == 0) {
+        return;
+    }
+    const std::uint64_t node_end =
+        static_cast<std::uint64_t>(nodes.offset) + nodes.count;
+    const std::uint64_t payload_end =
+        static_cast<std::uint64_t>(payloads.offset) + payloads.count;
+    for (std::uint32_t local = 0; local < nodes.count; ++local) {
+        const std::uint32_t node_index = nodes.offset + local;
+        const PackedBVHNode &node = scene.bvh_nodes[node_index];
+        if (!finite(node.bounds_min) || !finite(node.bounds_max) ||
+            node.bounds_min.x > node.bounds_max.x ||
+            node.bounds_min.y > node.bounds_max.y ||
+            node.bounds_min.z > node.bounds_max.z) {
+            add_index_error(report, owner, "bvh_bounds", owner_index);
+            return;
+        }
+        if (node.is_leaf()) {
+            if (node.primitive_count() == 0 || node.first < payloads.offset ||
+                static_cast<std::uint64_t>(node.first) +
+                        node.primitive_count() >
+                    payload_end) {
+                add_index_error(report, owner, "bvh_leaf", owner_index);
+                return;
+            }
+        } else if (node_index + 1 >= node_end || node.first <= node_index ||
+                   node.first >= node_end) {
+            add_index_error(report, owner, "bvh_children", owner_index);
+            return;
+        }
+    }
 }
 
 } // namespace
@@ -150,6 +199,26 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         if (!finite(mesh.bounds_min) || !finite(mesh.bounds_max)) {
             report.errors.push_back("mesh has non-finite bounds");
         }
+        if (valid_range(mesh.triangles, scene.triangles.size())) {
+            for (std::uint32_t local = 0; local < mesh.triangles.count;
+                 ++local) {
+                const PackedTriangle &triangle =
+                    scene.triangles[mesh.triangles.offset + local];
+                if (triangle.vertex0 >= mesh.vertices.count ||
+                    triangle.vertex1 >= mesh.vertices.count ||
+                    triangle.vertex2 >= mesh.vertices.count) {
+                    add_index_error(report, "mesh", "triangle_vertex",
+                                    index);
+                    break;
+                }
+                if (triangle.material_slot >= mesh.material_slot_count) {
+                    add_index_error(report, "mesh", "material_slot", index);
+                    break;
+                }
+            }
+        }
+        validate_bvh_range(report, scene, mesh.bvh_nodes, mesh.triangles,
+                           "mesh", index);
     }
 
     for (std::size_t index = 0; index < scene.instances.size(); ++index) {
@@ -164,6 +233,47 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         if (!finite(instance.bounds_min) || !finite(instance.bounds_max)) {
             report.errors.push_back("instance has non-finite bounds");
         }
+        std::size_t geometry_count = 0;
+        std::uint32_t required_materials = 1;
+        switch (instance.geometry_type) {
+        case PackedGeometryType::Mesh:
+            geometry_count = scene.meshes.size();
+            if (instance.geometry_index < scene.meshes.size()) {
+                required_materials =
+                    scene.meshes[instance.geometry_index].material_slot_count;
+            }
+            break;
+        case PackedGeometryType::Sphere:
+            geometry_count = scene.spheres.size();
+            break;
+        case PackedGeometryType::MovingSphere:
+            geometry_count = scene.moving_spheres.size();
+            break;
+        case PackedGeometryType::Medium:
+            geometry_count = scene.media.size();
+            break;
+        default:
+            add_index_error(report, "instance", "geometry_type", index);
+            continue;
+        }
+        if (instance.geometry_index >= geometry_count) {
+            add_index_error(report, "instance", "geometry_index", index);
+        }
+        if (instance.material_bindings.count < required_materials) {
+            add_index_error(report, "instance", "material_bindings", index);
+        } else if (valid_range(instance.material_bindings,
+                               scene.material_bindings.size())) {
+            for (std::uint32_t binding = 0;
+                 binding < instance.material_bindings.count; ++binding) {
+                if (scene.material_bindings[
+                        instance.material_bindings.offset + binding] >=
+                    scene.materials.size()) {
+                    add_index_error(report, "instance", "material_id",
+                                    index);
+                    break;
+                }
+            }
+        }
     }
 
     for (std::size_t index = 0; index < scene.aggregates.size(); ++index) {
@@ -174,7 +284,20 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         if (!valid_range(aggregate.instance_indices,
                          scene.aggregate_instance_indices.size())) {
             add_range_error(report, "aggregate", "instance_indices", index);
+        } else {
+            for (std::uint32_t local = 0;
+                 local < aggregate.instance_indices.count; ++local) {
+                if (scene.aggregate_instance_indices[
+                        aggregate.instance_indices.offset + local] >=
+                    scene.instances.size()) {
+                    add_index_error(report, "aggregate", "instance_id",
+                                    index);
+                    break;
+                }
+            }
         }
+        validate_bvh_range(report, scene, aggregate.bvh_nodes,
+                           aggregate.instance_indices, "aggregate", index);
     }
 
     for (std::size_t index = 0; index < scene.media.size(); ++index) {
@@ -195,6 +318,33 @@ ValidationReport validate_compiled_scene(const CompiledScene &scene) {
         if (!valid_range(scene.images[index].texels,
                          scene.image_texels.size())) {
             add_range_error(report, "image", "texels", index);
+        }
+    }
+
+    for (std::size_t index = 0; index < scene.texture_nodes.size(); ++index) {
+        const PackedTextureNode &texture = scene.texture_nodes[index];
+        auto valid_input = [&](std::uint32_t input) {
+            return input == kInvalidPackedIndex || input < index;
+        };
+        if (!valid_input(texture.input0) || !valid_input(texture.input1) ||
+            !valid_input(texture.input2)) {
+            add_index_error(report, "texture", "input", index);
+        }
+        if (!valid_optional_index(texture.image_id, scene.images.size())) {
+            add_index_error(report, "texture", "image_id", index);
+        }
+        if (!valid_optional_index(texture.perlin_id,
+                                  scene.perlin_tables.size())) {
+            add_index_error(report, "texture", "perlin_id", index);
+        }
+    }
+
+    for (std::size_t index = 0; index < scene.materials.size(); ++index) {
+        for (std::uint32_t texture : scene.materials[index].texture_ids) {
+            if (!valid_optional_index(texture, scene.texture_nodes.size())) {
+                add_index_error(report, "material", "texture_id", index);
+                break;
+            }
         }
     }
 
