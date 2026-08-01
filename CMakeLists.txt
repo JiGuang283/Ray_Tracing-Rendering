@@ -84,6 +84,7 @@ if(RAYTRACER_ENABLE_CUDA)
     add_library(raytracer_cuda STATIC
         ${PROJECT_SOURCE_DIR}/src/cuda/device_scene.cu
         ${PROJECT_SOURCE_DIR}/src/cuda/intersection_kernels.cu
+        ${PROJECT_SOURCE_DIR}/src/cuda/shading_kernels.cu
     )
     target_include_directories(raytracer_cuda PUBLIC ${PROJECT_INCLUDE_DIRS})
     target_link_libraries(raytracer_cuda
@@ -133,6 +134,14 @@ if(RAYTRACER_ENABLE_CUDA)
         ${PROJECT_INCLUDE_DIRS}
     )
     target_link_libraries(cuda_scene_check PRIVATE raytracer_cuda)
+
+    add_executable(cuda_shading_check
+        ${PROJECT_SOURCE_DIR}/tools/cuda_shading_check.cpp
+    )
+    target_include_directories(cuda_shading_check PRIVATE
+        ${PROJECT_INCLUDE_DIRS}
+    )
+    target_link_libraries(cuda_shading_check PRIVATE raytracer_cuda)
 endif()
 
 include(CTest)
@@ -154,6 +163,15 @@ if(BUILD_TESTING)
                     --grid-height 7
         )
         set_tests_properties(cuda_scene_check PROPERTIES
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            SKIP_RETURN_CODE 77
+        )
+        add_test(
+            NAME cuda_shading_check
+            COMMAND cuda_shading_check --ids 7,8,11,23 --grid-width 9
+                    --grid-height 7
+        )
+        set_tests_properties(cuda_shading_check PROPERTIES
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             SKIP_RETURN_CODE 77
         )
