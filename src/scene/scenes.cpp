@@ -77,10 +77,14 @@ const SceneCatalog &scene_catalog() {
 } // namespace
 
 SceneConfig select_scene(int scene_id) {
+    return load_scene_file(scene_path(scene_id));
+}
+
+std::string scene_path(int scene_id) {
     const SceneCatalog &catalog = scene_catalog();
     auto found = catalog.scene_paths.find(scene_id);
     if (found == catalog.scene_paths.end()) {
         found = catalog.scene_paths.find(catalog.default_scene_id);
     }
-    return load_scene_file(found->second);
+    return found->second;
 }

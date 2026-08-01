@@ -7,6 +7,11 @@ namespace AppDefaults {
 constexpr int kMaxDepth = 50;
 }
 
+enum class RenderBackend {
+    CPU,
+    CUDA
+};
+
 struct RenderOptions {
     int width_override = 0;
     int spp_override = 0;
@@ -14,6 +19,8 @@ struct RenderOptions {
     int threads = 0;
     unsigned seed = 1337;
     double sample_clamp_override = -1.0;
+    RenderBackend backend = RenderBackend::CPU;
+    unsigned cuda_batch_size = 0;
 };
 
 struct BenchmarkOptions {

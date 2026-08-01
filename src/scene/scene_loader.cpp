@@ -66,5 +66,9 @@ SceneConfig build_scene_config(const SceneDescription &description) {
 }
 
 SceneConfig load_scene_file(const std::string &path) {
-    return build_scene_config(load_scene_description(path));
+    return build_scene_config(load_scene_ir_file(path));
+}
+
+SceneIR load_scene_ir_file(const std::string &path) {
+    return parse_scene_ir(load_scene_description(path));
 }

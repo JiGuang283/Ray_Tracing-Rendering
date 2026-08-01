@@ -205,7 +205,8 @@ void ensure_workspace_fits(std::size_t bytes) {
 } // namespace
 
 CudaRenderOutput render_wavefront_cuda(
-    DeviceSceneView scene, const CudaRenderSettings &settings) {
+    DeviceSceneView scene, const CudaRenderSettings &settings,
+    const std::atomic<bool> *cancel) {
     validate_settings(settings);
     if (scene.scene.aggregates.count == 0) {
         throw std::invalid_argument("CUDA render scene is empty");
@@ -237,10 +238,15 @@ CudaRenderOutput render_wavefront_cuda(
     CudaEvent end;
     RT_CUDA_CHECK(cudaEventRecord(begin));
     std::uint32_t batch_count = 0;
+    bool cancelled = false;
     for (std::uint32_t sample = 0;
-         sample < settings.samples_per_pixel; ++sample) {
+         sample < settings.samples_per_pixel && !cancelled; ++sample) {
         for (std::uint32_t offset = 0; offset < pixel_count;
              offset += batch_size) {
+            if (cancel != nullptr && cancel->load()) {
+                cancelled = true;
+                break;
+            }
             ++batch_count;
             const std::uint32_t count =
                 std::min(batch_size, pixel_count - offset);
@@ -287,9 +293,6 @@ CudaRenderOutput render_wavefront_cuda(
     counters.download(host_counters);
     const DeviceRenderCounters &counter = host_counters.front();
     RT_CUDA_CHECK(cudaEventElapsedTime(&output.stats.milliseconds, begin, end));
-    output.stats.sample_count =
-        static_cast<std::uint64_t>(pixel_count) *
-        settings.samples_per_pixel;
     output.stats.traversal_steps = counter.traversal_steps;
     output.stats.shadow_rays = counter.shadow_rays;
     output.stats.clamped_samples = counter.clamped_samples;
@@ -297,9 +300,11 @@ CudaRenderOutput render_wavefront_cuda(
     output.stats.batch_size = batch_size;
     output.stats.batch_count = batch_count;
     output.stats.workspace_bytes = required_workspace;
+    output.stats.cancelled = cancelled;
     for (std::size_t index = 0; index < output.stats.status_counts.size();
          ++index) {
         output.stats.status_counts[index] = counter.status_counts[index];
+        output.stats.sample_count += counter.status_counts[index];
     }
     return output;
 }

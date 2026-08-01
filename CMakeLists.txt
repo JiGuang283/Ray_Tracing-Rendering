@@ -70,6 +70,7 @@ file(GLOB APP_SOURCES CONFIGURE_DEPENDS
 
 list(REMOVE_ITEM CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/main.cpp
+    ${PROJECT_SOURCE_DIR}/src/cuda/cuda_renderer.cpp
     ${APP_SOURCES}
 )
 
@@ -82,6 +83,7 @@ target_link_libraries(raytracer_core
 
 if(RAYTRACER_ENABLE_CUDA)
     add_library(raytracer_cuda STATIC
+        ${PROJECT_SOURCE_DIR}/src/cuda/cuda_renderer.cpp
         ${PROJECT_SOURCE_DIR}/src/cuda/device_scene.cu
         ${PROJECT_SOURCE_DIR}/src/cuda/intersection_kernels.cu
         ${PROJECT_SOURCE_DIR}/src/cuda/light_kernels.cu
@@ -113,6 +115,16 @@ target_link_libraries(${PROJECT_NAME}
         SDL2
         SDL2main
 )
+if(RAYTRACER_ENABLE_CUDA)
+    target_link_libraries(${PROJECT_NAME} PRIVATE raytracer_cuda)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        RAYTRACER_HAS_CUDA=1
+    )
+else()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        RAYTRACER_HAS_CUDA=0
+    )
+endif()
 
 add_executable(scene_data_check
     ${PROJECT_SOURCE_DIR}/tools/scene_data_check.cpp

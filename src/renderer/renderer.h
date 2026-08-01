@@ -10,7 +10,9 @@
 #include "rtweekend.h"
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 struct RenderStats {
@@ -23,6 +25,16 @@ struct RenderStats {
     int threads = 0;
     long long clamped_samples = 0;
     long long invalid_samples = 0;
+    std::string backend = "cpu";
+    std::string device_name = "host";
+    double upload_seconds = 0.0;
+    double device_seconds = 0.0;
+    std::size_t scene_bytes = 0;
+    std::size_t workspace_bytes = 0;
+    long long traversal_steps = 0;
+    long long shadow_rays = 0;
+    int batch_size = 0;
+    int batch_count = 0;
 };
 
 class Renderer {

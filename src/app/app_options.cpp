@@ -43,6 +43,7 @@ void print_usage() {
         << "  --bench              Run headless benchmark mode\n"
         << "  --scene-file PATH    Load scene from a JSON file\n"
         << "  --integrator N       Select integrator for --scene-file mode\n"
+        << "  --backend cpu|cuda   Select render backend (default cpu)\n"
         << "  --runs N             Benchmark run count\n"
         << "  --width N            Override image width\n"
         << "  --spp N              Override samples per pixel\n"
@@ -50,6 +51,7 @@ void print_usage() {
         << "  --seed N             Set render and scene seed (default 1337)\n"
         << "  --threads N          Set render worker count (default hardware)\n"
         << "  --sample-clamp N     Clamp camera-sample luminance (0 disables)\n"
+        << "  --cuda-batch-size N  Override CUDA active-path batch size\n"
         << "  --save               Save final rendered image\n";
 }
 
@@ -73,6 +75,16 @@ AppOptions parse_options(int argc, char *args[]) {
         } else if (arg == "--integrator" && i + 1 < argc) {
             if (!parse_int_arg(args[++i], options.integrator_id)) {
                 fail("--integrator expects an integer.");
+                break;
+            }
+        } else if (arg == "--backend" && i + 1 < argc) {
+            const std::string backend = args[++i];
+            if (backend == "cpu") {
+                options.render.backend = RenderBackend::CPU;
+            } else if (backend == "cuda") {
+                options.render.backend = RenderBackend::CUDA;
+            } else {
+                fail("--backend expects 'cpu' or 'cuda'.");
                 break;
             }
         } else if (arg == "--mesh-flat") {
@@ -122,6 +134,14 @@ AppOptions parse_options(int argc, char *args[]) {
                 fail("--sample-clamp expects a non-negative number.");
                 break;
             }
+        } else if (arg == "--cuda-batch-size" && i + 1 < argc) {
+            int batch_size = 0;
+            if (!parse_int_arg(args[++i], batch_size) || batch_size <= 0) {
+                fail("--cuda-batch-size expects a positive integer.");
+                break;
+            }
+            options.render.cuda_batch_size =
+                static_cast<unsigned>(batch_size);
         } else if (!arg.empty() && arg[0] == '-') {
             fail("Unknown option '" + arg + "'.");
             break;

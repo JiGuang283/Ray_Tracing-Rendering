@@ -3,6 +3,7 @@
 
 #include "device_scene.h"
 
+#include <atomic>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -41,6 +42,7 @@ struct CudaRenderStats {
     std::uint32_t batch_count = 0;
     std::size_t workspace_bytes = 0;
     std::array<std::uint64_t, 8> status_counts{};
+    bool cancelled = false;
 };
 
 struct CudaRenderOutput {
@@ -49,7 +51,8 @@ struct CudaRenderOutput {
 };
 
 CudaRenderOutput render_wavefront_cuda(
-    DeviceSceneView scene, const CudaRenderSettings &settings);
+    DeviceSceneView scene, const CudaRenderSettings &settings,
+    const std::atomic<bool> *cancel = nullptr);
 
 } // namespace cuda_backend
 

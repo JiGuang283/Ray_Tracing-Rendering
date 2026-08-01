@@ -82,6 +82,8 @@ ctest --test-dir build-cuda --output-on-failure
 ./build-cuda/cuda_shading_check --all
 ./build-cuda/cuda_transport_check
 ./build-cuda/cuda_transport_check --all --width 4 --height 3 --spp 1
+./build-cuda/CGAssignment4 23 4 --backend cuda --bench \
+  --width 400 --spp 32 --max-depth 50 --seed 123
 ```
 
 `cuda_shading_check` compares CPU and GPU traversal status, reconstructed
@@ -97,4 +99,7 @@ path queue at the Film boundary, checks status counts, and renders each case
 twice to verify deterministic GPU accumulation.
 
 The CUDA option defaults to `OFF`, so normal CPU builds do not require a CUDA
-compiler or runtime.
+compiler or runtime. `--backend cpu` remains the application default. A CPU-only
+binary reports a clear configuration error if `--backend cuda` is requested.
+`--cuda-batch-size N` can cap or enlarge the temporary active-path workspace;
+zero/unspecified uses the renderer's conservative automatic batch size.
