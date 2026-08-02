@@ -1,17 +1,14 @@
 #ifndef CUDA_RENDERER_H
 #define CUDA_RENDERER_H
 
-#include "compiled_scene.h"
-#include "preview_surface.h"
-#include "render_result.h"
-#include "render_types.h"
+#include "render_session.h"
+#include "scene_ir.h"
+
+#include <memory>
 
 namespace cuda_backend {
 
-RenderResult render_cuda(const CompiledScene &scene,
-                         const RenderRequest &request,
-                         const CancellationToken &cancel = {},
-                         PreviewSurface *preview = nullptr);
+std::unique_ptr<IRenderSession> make_cuda_render_session(const SceneIR &ir);
 
 } // namespace cuda_backend
 

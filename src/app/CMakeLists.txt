@@ -15,15 +15,14 @@ target_include_directories(CGAssignment4 PRIVATE
 target_link_libraries(CGAssignment4
     PRIVATE
         raytracer::build_config
-        raytracer::scene
-        raytracer::renderer
+        raytracer::cpu_backend
+        raytracer::scene_runtime
         SDL2::SDL2main
         SDL2::SDL2
 )
 
 if(RAYTRACER_ENABLE_CUDA)
     target_link_libraries(CGAssignment4 PRIVATE
-        raytracer::render_data
         raytracer::cuda
     )
 endif()

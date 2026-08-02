@@ -7,6 +7,7 @@ add_subdirectory(resources)
 add_subdirectory(lighting)
 add_subdirectory(renderer)
 add_subdirectory(scene)
+add_subdirectory(cpu)
 add_subdirectory(render_data)
 
 if(RAYTRACER_ENABLE_CUDA)

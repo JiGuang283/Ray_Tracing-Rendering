@@ -14,7 +14,7 @@ target_include_directories(raytracer_cuda PUBLIC
 target_link_libraries(raytracer_cuda PUBLIC
     raytracer::build_config
     raytracer::render_data
-    raytracer::renderer
+    raytracer::render_api
     CUDA::cudart
 )
 set_target_properties(raytracer_cuda PROPERTIES
