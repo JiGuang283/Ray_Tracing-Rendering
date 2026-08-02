@@ -1,0 +1,137 @@
+#include "render_types.h"
+
+#include "rng.h"
+
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+
+IntegratorKind integrator_kind_from_id(int id) {
+    if (id < 0 || id > static_cast<int>(IntegratorKind::MISPath)) {
+        throw std::invalid_argument("integrator id must be in the range 0..4");
+    }
+    return static_cast<IntegratorKind>(id);
+}
+
+int integrator_id(IntegratorKind kind) noexcept {
+    return static_cast<int>(kind);
+}
+
+IntegratorPolicy integrator_policy(IntegratorKind kind) {
+    IntegratorPolicy policy;
+    policy.kind = kind;
+    switch (kind) {
+    case IntegratorKind::Path:
+        policy.flags = INTEGRATOR_POLICY_NONE;
+        policy.rr_min_survival = 0.0f;
+        break;
+    case IntegratorKind::RussianRoulette:
+        policy.flags = INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
+        policy.rr_min_survival = 0.005f;
+        break;
+    case IntegratorKind::PBRPath:
+        policy.flags = INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
+        break;
+    case IntegratorKind::DirectLighting:
+        policy.flags = INTEGRATOR_POLICY_DIRECT_LIGHTING |
+                       INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
+        break;
+    case IntegratorKind::MISPath:
+        policy.flags = INTEGRATOR_POLICY_DIRECT_LIGHTING |
+                       INTEGRATOR_POLICY_MIS |
+                       INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
+        break;
+    default:
+        throw std::invalid_argument("invalid integrator kind");
+    }
+    return policy;
+}
+
+std::size_t ImageExtent::pixel_count() const {
+    return static_cast<std::size_t>(width) * height;
+}
+
+ImageExtent make_image_extent(int width, int height) {
+    if (width < 2 || height < 2) {
+        throw std::invalid_argument("render width and height must be at least 2");
+    }
+    const auto unsigned_width = static_cast<std::uint64_t>(width);
+    const auto unsigned_height = static_cast<std::uint64_t>(height);
+    const std::uint64_t pixels = unsigned_width * unsigned_height;
+    if (pixels > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::overflow_error("render image exceeds uint32 pixel capacity");
+    }
+    return {static_cast<std::uint32_t>(width),
+            static_cast<std::uint32_t>(height)};
+}
+
+ImageExtent make_image_extent(int width, double aspect_ratio) {
+    if (!std::isfinite(aspect_ratio) || aspect_ratio <= 0.0) {
+        throw std::invalid_argument("camera aspect ratio must be positive and finite");
+    }
+    if (width < 2) {
+        throw std::invalid_argument("render width must be at least 2");
+    }
+    const double height_value = static_cast<double>(width) / aspect_ratio;
+    if (!std::isfinite(height_value) ||
+        height_value > static_cast<double>(std::numeric_limits<int>::max())) {
+        throw std::overflow_error("render height is out of range");
+    }
+    return make_image_extent(width, static_cast<int>(height_value));
+}
+
+void validate_render_request(const RenderRequest &request) {
+    make_image_extent(static_cast<int>(request.extent.width),
+                      static_cast<int>(request.extent.height));
+    integrator_policy(request.integrator);
+    if (request.samples_per_pixel == 0) {
+        throw std::invalid_argument("samples per pixel must be positive");
+    }
+    if (request.max_depth == 0) {
+        throw std::invalid_argument("maximum path depth must be positive");
+    }
+    if (!std::isfinite(request.sample_clamp) || request.sample_clamp < 0.0) {
+        throw std::invalid_argument("sample clamp must be finite and non-negative");
+    }
+    if (!std::isfinite(request.color_pipeline.exposure) ||
+        !std::isfinite(request.color_pipeline.gamma) ||
+        request.color_pipeline.gamma <= 0.0) {
+        throw std::invalid_argument("invalid color pipeline settings");
+    }
+}
+
+CancellationToken::CancellationToken(
+    std::shared_ptr<std::atomic<bool>> state)
+    : m_state(std::move(state)) {
+}
+
+bool CancellationToken::is_cancelled() const noexcept {
+    return m_state != nullptr && m_state->load(std::memory_order_relaxed);
+}
+
+const std::atomic<bool> *CancellationToken::native_flag() const noexcept {
+    return m_state.get();
+}
+
+CancellationSource::CancellationSource()
+    : m_state(std::make_shared<std::atomic<bool>>(false)) {
+}
+
+CancellationToken CancellationSource::token() const {
+    return CancellationToken(m_state);
+}
+
+void CancellationSource::cancel() const noexcept {
+    m_state->store(true, std::memory_order_relaxed);
+}
+
+bool CancellationSource::is_cancelled() const noexcept {
+    return m_state->load(std::memory_order_relaxed);
+}
+
+std::uint32_t render_sample_seed(std::uint32_t base_seed,
+                                 std::uint32_t pixel_index,
+                                 std::uint32_t sample_index) noexcept {
+    const std::uint32_t pixel_seed = mix_seed(base_seed, pixel_index + 1u);
+    return mix_seed(pixel_seed, sample_index + 1u);
+}

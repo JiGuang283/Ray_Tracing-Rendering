@@ -1,6 +1,9 @@
 #include "color_pipeline.h"
 
+#include "rtweekend.h"
+
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -32,9 +35,9 @@ color apply_gamma(const color &c, double gamma) {
     if (gamma <= 0.0) {
         return c;
     }
-    double inv_gamma = 1.0 / gamma;
-    return color(pow(c.x(), inv_gamma), pow(c.y(), inv_gamma),
-                 pow(c.z(), inv_gamma));
+    const double inv_gamma = 1.0 / gamma;
+    return color(std::pow(c.x(), inv_gamma), std::pow(c.y(), inv_gamma),
+                 std::pow(c.z(), inv_gamma));
 }
 
 } // namespace
@@ -48,10 +51,13 @@ void ColorPipeline::set_settings(const ColorPipelineSettings &settings) {
 }
 
 color ColorPipeline::to_display(const color &linear_radiance,
-                                int sample_count) const {
-    double scale = 1.0 / sample_count;
+                                std::uint32_t sample_count) const {
+    if (sample_count == 0) {
+        return color(0, 0, 0);
+    }
+    const double scale = 1.0 / static_cast<double>(sample_count);
     color mapped = max_zero(scale * linear_radiance);
-    mapped *= pow(2.0, m_settings.exposure);
+    mapped *= std::pow(2.0, m_settings.exposure);
 
     switch (m_settings.tone_mapping) {
     case ToneMappingMode::Linear:

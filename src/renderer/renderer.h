@@ -6,7 +6,10 @@
 #include "hittable.h"
 #include "integrator.h"
 #include "material.h"
+#include "preview_surface.h"
 #include "render_buffer.h"
+#include "render_result.h"
+#include "render_types.h"
 #include "rtweekend.h"
 #include <algorithm>
 #include <atomic>
@@ -14,28 +17,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-struct RenderStats {
-    double seconds = 0.0;
-    int width = 0;
-    int height = 0;
-    int samples_per_pixel = 0;
-    long long sample_count = 0;
-    unsigned seed = 1337;
-    int threads = 0;
-    long long clamped_samples = 0;
-    long long invalid_samples = 0;
-    std::string backend = "cpu";
-    std::string device_name = "host";
-    double upload_seconds = 0.0;
-    double device_seconds = 0.0;
-    std::size_t scene_bytes = 0;
-    std::size_t workspace_bytes = 0;
-    long long traversal_steps = 0;
-    long long shadow_rays = 0;
-    int batch_size = 0;
-    int batch_count = 0;
-};
 
 class Renderer {
   public:
@@ -56,6 +37,13 @@ class Renderer {
     RenderStats render(shared_ptr<hittable> world, shared_ptr<camera> cam,
                        const color &background, RenderBuffer &target_buffer,
                        const std::vector<shared_ptr<Light>> &lights = {});
+
+    RenderResult render(shared_ptr<hittable> world, shared_ptr<camera> cam,
+                        const color &background,
+                        const std::vector<shared_ptr<Light>> &lights,
+                        const RenderRequest &request,
+                        const CancellationToken &cancel = {},
+                        PreviewSurface *preview = nullptr);
 
     void set_samples(int samples) {
         m_settings.samples_per_pixel = samples;

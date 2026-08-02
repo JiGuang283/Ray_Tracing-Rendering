@@ -2,29 +2,16 @@
 #define CUDA_RENDERER_H
 
 #include "compiled_scene.h"
-#include "color_pipeline.h"
-#include "render_buffer.h"
-#include "renderer.h"
-
-#include <atomic>
-#include <cstdint>
+#include "preview_surface.h"
+#include "render_result.h"
+#include "render_types.h"
 
 namespace cuda_backend {
 
-struct CudaRendererSettings {
-    int integrator_id = 4;
-    std::uint32_t max_depth = 50;
-    std::uint32_t samples_per_pixel = 1;
-    std::uint32_t seed = 1337;
-    std::uint32_t batch_size = 0;
-    float sample_clamp = 0.0f;
-    ColorPipelineSettings color_pipeline;
-};
-
-RenderStats render_cuda(const CompiledScene &scene,
-                        const CudaRendererSettings &settings,
-                        RenderBuffer &target_buffer,
-                        const std::atomic<bool> *cancel = nullptr);
+RenderResult render_cuda(const CompiledScene &scene,
+                         const RenderRequest &request,
+                         const CancellationToken &cancel = {},
+                         PreviewSurface *preview = nullptr);
 
 } // namespace cuda_backend
 

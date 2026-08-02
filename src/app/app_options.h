@@ -1,16 +1,13 @@
 #ifndef APP_OPTIONS_H
 #define APP_OPTIONS_H
 
+#include "render_types.h"
+
 #include <string>
 
 namespace AppDefaults {
 constexpr int kMaxDepth = 50;
 }
-
-enum class RenderBackend {
-    CPU,
-    CUDA
-};
 
 struct RenderOptions {
     int width_override = 0;

@@ -2,7 +2,9 @@
 
 #include <cstdlib>
 #include <cmath>
+#include <cerrno>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -13,8 +15,11 @@ bool parse_int_arg(const char *value, int &out) {
         return false;
     }
     char *end = nullptr;
+    errno = 0;
     long parsed = std::strtol(value, &end, 10);
-    if (end == value || *end != '\0') {
+    if (end == value || *end != '\0' || errno == ERANGE ||
+        parsed < std::numeric_limits<int>::min() ||
+        parsed > std::numeric_limits<int>::max()) {
         return false;
     }
     out = static_cast<int>(parsed);
@@ -73,8 +78,9 @@ AppOptions parse_options(int argc, char *args[]) {
         } else if (arg == "--scene-file" && i + 1 < argc) {
             options.scene_file = args[++i];
         } else if (arg == "--integrator" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.integrator_id)) {
-                fail("--integrator expects an integer.");
+            if (!parse_int_arg(args[++i], options.integrator_id) ||
+                options.integrator_id < 0 || options.integrator_id > 4) {
+                fail("--integrator expects an integer in the range 0..4.");
                 break;
             }
         } else if (arg == "--backend" && i + 1 < argc) {
@@ -91,23 +97,27 @@ AppOptions parse_options(int argc, char *args[]) {
             fail("--mesh-flat was removed; MeshAsset is now the default model path.");
             break;
         } else if (arg == "--runs" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.benchmark.runs)) {
-                fail("--runs expects an integer.");
+            if (!parse_int_arg(args[++i], options.benchmark.runs) ||
+                options.benchmark.runs <= 0) {
+                fail("--runs expects a positive integer.");
                 break;
             }
         } else if (arg == "--width" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.render.width_override)) {
-                fail("--width expects an integer.");
+            if (!parse_int_arg(args[++i], options.render.width_override) ||
+                options.render.width_override < 2) {
+                fail("--width expects an integer of at least 2.");
                 break;
             }
         } else if (arg == "--spp" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.render.spp_override)) {
-                fail("--spp expects an integer.");
+            if (!parse_int_arg(args[++i], options.render.spp_override) ||
+                options.render.spp_override <= 0) {
+                fail("--spp expects a positive integer.");
                 break;
             }
         } else if (arg == "--max-depth" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.render.max_depth)) {
-                fail("--max-depth expects an integer.");
+            if (!parse_int_arg(args[++i], options.render.max_depth) ||
+                options.render.max_depth <= 0) {
+                fail("--max-depth expects a positive integer.");
                 break;
             }
         } else if (arg == "--accel" && i + 1 < argc) {
@@ -116,15 +126,16 @@ AppOptions parse_options(int argc, char *args[]) {
             break;
         } else if (arg == "--seed" && i + 1 < argc) {
             int parsed_seed = 0;
-            if (parse_int_arg(args[++i], parsed_seed)) {
+            if (parse_int_arg(args[++i], parsed_seed) && parsed_seed > 0) {
                 options.render.seed = static_cast<unsigned>(parsed_seed);
             } else {
-                fail("--seed expects an integer.");
+                fail("--seed expects a positive integer.");
                 break;
             }
         } else if (arg == "--threads" && i + 1 < argc) {
-            if (!parse_int_arg(args[++i], options.render.threads)) {
-                fail("--threads expects an integer.");
+            if (!parse_int_arg(args[++i], options.render.threads) ||
+                options.render.threads < 0) {
+                fail("--threads expects a non-negative integer.");
                 break;
             }
         } else if (arg == "--sample-clamp" && i + 1 < argc) {
@@ -159,19 +170,21 @@ AppOptions parse_options(int argc, char *args[]) {
         return options;
     }
     if (!positional.empty()) {
-        options.scene_id = std::atoi(positional[0].c_str());
+        if (!parse_int_arg(positional[0].c_str(), options.scene_id)) {
+            fail("scene id expects an integer.");
+            return options;
+        }
     }
     if (positional.size() > 1) {
-        options.integrator_id = std::atoi(positional[1].c_str());
+        if (!parse_int_arg(positional[1].c_str(), options.integrator_id) ||
+            options.integrator_id < 0 || options.integrator_id > 4) {
+            fail("integrator id expects an integer in the range 0..4.");
+            return options;
+        }
     }
-    if (options.benchmark.runs < 1) {
-        options.benchmark.runs = 1;
-    }
-    if (options.render.seed == 0) {
-        options.render.seed = 1;
-    }
-    if (options.render.threads < 0) {
-        options.render.threads = 0;
+    if (positional.size() > 2) {
+        fail("too many positional arguments.");
+        return options;
     }
     return options;
 }

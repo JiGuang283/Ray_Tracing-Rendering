@@ -8,7 +8,10 @@
 #include "mis_path_integrator.h"
 #include "path_integrator.h"
 #include "pbr_path_integrator.h"
+#include "preview_surface.h"
 #include "render_buffer.h"
+#include "render_result.h"
+#include "render_types.h"
 #include "renderer.h"
 #include "rr_path_integrator.h"
 #include "scene_loader.h"
@@ -25,6 +28,7 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -99,13 +103,8 @@ SceneIR load_scene_ir_config(const AppOptions &options) {
 
 void configure_renderer(Renderer &renderer, const SceneConfig &config,
                         const AppOptions &options) {
-    renderer.set_samples(config.preset.samples_per_pixel);
-    renderer.set_seed(options.render.seed);
-    renderer.set_thread_count(options.render.threads);
-    renderer.set_sample_clamp(config.preset.sample_clamp);
-    renderer.set_color_pipeline(config.preset.color_pipeline);
+    (void)config;
     renderer.set_integrator(make_integrator(options.integrator_id));
-    renderer.set_max_depth(options.render.max_depth);
 }
 
 shared_ptr<camera> make_camera(const SceneConfig &config) {
@@ -124,31 +123,82 @@ std::string log_token(std::string value) {
     return value;
 }
 
-#if RAYTRACER_HAS_CUDA
-cuda_backend::CudaRendererSettings make_cuda_settings(
-    const SceneIR &ir, const AppOptions &options) {
-    if (options.render.max_depth <= 0) {
-        throw std::invalid_argument("CUDA max depth must be positive");
-    }
-    cuda_backend::CudaRendererSettings settings;
-    settings.integrator_id = options.integrator_id;
-    settings.max_depth =
-        static_cast<std::uint32_t>(options.render.max_depth);
-    settings.samples_per_pixel =
-        static_cast<std::uint32_t>(ir.preset.samples_per_pixel);
-    settings.seed = options.render.seed;
-    settings.batch_size = options.render.cuda_batch_size;
-    settings.sample_clamp = static_cast<float>(ir.preset.sample_clamp);
-    settings.color_pipeline = ir.preset.color_pipeline;
-    return settings;
-}
-#else
+#if !RAYTRACER_HAS_CUDA
 [[noreturn]] void throw_cuda_not_built() {
     throw std::runtime_error(
         "CUDA backend was not built. Configure with "
         "-DRAYTRACER_ENABLE_CUDA=ON and use the CUDA build directory.");
 }
 #endif
+
+RenderRequest make_render_request(const CameraConfig &camera,
+                                  const RenderPreset &preset,
+                                  const AppOptions &options) {
+    RenderRequest request;
+    request.extent = make_image_extent(preset.image_width, camera.aspect_ratio);
+    request.integrator = integrator_kind_from_id(options.integrator_id);
+    request.samples_per_pixel =
+        static_cast<std::uint32_t>(preset.samples_per_pixel);
+    request.max_depth =
+        static_cast<std::uint32_t>(options.render.max_depth);
+    request.seed = options.render.seed;
+    request.threads = static_cast<std::uint32_t>(options.render.threads);
+    request.cuda_batch_size = options.render.cuda_batch_size;
+    request.sample_clamp = preset.sample_clamp;
+    request.color_pipeline = preset.color_pipeline;
+    validate_render_request(request);
+    return request;
+}
+
+using WindowRenderFunction = std::function<RenderResult(
+    const CancellationToken &, PreviewSurface *)>;
+
+int run_window_render(const AppOptions &options, const RenderRequest &request,
+                      const std::string &title,
+                      const WindowRenderFunction &render) {
+    const int width = static_cast<int>(request.extent.width);
+    const int height = static_cast<int>(request.extent.height);
+    WindowsApp::ptr window = WindowsApp::getInstance(width, height, title);
+    if (window == nullptr) {
+        std::cerr << "Error: failed to create a window handler" << std::endl;
+        return -1;
+    }
+
+    PreviewSurface preview(request.extent);
+    CancellationSource cancellation;
+    RenderResult result;
+    std::exception_ptr render_error;
+    std::atomic<bool> render_failed{false};
+    std::thread rendering_thread([&]() {
+        try {
+            result = render(cancellation.token(), &preview);
+        } catch (...) {
+            render_error = std::current_exception();
+            render_failed.store(true, std::memory_order_release);
+        }
+    });
+
+    while (!window->shouldWindowClose() &&
+           !render_failed.load(std::memory_order_acquire)) {
+        window->processEvent();
+        const RenderBuffer snapshot = preview.snapshot();
+        window->updateScreenSurface(snapshot.get_data(), width, height);
+        std::this_thread::sleep_for(std::chrono::milliseconds(33));
+    }
+
+    cancellation.cancel();
+    if (rendering_thread.joinable()) {
+        rendering_thread.join();
+    }
+    if (render_error) {
+        std::rethrow_exception(render_error);
+    }
+
+    std::cout << "Saving rendered image..." << std::endl;
+    save_rendered_image(result.display, options.scene_id,
+                        options.integrator_id);
+    return 0;
+}
 
 } // namespace
 
@@ -170,28 +220,28 @@ int run_benchmark(const AppOptions &options) {
         if (options.render.backend == RenderBackend::CPU) {
             SceneConfig config = load_scene_config(options);
             apply_overrides(config, options);
-            const int width = config.preset.image_width;
-            const int height =
-                static_cast<int>(width / config.camera.aspect_ratio);
-            render_buffer = make_shared<RenderBuffer>(width, height);
-
+            const RenderRequest request =
+                make_render_request(config.camera, config.preset, options);
             auto cam = make_camera(config);
             Renderer renderer;
             configure_renderer(renderer, config, options);
-            last_stats = renderer.render(
+            RenderResult result = renderer.render(
                 config.scene.world, cam, config.preset.background,
-                *render_buffer, config.scene.lights);
+                config.scene.lights, request);
+            last_stats = result.stats;
+            render_buffer =
+                make_shared<RenderBuffer>(std::move(result.display));
         } else {
 #if RAYTRACER_HAS_CUDA
             SceneIR ir = load_scene_ir_config(options);
             apply_overrides(ir, options);
-            const int width = ir.preset.image_width;
-            const int height =
-                static_cast<int>(width / ir.camera.aspect_ratio);
-            render_buffer = make_shared<RenderBuffer>(width, height);
+            const RenderRequest request =
+                make_render_request(ir.camera, ir.preset, options);
             const CompiledScene scene = compile_scene(ir);
-            last_stats = cuda_backend::render_cuda(
-                scene, make_cuda_settings(ir, options), *render_buffer);
+            RenderResult result = cuda_backend::render_cuda(scene, request);
+            last_stats = result.stats;
+            render_buffer =
+                make_shared<RenderBuffer>(std::move(result.display));
 #else
             throw_cuda_not_built();
 #endif
@@ -215,6 +265,7 @@ int run_benchmark(const AppOptions &options) {
                   << " height=" << last_stats.height
                   << " spp=" << last_stats.samples_per_pixel
                   << " samples=" << last_stats.sample_count
+                  << " requested_samples=" << last_stats.requested_samples
                   << " seconds=" << last_stats.seconds
                   << " samples_per_second=" << samples_per_second
                   << " seed=" << last_stats.seed
@@ -230,6 +281,7 @@ int run_benchmark(const AppOptions &options) {
                   << " shadow_rays=" << last_stats.shadow_rays
                   << " clamped_samples=" << last_stats.clamped_samples
                   << " invalid_samples=" << last_stats.invalid_samples
+                  << " cancelled=" << (last_stats.cancelled ? 1 : 0)
                   << std::endl;
     }
 
@@ -280,48 +332,16 @@ int run_windowed(const AppOptions &options) {
         apply_seed(options);
         SceneIR ir = load_scene_ir_config(options);
         apply_overrides(ir, options);
-        const int width = ir.preset.image_width;
-        const int height = static_cast<int>(width / ir.camera.aspect_ratio);
-        auto render_buffer = make_shared<RenderBuffer>(width, height);
-        CompiledScene scene = compile_scene(ir);
-
-        WindowsApp::ptr win_app = WindowsApp::getInstance(
-            width, height, "CGAssignment4: CUDA Ray Tracing");
-        if (win_app == nullptr) {
-            std::cerr << "Error: failed to create a window handler"
-                      << std::endl;
-            return -1;
-        }
-        std::exception_ptr render_error;
-        std::atomic<bool> render_failed{false};
-        std::atomic<bool> cancel_render{false};
-        std::thread rendering_thread([&]() {
-            try {
-                cuda_backend::render_cuda(
-                    scene, make_cuda_settings(ir, options), *render_buffer,
-                    &cancel_render);
-            } catch (...) {
-                render_error = std::current_exception();
-                render_failed.store(true);
-            }
-        });
-        while (!win_app->shouldWindowClose() && !render_failed.load()) {
-            win_app->processEvent();
-            win_app->updateScreenSurface(render_buffer->get_data(), width,
-                                         height);
-            std::this_thread::sleep_for(std::chrono::milliseconds(33));
-        }
-        cancel_render.store(true);
-        if (rendering_thread.joinable()) {
-            rendering_thread.join();
-        }
-        if (render_error) {
-            std::rethrow_exception(render_error);
-        }
-        std::cout << "Saving rendered image..." << std::endl;
-        save_rendered_image(*render_buffer, options.scene_id,
-                            options.integrator_id);
-        return 0;
+        const RenderRequest request =
+            make_render_request(ir.camera, ir.preset, options);
+        auto scene = std::make_shared<CompiledScene>(compile_scene(ir));
+        return run_window_render(
+            options, request, "CGAssignment4: CUDA Ray Tracing",
+            [scene, request](const CancellationToken &cancel,
+                             PreviewSurface *preview) {
+                return cuda_backend::render_cuda(*scene, request, cancel,
+                                                 preview);
+            });
 #else
         throw_cuda_not_built();
 #endif
@@ -331,39 +351,17 @@ int run_windowed(const AppOptions &options) {
     SceneConfig config = load_scene_config(options);
     apply_overrides(config, options);
 
+    const RenderRequest request =
+        make_render_request(config.camera, config.preset, options);
     auto cam = make_camera(config);
-    int width = config.preset.image_width;
-    int height = static_cast<int>(width / config.camera.aspect_ratio);
-    auto render_buffer = make_shared<RenderBuffer>(width, height);
-
-    Renderer renderer;
-    configure_renderer(renderer, config, options);
-
-    WindowsApp::ptr winApp =
-        WindowsApp::getInstance(width, height, "CGAssignment4: Ray Tracing");
-    if (winApp == nullptr) {
-        std::cerr << "Error: failed to create a window handler" << std::endl;
-        return -1;
-    }
-
-    std::thread renderingThread([&renderer, world = config.scene.world, cam,
-                                 render_buffer, bg = config.preset.background,
-                                 lights = config.scene.lights]() {
-        renderer.render(world, cam, bg, *render_buffer, lights);
-    });
-
-    while (!winApp->shouldWindowClose()) {
-        winApp->processEvent();
-        winApp->updateScreenSurface(render_buffer->get_data(), width, height);
-        std::this_thread::sleep_for(std::chrono::milliseconds(33));
-    }
-
-    renderer.cancel();
-    if (renderingThread.joinable()) {
-        renderingThread.join();
-    }
-
-    std::cout << "Saving rendered image..." << std::endl;
-    save_rendered_image(*render_buffer, options.scene_id, options.integrator_id);
-    return 0;
+    auto renderer = std::make_shared<Renderer>();
+    configure_renderer(*renderer, config, options);
+    return run_window_render(
+        options, request, "CGAssignment4: Ray Tracing",
+        [renderer, world = config.scene.world, cam,
+         background = config.preset.background, lights = config.scene.lights,
+         request](const CancellationToken &cancel, PreviewSurface *preview) {
+            return renderer->render(world, cam, background, lights, request,
+                                    cancel, preview);
+        });
 }

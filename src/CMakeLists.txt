@@ -1,4 +1,5 @@
 add_subdirectory(core)
+add_subdirectory(render_api)
 add_subdirectory(shading)
 add_subdirectory(materials)
 add_subdirectory(geometry)

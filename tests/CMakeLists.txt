@@ -11,6 +11,7 @@ add_executable(raytracer_tests
     test_packed_light.cpp
     test_packed_shading.cpp
     test_packed_transport.cpp
+    test_render_runtime.cpp
     test_sample_filter.cpp
     test_scene_ir.cpp
     test_texture.cpp
@@ -25,6 +26,7 @@ target_include_directories(raytracer_tests PRIVATE
 )
 target_link_libraries(raytracer_tests PRIVATE
     raytracer::core
+    raytracer::render_api
     raytracer::shading
     raytracer::materials
     raytracer::geometry
