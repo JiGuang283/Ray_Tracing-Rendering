@@ -4,8 +4,10 @@
 #include "light.h"
 #include "material.h"
 #include "material_emission.h"
+#include "triangle_intersection.h"
 
 #include <cmath>
+#include <limits>
 #include <utility>
 
 class TriangleLight : public Light {
@@ -65,31 +67,21 @@ class TriangleLight : public Light {
     }
 
     double pdf(const point3 &origin, const vec3 &direction) const override {
-        const double eps = 1e-8;
-        vec3 pvec = cross(direction, edge2);
-        double det = dot(edge1, pvec);
-        if (fabs(det) < eps) {
+        using namespace triangle_intersection;
+        TriangleKernelHit<double> intersection;
+        if (!intersect_triangle_kernel(
+                {origin.x(), origin.y(), origin.z()},
+                {direction.x(), direction.y(), direction.z()},
+                {v0.x(), v0.y(), v0.z()}, {v1.x(), v1.y(), v1.z()},
+                {v2.x(), v2.y(), v2.z()}, 0.001,
+                std::numeric_limits<double>::infinity(), intersection)) {
+            return 0.0;
+        }
+        if (area <= 0.0) {
             return 0.0;
         }
 
-        double inv_det = 1.0 / det;
-        vec3 tvec = origin - v0;
-        double u = dot(tvec, pvec) * inv_det;
-        if (u < 0.0 || u > 1.0) {
-            return 0.0;
-        }
-
-        vec3 qvec = cross(tvec, edge1);
-        double v = dot(direction, qvec) * inv_det;
-        if (v < 0.0 || u + v > 1.0) {
-            return 0.0;
-        }
-
-        double t = dot(edge2, qvec) * inv_det;
-        if (t < 0.001 || area <= 0.0) {
-            return 0.0;
-        }
-
+        const double t = intersection.t;
         double dist_sq = t * t * direction.length_squared();
         double cos_theta = -dot(unit_vector(direction), normal);
         if (m_double_sided) {

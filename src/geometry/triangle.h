@@ -5,6 +5,7 @@
 
 #include "hittable.h"
 #include "material.h"
+#include "triangle_intersection.h"
 #include "vec3.h"
 
 class triangle : public hittable {
@@ -35,31 +36,19 @@ class triangle : public hittable {
 
     bool hit(const ray &r, double t_min, double t_max,
              hit_record &rec) const override {
-        const double eps = 1e-8;
-        vec3 pvec = cross(r.direction(), edge2);
-        double det = dot(edge1, pvec);
-
-        if (fabs(det) < eps) {
+        using namespace triangle_intersection;
+        TriangleKernelHit<double> intersection;
+        if (!intersect_triangle_kernel(
+                {r.origin().x(), r.origin().y(), r.origin().z()},
+                {r.direction().x(), r.direction().y(), r.direction().z()},
+                {v0.x(), v0.y(), v0.z()}, {v1.x(), v1.y(), v1.z()},
+                {v2.x(), v2.y(), v2.z()}, t_min, t_max, intersection)) {
             return false;
         }
 
-        double inv_det = 1.0 / det;
-        vec3 tvec = r.origin() - v0;
-        double bary_u = dot(tvec, pvec) * inv_det;
-        if (bary_u < 0.0 || bary_u > 1.0) {
-            return false;
-        }
-
-        vec3 qvec = cross(tvec, edge1);
-        double bary_v = dot(r.direction(), qvec) * inv_det;
-        if (bary_v < 0.0 || bary_u + bary_v > 1.0) {
-            return false;
-        }
-
-        double t = dot(edge2, qvec) * inv_det;
-        if (t < t_min || t > t_max) {
-            return false;
-        }
+        const double t = intersection.t;
+        const double bary_u = intersection.barycentric_u;
+        const double bary_v = intersection.barycentric_v;
 
         rec.t = t;
         rec.p = r.at(t);

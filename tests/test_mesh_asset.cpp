@@ -145,6 +145,33 @@ TEST_CASE(mesh_instance_handles_non_uniform_and_mirrored_transforms) {
     REQUIRE(hit.front_face == false);
 }
 
+TEST_CASE(mesh_instance_hits_small_local_geometry_with_large_scale) {
+    constexpr double local_scale = 1e-4;
+    std::vector<MeshVertex> vertices(3);
+    vertices[0].position = point3(0, 0, 0);
+    vertices[1].position = point3(local_scale, 0, 0);
+    vertices[2].position = point3(0, local_scale, 0);
+    MeshTriangle triangle;
+    triangle.vertices[0] = 0;
+    triangle.vertices[1] = 1;
+    triangle.vertices[2] = 2;
+    const auto asset = std::make_shared<MeshAsset>(
+        std::move(vertices), std::vector<MeshTriangle>{triangle});
+    const MaterialHandle material =
+        make_lambertian_material(color(0.5, 0.5, 0.5));
+    const MeshInstance instance(
+        asset, {material}, Transform::scale(vec3(1.0 / local_scale,
+                                                  1.0 / local_scale,
+                                                  1.0 / local_scale)));
+
+    hit_record hit;
+    REQUIRE(instance.hit(ray(point3(0.25, 0.25, 1.0), vec3(0, 0, -1)),
+                         0.001, 10.0, hit));
+    REQUIRE_NEAR(hit.t, 1.0, 1e-10);
+    REQUIRE_NEAR(hit.u, 0.25, 1e-10);
+    REQUIRE_NEAR(hit.v, 0.25, 1e-10);
+}
+
 TEST_CASE(mesh_light_evaluates_textured_emission_at_the_sample) {
     std::vector<MeshVertex> vertices(3);
     vertices[0].position = point3(0, 0, 0);
@@ -172,6 +199,32 @@ TEST_CASE(mesh_light_evaluates_textured_emission_at_the_sample) {
     REQUIRE(sample.pdf > 0.0);
     REQUIRE_NEAR(sample.Li.x(), 0.25, 1e-12);
     REQUIRE_NEAR(sample.Li.y(), 0.25, 1e-12);
+}
+
+TEST_CASE(mesh_light_pdf_supports_tiny_emissive_triangles) {
+    constexpr double scale = 1e-5;
+    std::vector<MeshVertex> vertices(3);
+    vertices[0].position = point3(0, 0, 0);
+    vertices[1].position = point3(scale, 0, 0);
+    vertices[2].position = point3(0, scale, 0);
+    MeshTriangle triangle;
+    triangle.vertices[0] = 0;
+    triangle.vertices[1] = 1;
+    triangle.vertices[2] = 2;
+    const auto asset = std::make_shared<MeshAsset>(
+        std::move(vertices), std::vector<MeshTriangle>{triangle});
+    const MaterialHandle material =
+        make_diffuse_light_material(color(2.0, 2.0, 2.0));
+    const auto instance = std::make_shared<MeshInstance>(
+        asset, std::vector<MaterialHandle>{material});
+    const MeshLight light(instance, 0);
+    const point3 origin(0.25 * scale, 0.25 * scale, 1.0);
+
+    const LightSample sample = light.sample(origin, vec2(0.25, 0.5));
+    REQUIRE(sample.pdf > 0.0);
+    const double evaluated_pdf = light.pdf(origin, sample.wi);
+    REQUIRE(evaluated_pdf > 0.0);
+    REQUIRE(std::abs(evaluated_pdf - sample.pdf) / sample.pdf < 1e-10);
 }
 
 TEST_CASE(mesh_light_mixes_emission_importance_with_area_floor) {

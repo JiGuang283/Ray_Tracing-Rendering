@@ -3,6 +3,7 @@
 
 #include "compiled_scene.h"
 #include "rng.h"
+#include "triangle_intersection.h"
 
 #include <cfloat>
 #include <cmath>
@@ -12,7 +13,6 @@
 namespace packed_intersector {
 
 constexpr std::uint32_t kTraversalStackSize = 64;
-constexpr float kTriangleEpsilon = 1e-8f;
 
 RT_HOST_DEVICE RT_FORCE_INLINE float minimum(float a, float b) {
     return a < b ? a : b;
@@ -190,31 +190,19 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle(
     const Float3 v0{packed_v0.x, packed_v0.y, packed_v0.z};
     const Float3 v1{packed_v1.x, packed_v1.y, packed_v1.z};
     const Float3 v2{packed_v2.x, packed_v2.y, packed_v2.z};
-    const Float3 edge1 = subtract(v1, v0);
-    const Float3 edge2 = subtract(v2, v0);
-    const Float3 pvec = cross_product(object_ray.direction, edge2);
-    const float determinant = dot_product(edge1, pvec);
-    if (absolute(determinant) < kTriangleEpsilon) {
+    using namespace triangle_intersection;
+    TriangleKernelHit<float> intersection;
+    if (!intersect_triangle_kernel(
+            {object_ray.origin.x, object_ray.origin.y, object_ray.origin.z},
+            {object_ray.direction.x, object_ray.direction.y,
+             object_ray.direction.z},
+            {v0.x, v0.y, v0.z}, {v1.x, v1.y, v1.z}, {v2.x, v2.y, v2.z},
+            t_min, t_max, intersection)) {
         return false;
     }
-    const float inverse = 1.0f / determinant;
-    const Float3 tvec = subtract(object_ray.origin, v0);
-    const float u = dot_product(tvec, pvec) * inverse;
-    if (u < 0.0f || u > 1.0f) {
-        return false;
-    }
-    const Float3 qvec = cross_product(tvec, edge1);
-    const float v = dot_product(object_ray.direction, qvec) * inverse;
-    if (v < 0.0f || u + v > 1.0f) {
-        return false;
-    }
-    const float t = dot_product(edge2, qvec) * inverse;
-    if (t < t_min || t > t_max || !finite(t)) {
-        return false;
-    }
-    candidate.t = t;
-    candidate.barycentric_u = u;
-    candidate.barycentric_v = v;
+    candidate.t = intersection.t;
+    candidate.barycentric_u = intersection.barycentric_u;
+    candidate.barycentric_v = intersection.barycentric_v;
     candidate.primitive_id = triangle_index;
     candidate.flags = PACKED_HIT_TRIANGLE;
     return true;

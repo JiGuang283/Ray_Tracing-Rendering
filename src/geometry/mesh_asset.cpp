@@ -1,5 +1,7 @@
 #include "mesh_asset.h"
 
+#include "triangle_intersection.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -153,34 +155,23 @@ bool MeshAsset::intersect_triangle(std::uint32_t triangle_index,
                                    MeshIntersection &intersection) const {
     const MeshTriangle &triangle = m_triangles[triangle_index];
     const point3 &v0 = m_vertices[triangle.vertices[0]].position;
-    const vec3 edge1 = m_vertices[triangle.vertices[1]].position - v0;
-    const vec3 edge2 = m_vertices[triangle.vertices[2]].position - v0;
-    const vec3 pvec = cross(object_ray.direction(), edge2);
-    const double determinant = dot(edge1, pvec);
-    if (std::abs(determinant) < 1e-8) {
+    const point3 &v1 = m_vertices[triangle.vertices[1]].position;
+    const point3 &v2 = m_vertices[triangle.vertices[2]].position;
+    using namespace triangle_intersection;
+    TriangleKernelHit<double> hit;
+    if (!intersect_triangle_kernel(
+            {object_ray.origin().x(), object_ray.origin().y(),
+             object_ray.origin().z()},
+            {object_ray.direction().x(), object_ray.direction().y(),
+             object_ray.direction().z()},
+            {v0.x(), v0.y(), v0.z()}, {v1.x(), v1.y(), v1.z()},
+            {v2.x(), v2.y(), v2.z()}, t_min, t_max, hit)) {
         return false;
     }
 
-    const double inverse_determinant = 1.0 / determinant;
-    const vec3 tvec = object_ray.origin() - v0;
-    const double u = dot(tvec, pvec) * inverse_determinant;
-    if (u < 0.0 || u > 1.0) {
-        return false;
-    }
-    const vec3 qvec = cross(tvec, edge1);
-    const double v =
-        dot(object_ray.direction(), qvec) * inverse_determinant;
-    if (v < 0.0 || u + v > 1.0) {
-        return false;
-    }
-    const double t = dot(edge2, qvec) * inverse_determinant;
-    if (t < t_min || t > t_max) {
-        return false;
-    }
-
-    intersection.t = t;
-    intersection.barycentric_u = u;
-    intersection.barycentric_v = v;
+    intersection.t = hit.t;
+    intersection.barycentric_u = hit.barycentric_u;
+    intersection.barycentric_v = hit.barycentric_v;
     intersection.triangle_index = triangle_index;
     return true;
 }

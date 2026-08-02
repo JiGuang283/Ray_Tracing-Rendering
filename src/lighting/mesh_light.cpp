@@ -3,9 +3,11 @@
 #include "mesh_instance.h"
 #include "shading/shader_context.h"
 #include "shading/shading.h"
+#include "triangle_intersection.h"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -255,22 +257,17 @@ color MeshLight::evaluate_emission(const TriangleEntry &triangle, double b0,
 bool MeshLight::intersect_triangle(const TriangleEntry &triangle,
                                    const point3 &origin,
                                    const vec3 &direction, double &t) {
-    const vec3 pvec = cross(direction, triangle.edge2);
-    const double determinant = dot(triangle.edge1, pvec);
-    if (std::abs(determinant) < 1e-8) {
+    using namespace triangle_intersection;
+    TriangleKernelHit<double> intersection;
+    if (!intersect_triangle_kernel(
+            {origin.x(), origin.y(), origin.z()},
+            {direction.x(), direction.y(), direction.z()},
+            {triangle.v0.x(), triangle.v0.y(), triangle.v0.z()},
+            {triangle.v1.x(), triangle.v1.y(), triangle.v1.z()},
+            {triangle.v2.x(), triangle.v2.y(), triangle.v2.z()}, 0.001,
+            std::numeric_limits<double>::infinity(), intersection)) {
         return false;
     }
-    const double inverse = 1.0 / determinant;
-    const vec3 tvec = origin - triangle.v0;
-    const double u = dot(tvec, pvec) * inverse;
-    if (u < 0.0 || u > 1.0) {
-        return false;
-    }
-    const vec3 qvec = cross(tvec, triangle.edge1);
-    const double v = dot(direction, qvec) * inverse;
-    if (v < 0.0 || u + v > 1.0) {
-        return false;
-    }
-    t = dot(triangle.edge2, qvec) * inverse;
-    return t >= 0.001;
+    t = intersection.t;
+    return true;
 }

@@ -500,28 +500,19 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus sample_mesh(
 RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle(
     const TriangleGeometry &geometry, Float3 origin, Float3 direction,
     float &t) {
-    const Float3 edge1 =
-        math::subtract(geometry.world1, geometry.world0);
-    const Float3 edge2 =
-        math::subtract(geometry.world2, geometry.world0);
-    const Float3 pvec = math::cross(direction, edge2);
-    const float determinant = math::dot(edge1, pvec);
-    if (math::absolute(determinant) < 1e-8f) {
+    using namespace triangle_intersection;
+    TriangleKernelHit<float> intersection;
+    if (!intersect_triangle_kernel(
+            {origin.x, origin.y, origin.z},
+            {direction.x, direction.y, direction.z},
+            {geometry.world0.x, geometry.world0.y, geometry.world0.z},
+            {geometry.world1.x, geometry.world1.y, geometry.world1.z},
+            {geometry.world2.x, geometry.world2.y, geometry.world2.z},
+            kRayEpsilon, FLT_MAX, intersection)) {
         return false;
     }
-    const float inverse = 1.0f / determinant;
-    const Float3 tvec = math::subtract(origin, geometry.world0);
-    const float u = math::dot(tvec, pvec) * inverse;
-    if (u < 0.0f || u > 1.0f) {
-        return false;
-    }
-    const Float3 qvec = math::cross(tvec, edge1);
-    const float v = math::dot(direction, qvec) * inverse;
-    if (v < 0.0f || u + v > 1.0f) {
-        return false;
-    }
-    t = math::dot(edge2, qvec) * inverse;
-    return t >= kRayEpsilon && math::finite(t);
+    t = intersection.t;
+    return true;
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE float mesh_element_pdf(
