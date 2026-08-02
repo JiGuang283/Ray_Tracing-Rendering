@@ -1,6 +1,6 @@
-#include "render_data/packed_light.h"
+#include "packed_light.h"
 
-#include "render_data/packed_light_core.h"
+#include "packed_light_core.h"
 
 PackedLightStatus sample_packed_light(const CompiledSceneView &scene,
                                       std::uint32_t light_id, Float3 origin,

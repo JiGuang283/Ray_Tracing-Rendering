@@ -1,6 +1,6 @@
-#include "render_data/packed_bsdf.h"
+#include "packed_bsdf.h"
 
-#include "render_data/packed_bsdf_core.h"
+#include "packed_bsdf_core.h"
 
 PackedBSDFStatus sample_packed_bsdf(const PackedMaterialOutput &output,
                                     Float3 wo, RNG &rng,

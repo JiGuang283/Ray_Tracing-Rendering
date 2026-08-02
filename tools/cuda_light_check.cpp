@@ -1,9 +1,9 @@
-#include "cuda/device_buffer.h"
-#include "cuda/device_scene.h"
-#include "cuda/light_kernels.h"
-#include "external/json.hpp"
-#include "render_data/packed_light.h"
-#include "render_data/scene_compiler.h"
+#include "device_buffer.h"
+#include "device_scene.h"
+#include "light_kernels.h"
+#include "json.hpp"
+#include "packed_light.h"
+#include "scene_compiler.h"
 
 #include <algorithm>
 #include <cmath>

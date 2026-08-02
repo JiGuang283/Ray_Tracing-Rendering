@@ -1,4 +1,4 @@
-#include "shading/bsdf.h"
+#include "bsdf.h"
 #include "test_harness.h"
 
 #include <cmath>

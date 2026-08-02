@@ -1,6 +1,6 @@
-#include "external/json.hpp"
-#include "render_data/packed_transport.h"
-#include "render_data/scene_compiler.h"
+#include "json.hpp"
+#include "packed_transport.h"
+#include "scene_compiler.h"
 
 #include <algorithm>
 #include <cmath>

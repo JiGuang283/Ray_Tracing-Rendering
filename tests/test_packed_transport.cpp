@@ -1,7 +1,7 @@
 #include "test_harness.h"
 
-#include "render_data/packed_transport.h"
-#include "render_data/scene_compiler.h"
+#include "packed_transport.h"
+#include "scene_compiler.h"
 
 #include <cmath>
 

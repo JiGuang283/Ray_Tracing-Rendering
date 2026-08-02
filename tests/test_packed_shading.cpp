@@ -1,9 +1,9 @@
 #include "test_harness.h"
 
 #include "material_programs.h"
-#include "render_data/packed_material.h"
-#include "render_data/packed_texture.h"
-#include "render_data/resource_compiler.h"
+#include "packed_material.h"
+#include "packed_texture.h"
+#include "resource_compiler.h"
 
 #include <memory>
 #include <type_traits>

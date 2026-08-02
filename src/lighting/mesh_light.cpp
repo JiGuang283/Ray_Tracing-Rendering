@@ -1,8 +1,8 @@
 #include "mesh_light.h"
 
 #include "mesh_instance.h"
-#include "shading/shader_context.h"
-#include "shading/shading.h"
+#include "shader_context.h"
+#include "shading.h"
 #include "triangle_intersection.h"
 
 #include <algorithm>

@@ -1,4 +1,4 @@
-#include "shading/bsdf_closures.h"
+#include "bsdf_closures.h"
 
 #include <algorithm>
 #include <cmath>

@@ -1,5 +1,5 @@
-#include "external/json.hpp"
-#include "render_data/scene_compiler.h"
+#include "json.hpp"
+#include "scene_compiler.h"
 
 #include <cstdint>
 #include <cstdlib>

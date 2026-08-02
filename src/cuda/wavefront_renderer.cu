@@ -2,7 +2,7 @@
 
 #include "cuda_error.h"
 #include "device_buffer.h"
-#include "render_data/packed_transport_core.h"
+#include "packed_transport_core.h"
 
 #include <cuda_runtime.h>
 

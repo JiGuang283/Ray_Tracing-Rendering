@@ -1,8 +1,8 @@
 #include "shading_kernels.h"
 
-#include "render_data/packed_bsdf_core.h"
-#include "render_data/packed_material_core.h"
-#include "render_data/surface_reconstruction_core.h"
+#include "packed_bsdf_core.h"
+#include "packed_material_core.h"
+#include "surface_reconstruction_core.h"
 
 #include <cuda_runtime.h>
 

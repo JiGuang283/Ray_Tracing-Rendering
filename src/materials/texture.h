@@ -3,7 +3,7 @@
 
 #include "image_asset.h"
 #include "perlin.h"
-#include "shading/shader_context.h"
+#include "shader_context.h"
 
 #include <memory>
 #include <cstdint>

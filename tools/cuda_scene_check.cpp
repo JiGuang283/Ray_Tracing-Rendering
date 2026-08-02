@@ -1,9 +1,9 @@
-#include "cuda/device_buffer.h"
-#include "cuda/device_scene.h"
-#include "cuda/intersection_kernels.h"
-#include "external/json.hpp"
-#include "render_data/flat_intersector.h"
-#include "render_data/scene_compiler.h"
+#include "device_buffer.h"
+#include "device_scene.h"
+#include "intersection_kernels.h"
+#include "json.hpp"
+#include "flat_intersector.h"
+#include "scene_compiler.h"
 #include "triangle_scale_fixture.h"
 
 #include <algorithm>

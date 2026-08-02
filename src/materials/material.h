@@ -1,8 +1,8 @@
 #ifndef MATERIAL_H
 #define MATERIAL_H
 
-#include "shading/shader_context.h"
-#include "shading/shading.h"
+#include "shader_context.h"
+#include "shading.h"
 #include "texture.h"
 
 #include <cstddef>

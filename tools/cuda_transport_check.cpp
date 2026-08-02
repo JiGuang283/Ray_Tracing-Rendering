@@ -1,8 +1,8 @@
-#include "cuda/device_scene.h"
-#include "cuda/wavefront_renderer.h"
-#include "external/json.hpp"
-#include "render_data/packed_transport_core.h"
-#include "render_data/scene_compiler.h"
+#include "device_scene.h"
+#include "wavefront_renderer.h"
+#include "json.hpp"
+#include "packed_transport_core.h"
+#include "scene_compiler.h"
 
 #include <algorithm>
 #include <cmath>

@@ -1,7 +1,7 @@
 #ifndef SHADING_H
 #define SHADING_H
 
-#include "shading/bsdf.h"
+#include "bsdf.h"
 
 #include <array>
 #include <cstddef>

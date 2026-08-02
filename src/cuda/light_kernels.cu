@@ -1,6 +1,6 @@
 #include "light_kernels.h"
 
-#include "render_data/packed_light_core.h"
+#include "packed_light_core.h"
 
 #include <cuda_runtime.h>
 

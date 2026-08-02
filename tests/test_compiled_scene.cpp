@@ -1,12 +1,12 @@
 #include "test_harness.h"
 
-#include "render_data/compiled_scene.h"
-#include "render_data/flat_intersector.h"
-#include "render_data/packed_bvh.h"
-#include "render_data/packed_material.h"
-#include "render_data/packed_texture.h"
-#include "render_data/resource_compiler.h"
-#include "render_data/scene_compiler.h"
+#include "compiled_scene.h"
+#include "flat_intersector.h"
+#include "packed_bvh.h"
+#include "packed_material.h"
+#include "packed_texture.h"
+#include "resource_compiler.h"
+#include "scene_compiler.h"
 #include "material_programs.h"
 
 #include <type_traits>

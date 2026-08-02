@@ -3,7 +3,7 @@
 
 #include "material_programs.h"
 #include "mesh_instance.h"
-#include "render_data/compiled_scene.h"
+#include "compiled_scene.h"
 
 #include <cstdint>
 #include <memory>

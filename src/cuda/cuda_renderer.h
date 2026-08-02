@@ -1,10 +1,10 @@
 #ifndef CUDA_RENDERER_H
 #define CUDA_RENDERER_H
 
-#include "render_data/compiled_scene.h"
-#include "renderer/color_pipeline.h"
-#include "renderer/render_buffer.h"
-#include "renderer/renderer.h"
+#include "compiled_scene.h"
+#include "color_pipeline.h"
+#include "render_buffer.h"
+#include "renderer.h"
 
 #include <atomic>
 #include <cstdint>

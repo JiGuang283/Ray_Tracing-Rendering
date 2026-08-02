@@ -1,7 +1,7 @@
 #ifndef BSDF_H
 #define BSDF_H
 
-#include "shading/bsdf_closures.h"
+#include "bsdf_closures.h"
 
 #include <array>
 #include <cstddef>

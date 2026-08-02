@@ -1,0 +1,15 @@
+add_subdirectory(core)
+add_subdirectory(shading)
+add_subdirectory(materials)
+add_subdirectory(geometry)
+add_subdirectory(resources)
+add_subdirectory(lighting)
+add_subdirectory(renderer)
+add_subdirectory(scene)
+add_subdirectory(render_data)
+
+if(RAYTRACER_ENABLE_CUDA)
+    add_subdirectory(cuda)
+endif()
+
+add_subdirectory(app)

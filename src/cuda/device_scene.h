@@ -2,7 +2,7 @@
 #define DEVICE_SCENE_H
 
 #include "device_buffer.h"
-#include "render_data/compiled_scene.h"
+#include "compiled_scene.h"
 
 #include <cstddef>
 #include <cstdint>

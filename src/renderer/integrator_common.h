@@ -4,7 +4,7 @@
 #include "hittable.h"
 #include "light_sampler.h"
 #include "material.h"
-#include "shading/shading.h"
+#include "shading.h"
 
 namespace integrator_common {
 

@@ -1,6 +1,6 @@
-#include "render_data/packed_transport.h"
+#include "packed_transport.h"
 
-#include "render_data/packed_transport_core.h"
+#include "packed_transport_core.h"
 
 PackedRay generate_packed_camera_ray(const PackedCamera &camera,
                                      std::uint32_t pixel_x,

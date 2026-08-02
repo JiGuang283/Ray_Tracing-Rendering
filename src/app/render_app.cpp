@@ -14,8 +14,8 @@
 #include "scenes.h"
 
 #if RAYTRACER_HAS_CUDA
-#include "cuda/cuda_renderer.h"
-#include "render_data/scene_compiler.h"
+#include "cuda_renderer.h"
+#include "scene_compiler.h"
 #endif
 
 #include <algorithm>

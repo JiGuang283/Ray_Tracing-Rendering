@@ -1,6 +1,6 @@
 #include "test_harness.h"
 
-#include "render_data/packed_bsdf.h"
+#include "packed_bsdf.h"
 
 #include <cmath>
 #include <cstdint>

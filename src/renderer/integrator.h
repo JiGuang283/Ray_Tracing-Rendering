@@ -5,7 +5,7 @@
 #include "light.h"
 #include "light_sampler.h"
 #include "ray.h"
-#include "shading/shading.h"
+#include "shading.h"
 #include "vec3.h"
 
 struct IntegratorContext {

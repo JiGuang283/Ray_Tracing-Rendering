@@ -1,6 +1,6 @@
 #include "intersection_kernels.h"
 
-#include "render_data/flat_intersector_core.h"
+#include "flat_intersector_core.h"
 
 #include <cuda_runtime.h>
 
