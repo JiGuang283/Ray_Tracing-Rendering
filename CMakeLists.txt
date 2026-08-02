@@ -54,6 +54,7 @@ set(PROJECT_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/src/lighting
     ${PROJECT_SOURCE_DIR}/src/materials
     ${PROJECT_SOURCE_DIR}/src/renderer
+    ${PROJECT_SOURCE_DIR}/src/resources
     ${PROJECT_SOURCE_DIR}/src/scene
     ${PROJECT_SOURCE_DIR}/src/shading
 )
