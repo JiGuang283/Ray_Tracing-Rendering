@@ -1,9 +1,9 @@
 #include "test_harness.h"
 
 #include "camera.h"
+#include "cpu_path_integrator.h"
 #include "hittable_list.h"
 #include "material_programs.h"
-#include "path_integrator.h"
 #include "preview_surface.h"
 #include "renderer.h"
 #include "sphere.h"
@@ -171,12 +171,14 @@ TEST_CASE(renderer_seed_is_independent_of_worker_count) {
     const auto cam = test_camera(16.0 / 9.0);
 
     Renderer single_thread;
-    single_thread.set_integrator(std::make_shared<PathIntegrator>());
+    single_thread.set_integrator(
+        std::make_shared<CpuPathIntegrator>(IntegratorKind::Path));
     RenderResult one = single_thread.render(world, cam, color(0.1, 0.2, 0.3),
                                              {}, test_request(1));
 
     Renderer multi_thread;
-    multi_thread.set_integrator(std::make_shared<PathIntegrator>());
+    multi_thread.set_integrator(
+        std::make_shared<CpuPathIntegrator>(IntegratorKind::Path));
     RenderResult four = multi_thread.render(world, cam, color(0.1, 0.2, 0.3),
                                              {}, test_request(4));
 

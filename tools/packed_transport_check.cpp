@@ -25,7 +25,7 @@ struct Options {
     std::uint32_t spp = 2;
     std::uint32_t max_depth = 8;
     std::uint32_t seed = 123;
-    PackedIntegratorType integrator = PackedIntegratorType::MISPath;
+    IntegratorKind integrator = IntegratorKind::MISPath;
     bool all = false;
 };
 
@@ -82,7 +82,8 @@ Options parse_options(int argc, char **argv) {
             if (parsed > 4) {
                 throw std::runtime_error("--integrator must be 0 through 4");
             }
-            options.integrator = static_cast<PackedIntegratorType>(value);
+            options.integrator = integrator_kind_from_id(
+                static_cast<int>(value));
         } else if (argument == "--help" || argument == "-h") {
             std::cout << "Usage: packed_transport_check [--catalog PATH] "
                          "[--all] [--ids 1,7,...] [--width N] [--spp N] "
@@ -146,9 +147,8 @@ CheckResult check_scene(const CompiledScene &scene, const Options &options) {
         1u, static_cast<std::uint32_t>(options.width /
                                       std::max(aspect, 1e-6f)));
     PackedTransportSettings settings;
-    settings.integrator = options.integrator;
+    settings.policy = integrator_policy(options.integrator);
     settings.max_depth = options.max_depth;
-    settings.rr_start_depth = 3;
     const CompiledSceneView view = make_scene_view(scene);
     double luminance_sum = 0.0;
     for (std::uint32_t y = 0; y < height; ++y) {

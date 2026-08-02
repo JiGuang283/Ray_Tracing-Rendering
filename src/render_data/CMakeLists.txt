@@ -18,6 +18,7 @@ target_include_directories(raytracer_render_data PUBLIC
 target_link_libraries(raytracer_render_data PUBLIC
     raytracer::build_config
     raytracer::core
+    raytracer::render_api
     raytracer::materials
     raytracer::geometry
     raytracer::resources

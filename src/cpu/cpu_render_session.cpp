@@ -1,12 +1,8 @@
 #include "cpu_render_session.h"
 
 #include "camera.h"
-#include "direct_light_integrator.h"
-#include "mis_path_integrator.h"
-#include "path_integrator.h"
-#include "pbr_path_integrator.h"
+#include "cpu_path_integrator.h"
 #include "renderer.h"
-#include "rr_path_integrator.h"
 #include "scene_loader.h"
 
 #include <chrono>
@@ -14,22 +10,6 @@
 #include <utility>
 
 namespace {
-
-std::shared_ptr<Integrator> make_integrator(IntegratorKind kind) {
-    switch (kind) {
-    case IntegratorKind::Path:
-        return make_shared<PathIntegrator>();
-    case IntegratorKind::RussianRoulette:
-        return make_shared<RRPathInterator>();
-    case IntegratorKind::PBRPath:
-        return make_shared<PBRPathIntegrator>();
-    case IntegratorKind::DirectLighting:
-        return make_shared<DirectLightIntegrator>();
-    case IntegratorKind::MISPath:
-        return make_shared<MISPathIntegrator>();
-    }
-    throw std::invalid_argument("unsupported CPU integrator");
-}
 
 class CpuRenderSession final : public IRenderSession {
   public:
@@ -52,7 +32,7 @@ class CpuRenderSession final : public IRenderSession {
     RenderResult render(const RenderRequest &request,
                         const CancellationToken &cancel,
                         PreviewSurface *preview) override {
-        m_renderer.set_integrator(make_integrator(request.integrator));
+        m_renderer.set_integrator(make_cpu_integrator(request.integrator));
         RenderResult result = m_renderer.render(
             m_scene.scene.world, m_camera, m_scene.preset.background,
             m_scene.scene.lights, request, cancel, preview);

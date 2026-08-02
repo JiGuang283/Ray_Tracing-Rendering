@@ -1,12 +1,8 @@
 add_library(raytracer_renderer STATIC
-    direct_light_integrator.cpp
+    cpu_path_integrator.cpp
     film.cpp
     integrator_common.cpp
-    mis_path_integrator.cpp
-    path_integrator.cpp
-    pbr_path_integrator.cpp
     renderer.cpp
-    rr_path_integrator.cpp
     sample_filter.cpp
 )
 add_library(raytracer::renderer ALIAS raytracer_renderer)

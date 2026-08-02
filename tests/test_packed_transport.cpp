@@ -63,7 +63,7 @@ TEST_CASE(packed_transport_returns_background_on_miss) {
     ir.preset.background = color(0.2, 0.3, 0.4);
     const CompiledScene scene = compile_scene(ir);
     PackedTransportSettings settings;
-    settings.integrator = PackedIntegratorType::MISPath;
+    settings.policy = integrator_policy(IntegratorKind::MISPath);
     settings.max_depth = 8;
     RNG rng(123);
     const PackedTransportResult result = trace_packed_path(
@@ -79,7 +79,8 @@ TEST_CASE(packed_transport_first_hit_emission_is_unweighted) {
     const CompiledScene scene = compile_scene(make_emissive_scene());
     for (std::uint32_t mode = 0; mode <= 4; ++mode) {
         PackedTransportSettings settings;
-        settings.integrator = static_cast<PackedIntegratorType>(mode);
+        settings.policy = integrator_policy(
+            static_cast<IntegratorKind>(mode));
         settings.max_depth = 4;
         RNG rng(19);
         const PackedTransportResult result = trace_packed_path(
@@ -94,7 +95,7 @@ TEST_CASE(packed_transport_first_hit_emission_is_unweighted) {
 TEST_CASE(packed_direct_transport_evaluates_delta_light_without_selection_pdf) {
     const CompiledScene scene = compile_scene(make_diffuse_direct_scene());
     PackedTransportSettings settings;
-    settings.integrator = PackedIntegratorType::DirectLighting;
+    settings.policy = integrator_policy(IntegratorKind::DirectLighting);
     settings.max_depth = 1;
     RNG rng(1234);
     const PackedTransportResult result = trace_packed_path(
@@ -109,9 +110,8 @@ TEST_CASE(packed_direct_transport_evaluates_delta_light_without_selection_pdf) {
 TEST_CASE(packed_transport_is_repeatable_for_fixed_seed) {
     const CompiledScene scene = compile_scene(make_diffuse_direct_scene());
     PackedTransportSettings settings;
-    settings.integrator = PackedIntegratorType::MISPath;
+    settings.policy = integrator_policy(IntegratorKind::MISPath);
     settings.max_depth = 12;
-    settings.rr_start_depth = 3;
     RNG first_rng(0x12345678u);
     RNG second_rng(0x12345678u);
     const PackedRay first_ray = generate_packed_camera_ray(
@@ -136,7 +136,8 @@ TEST_CASE(packed_transport_all_integrator_modes_remain_finite) {
     const CompiledSceneView view = make_scene_view(scene);
     for (std::uint32_t mode = 0; mode <= 4; ++mode) {
         PackedTransportSettings settings;
-        settings.integrator = static_cast<PackedIntegratorType>(mode);
+        settings.policy = integrator_policy(
+            static_cast<IntegratorKind>(mode));
         settings.max_depth = 16;
         for (std::uint32_t sample = 0; sample < 128; ++sample) {
             RNG rng(mix_seed(7123, sample + 1));
@@ -154,12 +155,12 @@ TEST_CASE(packed_transport_rejects_invalid_integrator_and_ray) {
     ir.source_path = "packed_transport_invalid.json";
     const CompiledScene scene = compile_scene(ir);
     PackedTransportSettings settings;
-    settings.integrator = static_cast<PackedIntegratorType>(99);
+    settings.policy.kind = static_cast<IntegratorKind>(99);
     RNG rng(1);
     REQUIRE(trace_packed_path(make_scene_view(scene), test_ray(), settings,
                               rng)
                 .status == PackedTransportStatus::InvalidInput);
-    settings.integrator = PackedIntegratorType::Path;
+    settings.policy = integrator_policy(IntegratorKind::Path);
     PackedRay ray = test_ray();
     ray.direction = {};
     REQUIRE(trace_packed_path(make_scene_view(scene), ray, settings, rng)

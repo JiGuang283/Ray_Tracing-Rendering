@@ -101,28 +101,6 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedRay spawn_ray(
     return ray;
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE bool transport_uses_direct_lighting(
-    PackedIntegratorType integrator) {
-    return integrator == PackedIntegratorType::DirectLighting ||
-           integrator == PackedIntegratorType::MISPath;
-}
-
-RT_HOST_DEVICE RT_FORCE_INLINE bool transport_uses_mis(
-    PackedIntegratorType integrator) {
-    return integrator == PackedIntegratorType::MISPath;
-}
-
-RT_HOST_DEVICE RT_FORCE_INLINE bool transport_uses_rr(
-    PackedIntegratorType integrator) {
-    return integrator != PackedIntegratorType::Path;
-}
-
-RT_HOST_DEVICE RT_FORCE_INLINE bool transport_uses_environment_light(
-    PackedIntegratorType integrator) {
-    return integrator == PackedIntegratorType::DirectLighting ||
-           integrator == PackedIntegratorType::MISPath;
-}
-
 RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus visibility(
     const CompiledSceneView &scene,
     const PackedSurfaceInteraction &surface, const PackedLightSample &sample,
@@ -263,10 +241,10 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus sample_direct_lighting(
 
 RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus miss_radiance(
     const CompiledSceneView &scene, const PackedRay &ray,
-    PackedIntegratorType integrator, std::uint32_t depth,
+    const IntegratorPolicy &policy, std::uint32_t depth,
     bool delta_bounce, float previous_bsdf_pdf, Float3 &radiance) {
     radiance = scene.background;
-    if (!transport_uses_environment_light(integrator)) {
+    if (!policy.uses_direct_lighting()) {
         return PackedTransportStatus::Success;
     }
     const std::uint32_t environment =
@@ -282,8 +260,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus miss_radiance(
                    ? PackedTransportStatus::Success
                    : PackedTransportStatus::LightFailure;
     }
-    if (integrator == PackedIntegratorType::MISPath && depth != 0 &&
-        !delta_bounce) {
+    if (policy.uses_mis() && depth != 0 && !delta_bounce) {
         float light_pdf = 0.0f;
         const PackedLightStatus pdf_status =
             packed_light::packed_light_pdf_core(
@@ -302,19 +279,19 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus miss_radiance(
 RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus emitted_radiance(
     const CompiledSceneView &scene, const PackedMaterialOutput &material,
     const PackedSurfaceInteraction &surface, const PackedRay &ray,
-    const PackedHit &hit, PackedIntegratorType integrator,
+    const PackedHit &hit, const IntegratorPolicy &policy,
     std::uint32_t depth, bool delta_bounce, float previous_bsdf_pdf,
     Float3 &radiance) {
     radiance = material.emission;
     if (math::black(radiance)) {
         return PackedTransportStatus::Success;
     }
-    if (integrator == PackedIntegratorType::DirectLighting && depth != 0 &&
+    if (policy.uses_direct_lighting() && !policy.uses_mis() && depth != 0 &&
         !delta_bounce) {
         radiance = {};
         return PackedTransportStatus::Success;
     }
-    if (integrator != PackedIntegratorType::MISPath || depth == 0 ||
+    if (!policy.uses_mis() || depth == 0 ||
         delta_bounce || surface.emitter_id == kInvalidPackedIndex) {
         return PackedTransportStatus::Success;
     }
@@ -336,8 +313,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool valid_transport_input(
     const CompiledSceneView &scene, const PackedRay &ray,
     const PackedTransportSettings &settings) {
     return scene.aggregates.count != 0 && settings.max_depth != 0 &&
-           static_cast<std::uint32_t>(settings.integrator) <=
-               static_cast<std::uint32_t>(PackedIntegratorType::MISPath) &&
+           valid_integrator_policy(settings.policy) &&
            math::finite(ray.origin) && math::finite(ray.direction) &&
            math::length_squared(ray.direction) != 0.0f &&
            ray.t_max >= ray.t_min;
@@ -395,7 +371,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
     if (traversal == PackedTraversalStatus::Miss) {
         Float3 miss{};
         const PackedTransportStatus status = miss_radiance(
-            scene, state.ray, settings.integrator, depth,
+            scene, state.ray, settings.policy, depth,
             state.delta_bounce(), state.previous_bsdf_pdf, miss);
         if (status == PackedTransportStatus::Success) {
             state.radiance = math::add(
@@ -432,7 +408,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
         math::normalize(math::multiply(state.ray.direction, -1.0f));
     Float3 emission{};
     PackedTransportStatus status = emitted_radiance(
-        scene, material, surface, state.ray, hit, settings.integrator,
+        scene, material, surface, state.ray, hit, settings.policy,
         depth, state.delta_bounce(), state.previous_bsdf_pdf, emission);
     if (status != PackedTransportStatus::Success) {
         finish_packed_path(state, status, rng);
@@ -441,12 +417,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
     state.radiance = math::add(
         state.radiance, math::multiply(state.throughput, emission));
 
-    if (transport_uses_direct_lighting(settings.integrator) &&
+    if (settings.policy.uses_direct_lighting() &&
         material.closure_count != 0 && scene.lights.count != 0) {
         Float3 direct{};
         status = sample_direct_lighting(
             scene, surface, material, wo,
-            transport_uses_mis(settings.integrator), state.ray.time, rng,
+            settings.policy.uses_mis(), state.ray.time, rng,
             direct, state.shadow_rays);
         if (status != PackedTransportStatus::Success) {
             finish_packed_path(state, status, rng);
@@ -454,6 +430,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
         }
         state.radiance = math::add(
             state.radiance, math::multiply(state.throughput, direct));
+    }
+
+    if (depth + 1 >= settings.max_depth) {
+        finish_packed_path(state, PackedTransportStatus::Success, rng);
+        return;
     }
 
     PackedBSDFSample sample{};
@@ -495,16 +476,13 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
     }
     state.ray = spawn_ray(surface, sample.wi, state.ray.time);
 
-    if (transport_uses_rr(settings.integrator) &&
-        depth >= settings.rr_start_depth) {
+    if (settings.policy.uses_russian_roulette() &&
+        depth >= settings.policy.rr_start_depth) {
         const Float3 compensated =
             math::multiply(state.throughput, state.eta_scale);
-        const float minimum_probability =
-            settings.integrator == PackedIntegratorType::RussianRoulette
-                ? 0.005f
-                : 0.05f;
         const float survival = math::clamp(
-            math::maximum_component(compensated), minimum_probability,
+            math::maximum_component(compensated),
+            settings.policy.rr_min_survival,
             0.95f);
         if (static_cast<float>(rng.next()) > survival) {
             finish_packed_path(state, PackedTransportStatus::Success, rng);

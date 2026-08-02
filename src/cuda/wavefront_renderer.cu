@@ -153,8 +153,7 @@ void validate_settings(const CudaRenderSettings &settings) {
             "CUDA render dimensions and sample count must be positive");
     }
     if (settings.transport.max_depth == 0 ||
-        static_cast<std::uint32_t>(settings.transport.integrator) >
-            static_cast<std::uint32_t>(PackedIntegratorType::MISPath)) {
+        !valid_integrator_policy(settings.transport.policy)) {
         throw std::invalid_argument("invalid CUDA transport settings");
     }
     if (settings.block_size == 0 || settings.block_size > 1024) {

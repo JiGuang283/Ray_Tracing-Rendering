@@ -11,25 +11,6 @@
 #include <string>
 
 namespace cuda_backend {
-namespace {
-
-PackedIntegratorType packed_integrator(IntegratorKind integrator) {
-    switch (integrator) {
-    case IntegratorKind::Path:
-        return PackedIntegratorType::Path;
-    case IntegratorKind::RussianRoulette:
-        return PackedIntegratorType::RussianRoulette;
-    case IntegratorKind::PBRPath:
-        return PackedIntegratorType::PBRPath;
-    case IntegratorKind::DirectLighting:
-        return PackedIntegratorType::DirectLighting;
-    case IntegratorKind::MISPath:
-        return PackedIntegratorType::MISPath;
-    }
-    throw std::invalid_argument("unsupported CUDA integrator");
-}
-
-} // namespace
 
 class CudaRenderSession final : public IRenderSession {
   public:
@@ -62,10 +43,9 @@ class CudaRenderSession final : public IRenderSession {
         validate_render_request(request);
         const auto begin = std::chrono::steady_clock::now();
         CudaRenderSettings transport_settings;
-        transport_settings.transport.integrator =
-            packed_integrator(request.integrator);
+        transport_settings.transport.policy =
+            integrator_policy(request.integrator);
         transport_settings.transport.max_depth = request.max_depth;
-        transport_settings.transport.rr_start_depth = 3;
         transport_settings.width = request.extent.width;
         transport_settings.height = request.extent.height;
         transport_settings.samples_per_pixel = request.samples_per_pixel;

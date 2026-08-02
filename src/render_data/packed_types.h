@@ -2,6 +2,7 @@
 #define PACKED_TYPES_H
 
 #include "host_device.h"
+#include "render_types.h"
 
 #include <cstdint>
 #include <limits>
@@ -137,14 +138,6 @@ enum class PackedLightStatus : std::uint32_t {
     InvalidDistribution = 3,
     TextureFailure = 4,
     NonFinite = 5
-};
-
-enum class PackedIntegratorType : std::uint32_t {
-    Path = 0,
-    RussianRoulette = 1,
-    PBRPath = 2,
-    DirectLighting = 3,
-    MISPath = 4
 };
 
 enum class PackedTransportStatus : std::uint32_t {
@@ -381,10 +374,9 @@ struct alignas(16) SelectedPackedLightSample {
 };
 
 struct alignas(16) PackedTransportSettings {
-    PackedIntegratorType integrator = PackedIntegratorType::MISPath;
+    IntegratorPolicy policy{};
     std::uint32_t max_depth = 50;
-    std::uint32_t rr_start_depth = 3;
-    std::uint32_t padding = 0;
+    std::uint32_t padding[3]{};
 };
 
 struct alignas(16) PackedTransportResult {
@@ -571,7 +563,7 @@ static_assert(sizeof(PackedMaterialOutput) == 320);
 static_assert(sizeof(PackedBSDFSample) == 48);
 static_assert(sizeof(PackedLightSample) == 48);
 static_assert(sizeof(SelectedPackedLightSample) == 64);
-static_assert(sizeof(PackedTransportSettings) == 16);
+static_assert(sizeof(PackedTransportSettings) == 32);
 static_assert(sizeof(PackedTransportResult) == 32);
 static_assert(sizeof(PackedPathState) == 112);
 static_assert(sizeof(PackedTransform) == 96);
@@ -583,7 +575,7 @@ static_assert(std::is_trivially_copyable_v<PackedTraversalStatus>);
 static_assert(std::is_trivially_copyable_v<PackedShadingStatus>);
 static_assert(std::is_trivially_copyable_v<PackedBSDFStatus>);
 static_assert(std::is_trivially_copyable_v<PackedLightStatus>);
-static_assert(std::is_trivially_copyable_v<PackedIntegratorType>);
+static_assert(std::is_trivially_copyable_v<IntegratorPolicy>);
 static_assert(std::is_trivially_copyable_v<PackedTransportStatus>);
 static_assert(std::is_trivially_copyable_v<PackedSurfaceInteraction>);
 static_assert(std::is_trivially_copyable_v<PackedShadingFrame>);

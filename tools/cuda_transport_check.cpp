@@ -122,10 +122,9 @@ std::filesystem::path resolve_scene_path(
 
 cuda_backend::CudaRenderSettings make_settings(const Options &options) {
     cuda_backend::CudaRenderSettings settings;
-    settings.transport.integrator =
-        static_cast<PackedIntegratorType>(options.integrator);
+    settings.transport.policy = integrator_policy(
+        integrator_kind_from_id(static_cast<int>(options.integrator)));
     settings.transport.max_depth = options.max_depth;
-    settings.transport.rr_start_depth = 3;
     settings.width = options.width;
     settings.height = options.height;
     settings.samples_per_pixel = options.spp;

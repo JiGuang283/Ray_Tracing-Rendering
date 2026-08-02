@@ -48,6 +48,18 @@ struct IntegratorPolicy {
     }
 };
 
+RT_HOST_DEVICE inline bool
+valid_integrator_policy(const IntegratorPolicy &policy) noexcept {
+    constexpr std::uint32_t known_flags =
+        INTEGRATOR_POLICY_DIRECT_LIGHTING | INTEGRATOR_POLICY_MIS |
+        INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
+    return static_cast<std::uint32_t>(policy.kind) <=
+               static_cast<std::uint32_t>(IntegratorKind::MISPath) &&
+           (policy.flags & ~known_flags) == 0 &&
+           policy.rr_min_survival >= 0.0f &&
+           policy.rr_min_survival <= 0.95f;
+}
+
 IntegratorKind integrator_kind_from_id(int id);
 int integrator_id(IntegratorKind kind) noexcept;
 IntegratorPolicy integrator_policy(IntegratorKind kind);
