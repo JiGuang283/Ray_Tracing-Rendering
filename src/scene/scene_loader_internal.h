@@ -3,62 +3,30 @@
 
 #include "hittable.h"
 #include "hittable_list.h"
-#include "json.hpp"
-#include "material.h"
-#include "resource_registry.h"
 #include "scene_config.h"
-#include "scene_ir.h"
-#include "texture.h"
-#include "vec3.h"
+#include "scene_json.h"
+#include "scene_resource_context.h"
 
-#include <map>
-#include <set>
-#include <string>
+#include <vector>
 
 namespace scene_loader_internal {
 
-using json = nlohmann::json;
-using MaterialMap = std::map<std::string, MaterialHandle>;
-using TextureCacheKey = std::pair<TextureIRId, TextureSemantic>;
-
-struct SceneBuildContext {
-    std::string source_path;
-    const SceneIR *scene_ir = nullptr;
-    std::map<TextureCacheKey, TextureHandle> textures;
-    std::set<TextureCacheKey> textures_in_progress;
-    MaterialMap materials;
-    ResourceRegistry resources;
-};
+using SceneBuildContext = SceneResourceContext;
+using scene_json::json;
+using scene_json::read_bool_or;
+using scene_json::read_double_or;
+using scene_json::read_int_or;
+using scene_json::read_string;
+using scene_json::read_vec2_value;
+using scene_json::read_vec3;
+using scene_json::read_vec3_or;
+using scene_json::read_vec3_value;
+using scene_json::require_key;
 
 struct BuiltObject {
     shared_ptr<hittable> object;
     std::vector<shared_ptr<Light>> emitters;
 };
-
-const json &require_key(const json &object, const std::string &key,
-                        const std::string &context);
-vec3 read_vec3_value(const json &value, const std::string &context);
-vec2 read_vec2_value(const json &value, const std::string &context);
-vec3 read_vec3(const json &object, const std::string &key,
-               const std::string &context);
-vec3 read_vec3_or(const json &object, const std::string &key,
-                  const vec3 &fallback, const std::string &context);
-double read_double_or(const json &object, const std::string &key,
-                      double fallback);
-int read_int_or(const json &object, const std::string &key, int fallback);
-bool read_bool_or(const json &object, const std::string &key, bool fallback);
-std::string read_string(const json &object, const std::string &key,
-                        const std::string &context);
-std::string resolve_asset_path(const SceneBuildContext &context,
-                               const std::string &path);
-
-TextureHandle build_texture(TextureIRId id, TextureSemantic semantic,
-                            SceneBuildContext &context);
-MaterialHandle build_material(const MaterialIR &material,
-                              SceneBuildContext &context);
-MaterialHandle lookup_material(SceneBuildContext &context,
-                               const std::string &name,
-                               const std::string &context_name);
 
 shared_ptr<hittable> build_object(ObjectIRId id,
                                   SceneBuildContext &context);

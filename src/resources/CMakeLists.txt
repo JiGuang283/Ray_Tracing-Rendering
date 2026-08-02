@@ -6,6 +6,7 @@ target_include_directories(raytracer_mikktspace PUBLIC
 )
 
 add_library(raytracer_resources STATIC
+    asset_path.cpp
     gltf_importer.cpp
     obj_importer.cpp
     resource_registry.cpp

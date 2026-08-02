@@ -1,12 +1,12 @@
 #include "scene_compiler.h"
 
+#include "asset_path.h"
 #include "material_programs.h"
 #include "model_asset.h"
 #include "packed_bvh.h"
 #include "packed_material.h"
 #include "resource_compiler.h"
-#include "scene_loader.h"
-#include "scene_loader_internal.h"
+#include "scene_resource_context.h"
 
 #include <algorithm>
 #include <cmath>
@@ -544,7 +544,8 @@ class SceneCompiler {
                      AggregateBuild &aggregate) {
         const MaterialHandle object_material =
             material(object.material, node.context);
-        const std::string path = resolve_asset_path(m_context, object.path);
+        const std::string path =
+            resolve_asset_path(m_context.source_path, object.path);
         std::string error;
         const auto asset = m_context.resources.load_obj(
             path, object.build_bvh, object.use_vertex_normals, error);
@@ -572,7 +573,8 @@ class SceneCompiler {
     void compile_model(const ModelObjectIR &object,
                        const ObjectIRNode &node, const Transform &parent,
                        bool flip, AggregateBuild &aggregate) {
-        const std::string path = resolve_asset_path(m_context, object.path);
+        const std::string path =
+            resolve_asset_path(m_context.source_path, object.path);
         ModelImportOptions options;
         std::string error;
         const auto asset =
@@ -962,8 +964,8 @@ class SceneCompiler {
     }
 
     void append_environment_light(const EnvironmentLightIR &environment) {
-        const std::string path =
-            resolve_asset_path(m_context, environment.path);
+        const std::string path = resolve_asset_path(
+            m_context.source_path, environment.path);
         const auto image = m_context.resources.load_image(path);
         const ImageId image_id = m_resources.compile_image(image);
         const int width = image->width();
@@ -1441,7 +1443,7 @@ class SceneCompiler {
 
     const SceneIR &m_ir;
     CompiledScene m_scene;
-    SceneBuildContext m_context;
+    SceneResourceContext m_context;
     PackedResourceCompiler m_resources;
     std::unordered_map<const MeshAsset *, std::uint32_t> m_meshes;
     std::vector<aabb> m_instance_bounds;
@@ -1463,5 +1465,5 @@ CompiledScene compile_scene(const SceneIR &ir) {
 }
 
 CompiledScene load_compiled_scene(const std::string &path) {
-    return compile_scene(parse_scene_ir(load_scene_description(path)));
+    return compile_scene(load_scene_ir_file(path));
 }

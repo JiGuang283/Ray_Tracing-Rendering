@@ -2,6 +2,7 @@
 #define TEXTURE_H
 
 #include "image_asset.h"
+#include "image_sampling.h"
 #include "perlin.h"
 #include "shader_context.h"
 
@@ -11,32 +12,6 @@
 enum class ColorSpace {
     SRGB,
     Linear
-};
-
-enum class WrapMode {
-    Repeat,
-    Clamp,
-    Mirror
-};
-
-enum class FilterMode {
-    Nearest,
-    Bilinear
-};
-
-enum class TextureChannel {
-    RGB,
-    R,
-    G,
-    B,
-    A
-};
-
-struct SamplerState {
-    WrapMode wrap_u = WrapMode::Repeat;
-    WrapMode wrap_v = WrapMode::Repeat;
-    FilterMode filter = FilterMode::Bilinear;
-    bool flip_v = true;
 };
 
 struct TextureSample {

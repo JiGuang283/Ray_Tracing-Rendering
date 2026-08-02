@@ -2,7 +2,6 @@
 #define SCENE_DESCRIPTION_H
 
 #include "json.hpp"
-#include "scene_config.h"
 
 #include <string>
 
@@ -12,6 +11,5 @@ struct SceneDescription {
 };
 
 SceneDescription load_scene_description(const std::string &path);
-SceneConfig build_scene_config(const SceneDescription &description);
 
 #endif

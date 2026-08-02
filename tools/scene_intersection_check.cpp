@@ -4,6 +4,7 @@
 #include "scene_compiler.h"
 #include "scene_description.h"
 #include "scene_ir.h"
+#include "scene_loader.h"
 #include "triangle_scale_fixture.h"
 
 #include <algorithm>

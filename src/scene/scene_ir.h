@@ -1,10 +1,10 @@
 #ifndef SCENE_IR_H
 #define SCENE_IR_H
 
-#include "normal_mapping.h"
-#include "scene_config.h"
+#include "image_sampling.h"
+#include "normal_map_types.h"
 #include "scene_description.h"
-#include "texture.h"
+#include "scene_types.h"
 #include "transform.h"
 
 #include <array>
@@ -294,6 +294,6 @@ struct SceneIR {
 };
 
 SceneIR parse_scene_ir(const SceneDescription &description);
-SceneConfig build_scene_config(const SceneIR &ir);
+SceneIR load_scene_ir_file(const std::string &path);
 
 #endif

@@ -1,6 +1,6 @@
 #include "scene_ir.h"
 
-#include "scene_loader_internal.h"
+#include "scene_json.h"
 
 #include <cmath>
 #include <stdexcept>
@@ -11,7 +11,7 @@ using json = nlohmann::json;
 
 namespace {
 
-using namespace scene_loader_internal;
+using namespace scene_json;
 
 ToneMappingMode parse_tone_mapping(const std::string &mode,
                                    const std::string &context) {

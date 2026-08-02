@@ -7,6 +7,7 @@
 #include "packed_texture.h"
 #include "resource_compiler.h"
 #include "scene_compiler.h"
+#include "scene_loader.h"
 #include "material_programs.h"
 
 #include <type_traits>

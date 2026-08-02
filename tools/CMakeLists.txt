@@ -11,6 +11,10 @@ raytracer_add_cpu_tool(scene_data_check)
 raytracer_add_cpu_tool(scene_intersection_check)
 raytracer_add_cpu_tool(packed_transport_check)
 
+target_link_libraries(scene_intersection_check PRIVATE
+    raytracer::scene_runtime
+)
+
 if(RAYTRACER_ENABLE_CUDA)
     function(raytracer_add_cuda_tool target)
         add_executable(${target} ${target}.cpp)

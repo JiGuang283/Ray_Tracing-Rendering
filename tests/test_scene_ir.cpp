@@ -1,4 +1,5 @@
 #include "scene_ir.h"
+#include "scene_loader.h"
 #include "test_harness.h"
 
 #include <stdexcept>

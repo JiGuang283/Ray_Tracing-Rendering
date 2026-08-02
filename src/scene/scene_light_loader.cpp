@@ -1,5 +1,6 @@
 #include "scene_loader_internal.h"
 
+#include "asset_path.h"
 #include "directional_light.h"
 #include "environmental_light.h"
 #include "point_light.h"
@@ -31,7 +32,7 @@ void add_light(const LightIR &light, SceneBuildContext &context,
                     typed.origin, typed.u, typed.v, typed.intensity));
             } else if constexpr (std::is_same_v<T, EnvironmentLightIR>) {
                 const std::string path =
-                    resolve_asset_path(context, typed.path);
+                    resolve_asset_path(context.source_path, typed.path);
                 config.scene.lights.push_back(make_shared<EnvironmentLight>(
                     context.resources.load_image(path)));
             } else {

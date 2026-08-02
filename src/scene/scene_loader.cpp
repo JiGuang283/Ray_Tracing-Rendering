@@ -2,30 +2,11 @@
 
 #include "accel.h"
 #include "hittable_list.h"
-#include "json.hpp"
-#include "scene_ir.h"
 #include "scene_loader_internal.h"
 
-#include <fstream>
-#include <stdexcept>
 #include <vector>
 
-using json = nlohmann::json;
-
 using namespace scene_loader_internal;
-
-SceneDescription load_scene_description(const std::string &path) {
-    std::ifstream input(path);
-    if (!input) {
-        throw std::runtime_error("Scene file error: cannot open '" + path +
-                                 "'.");
-    }
-
-    SceneDescription description;
-    description.source_path = path;
-    input >> description.root;
-    return description;
-}
 
 SceneConfig build_scene_config(const SceneIR &ir) {
     SceneConfig config;
@@ -67,8 +48,4 @@ SceneConfig build_scene_config(const SceneDescription &description) {
 
 SceneConfig load_scene_file(const std::string &path) {
     return build_scene_config(load_scene_ir_file(path));
-}
-
-SceneIR load_scene_ir_file(const std::string &path) {
-    return parse_scene_ir(load_scene_description(path));
 }

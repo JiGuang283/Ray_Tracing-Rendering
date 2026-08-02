@@ -21,5 +21,6 @@ target_link_libraries(raytracer_render_data PUBLIC
     raytracer::materials
     raytracer::geometry
     raytracer::resources
-    raytracer::scene
+    raytracer::scene_ir
+    raytracer::scene_resources
 )

@@ -1,5 +1,6 @@
-#include "scene_loader_internal.h"
+#include "scene_resource_context.h"
 
+#include "asset_path.h"
 #include "material_programs.h"
 
 #include <stdexcept>
@@ -10,7 +11,7 @@ namespace {
 
 TextureHandle build_optional_texture(TextureIRId id,
                                      TextureSemantic semantic,
-                                     SceneBuildContext &context) {
+                                     SceneResourceContext &context) {
     return id == kInvalidTextureIR
                ? nullptr
                : build_texture(id, semantic, context);
@@ -18,7 +19,7 @@ TextureHandle build_optional_texture(TextureIRId id,
 
 TextureHandle compile_texture_node(const TextureIRData &data,
                                    TextureSemantic semantic,
-                                   SceneBuildContext &context) {
+                                   SceneResourceContext &context) {
     return std::visit(
         [&](const auto &typed) -> TextureHandle {
             using T = std::decay_t<decltype(typed)>;
@@ -46,7 +47,7 @@ TextureHandle compile_texture_node(const TextureIRData &data,
                                   : TextureChannel::RGB;
                 }
                 const std::string path =
-                    resolve_asset_path(context, typed.path);
+                    resolve_asset_path(context.source_path, typed.path);
                 return make_shared<ImageTexture>(
                     context.resources.load_image(path), color_space,
                     typed.sampler, channel);
@@ -81,7 +82,7 @@ TextureHandle compile_texture_node(const TextureIRData &data,
 } // namespace
 
 TextureHandle build_texture(TextureIRId id, TextureSemantic semantic,
-                            SceneBuildContext &context) {
+                            SceneResourceContext &context) {
     if (!context.scene_ir || id >= context.scene_ir->textures.size()) {
         throw std::runtime_error(
             "Scene file error: invalid texture IR id.");
@@ -110,7 +111,7 @@ TextureHandle build_texture(TextureIRId id, TextureSemantic semantic,
 }
 
 MaterialHandle build_material(const MaterialIR &material,
-                              SceneBuildContext &context) {
+                              SceneResourceContext &context) {
     return std::visit(
         [&](const auto &typed) -> MaterialHandle {
             using T = std::decay_t<decltype(typed)>;
@@ -157,7 +158,7 @@ MaterialHandle build_material(const MaterialIR &material,
         material.data);
 }
 
-MaterialHandle lookup_material(SceneBuildContext &context,
+MaterialHandle lookup_material(SceneResourceContext &context,
                                const std::string &name,
                                const std::string &context_name) {
     auto found = context.materials.find(name);

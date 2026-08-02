@@ -1,5 +1,6 @@
 #include "scene_loader_internal.h"
 
+#include "asset_path.h"
 #include "accel.h"
 #include "aarect.h"
 #include "box.h"
@@ -46,7 +47,8 @@ BuiltObject build_obj(const ObjObjectIR &obj, const std::string &node_context,
                       bool flip_emitters) {
     const MaterialHandle material =
         lookup_material(context, obj.material, node_context);
-    const std::string path = resolve_asset_path(context, obj.path);
+    const std::string path =
+        resolve_asset_path(context.source_path, obj.path);
     std::string error;
     const std::shared_ptr<const MeshAsset> asset =
         context.resources.load_obj(path, obj.build_bvh,
@@ -133,7 +135,8 @@ BuiltObject build_model(const ModelObjectIR &model,
                         const std::string &node_context,
                         SceneBuildContext &context, bool auto_emitters,
                         bool flip_emitters) {
-    const std::string path = resolve_asset_path(context, model.path);
+    const std::string path =
+        resolve_asset_path(context.source_path, model.path);
     ModelImportOptions options;
     std::string error;
     const std::shared_ptr<const ModelAsset> asset =
