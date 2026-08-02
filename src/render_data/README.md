@@ -1,18 +1,19 @@
 # Shared Render Data
 
-`render_data` is the host/device boundary for the renderer:
+`render_data` is the indexed host/device boundary for the renderer:
 
 ```text
-JSON -> SceneIR (double, owning resources)
-     -> CompiledScene (float32, indexed, owning arrays)
-     -> CompiledSceneView (read-only pointers and uint32 counts)
-     -> DeviceSceneStorage (CUDA ownership)
-     -> DeviceSceneView (device pointers with the same layout)
+JSON -> SceneIR (double source data)
+     -> CPU runtime (double polymorphic reference)
+     -> CompiledScene (float32 indexed owning arrays)
+        -> CompiledSceneView (borrowed host pointers)
+        -> DeviceSceneStorage -> DeviceSceneView (device pointers)
 ```
 
-The existing polymorphic CPU renderer remains the reference backend. Building
-a `CompiledScene` must not change it, and a compiled scene is treated as
-immutable after `compile_scene()` returns.
+`raytracer_render_data` depends on Scene IR and the host resource compiler, not
+on the CPU scene runtime or renderer. The polymorphic CPU renderer remains the
+double-precision reference backend. A compiled scene is immutable after
+`compile_scene()` returns.
 
 ## Data Contract
 
@@ -101,13 +102,14 @@ equirectangular Jacobian.
 `packed_transport_core.h` joins flat traversal, reconstruction, packed
 materials, BSDFs, lights, visibility, MIS, eta-aware Russian roulette, and
 camera ray generation. The host wrapper is a migration reference and does not
-replace the polymorphic CPU renderer. Integrator IDs 0 through 4 retain their
-existing path, roulette, direct-light, and MIS policies.
+replace the polymorphic CPU renderer. Integrator IDs 0 through 4 are lowered to
+the same `IntegratorPolicy` consumed by CPU and CUDA transport; the two
+backends intentionally retain separate double and float numerical kernels.
 
 Camera samples use an explicit per-path RNG. `PackedTransportResult` reports a
 typed failure instead of turning traversal, shading, or non-finite errors into
-black pixels. The future CUDA wavefront stages must preserve these state
-transitions even though they will execute them across multiple kernels.
+black pixels. The CUDA wavefront renderer preserves these state transitions
+across kernels.
 
 ## Media And Verification
 
@@ -129,6 +131,6 @@ sizes. The second compares fixed camera-ray corpora against the polymorphic
 double CPU reference for representative analytic, mesh, medium, textured, and
 complex glTF scenes.
 
-The CUDA check uploads every packed array and compares the shared float
-intersector on the CPU and GPU. CUDA remains an optional validation backend;
-the polymorphic CPU renderer is still the only production rendering path.
+The CUDA checks upload every packed array and compare intersection, shading,
+lighting, and transport against the Packed CPU reference. CUDA remains
+optional, but both CPU and CUDA are production `IRenderSession` backends.

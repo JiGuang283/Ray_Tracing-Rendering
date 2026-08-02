@@ -17,34 +17,62 @@ int integrator_id(IntegratorKind kind) noexcept {
     return static_cast<int>(kind);
 }
 
-IntegratorPolicy integrator_policy(IntegratorKind kind) {
-    IntegratorPolicy policy;
-    policy.kind = kind;
-    switch (kind) {
-    case IntegratorKind::Path:
-        policy.flags = INTEGRATOR_POLICY_NONE;
-        policy.rr_min_survival = 0.0f;
-        break;
-    case IntegratorKind::RussianRoulette:
-        policy.flags = INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
-        policy.rr_min_survival = 0.005f;
-        break;
-    case IntegratorKind::PBRPath:
-        policy.flags = INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
-        break;
-    case IntegratorKind::DirectLighting:
-        policy.flags = INTEGRATOR_POLICY_DIRECT_LIGHTING |
-                       INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
-        break;
-    case IntegratorKind::MISPath:
-        policy.flags = INTEGRATOR_POLICY_DIRECT_LIGHTING |
-                       INTEGRATOR_POLICY_MIS |
-                       INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
-        break;
-    default:
+const IntegratorDescriptor &integrator_descriptor(IntegratorKind kind) {
+    static const std::array<IntegratorDescriptor, 5> descriptors{{
+        {IntegratorKind::Path,
+         0,
+         "path",
+         {IntegratorKind::Path, INTEGRATOR_POLICY_NONE, 3, 0.0f},
+         true,
+         true},
+        {IntegratorKind::RussianRoulette,
+         1,
+         "russian_roulette",
+         {IntegratorKind::RussianRoulette,
+          INTEGRATOR_POLICY_RUSSIAN_ROULETTE, 3, 0.005f},
+         true,
+         true},
+        {IntegratorKind::PBRPath,
+         2,
+         "pbr_path",
+         {IntegratorKind::PBRPath, INTEGRATOR_POLICY_RUSSIAN_ROULETTE, 3,
+          0.05f},
+         true,
+         true},
+        {IntegratorKind::DirectLighting,
+         3,
+         "direct_lighting",
+         {IntegratorKind::DirectLighting,
+          INTEGRATOR_POLICY_DIRECT_LIGHTING |
+              INTEGRATOR_POLICY_RUSSIAN_ROULETTE,
+          3, 0.05f},
+         true,
+         true},
+        {IntegratorKind::MISPath,
+         4,
+         "mis_path",
+         {IntegratorKind::MISPath,
+          INTEGRATOR_POLICY_DIRECT_LIGHTING | INTEGRATOR_POLICY_MIS |
+              INTEGRATOR_POLICY_RUSSIAN_ROULETTE,
+          3, 0.05f},
+         true,
+         true},
+    }};
+    const std::uint32_t index = static_cast<std::uint32_t>(kind);
+    if (index >= descriptors.size()) {
         throw std::invalid_argument("invalid integrator kind");
     }
-    return policy;
+    return descriptors[index];
+}
+
+bool integrator_supported(IntegratorKind kind, RenderBackend backend) {
+    const IntegratorDescriptor &descriptor = integrator_descriptor(kind);
+    return backend == RenderBackend::CPU ? descriptor.supports_cpu
+                                         : descriptor.supports_cuda;
+}
+
+IntegratorPolicy integrator_policy(IntegratorKind kind) {
+    return integrator_descriptor(kind).policy;
 }
 
 std::size_t ImageExtent::pixel_count() const {

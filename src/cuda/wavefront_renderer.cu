@@ -61,9 +61,13 @@ __global__ void initialize_paths_kernel(
     std::uint32_t width, std::uint32_t height,
     std::uint32_t pixel_offset, std::uint32_t path_count,
     std::uint32_t sample_index, std::uint32_t seed,
-    PackedPathState *states, std::uint32_t *active_indices) {
+    PackedPathState *states, std::uint32_t *active_indices,
+    std::uint32_t *active_count) {
     const std::uint32_t local_index =
         blockIdx.x * blockDim.x + threadIdx.x;
+    if (local_index == 0) {
+        *active_count = path_count;
+    }
     if (local_index >= path_count) {
         return;
     }
@@ -186,8 +190,7 @@ std::size_t workspace_bytes(std::uint32_t pixel_count,
            2 * sizeof(std::uint32_t) + sizeof(DeviceRenderCounters);
 }
 
-void ensure_workspace_fits(std::size_t bytes,
-                           std::size_t current_bytes) {
+void ensure_workspace_fits(std::size_t bytes, std::size_t current_bytes) {
     const DeviceMemoryInfo memory = query_device_memory();
     const std::size_t available = memory.free_bytes + current_bytes;
     const std::size_t usable = available > kMemoryReserve
@@ -315,11 +318,9 @@ CudaRenderOutput render_wavefront_cuda(
             initialize_paths_kernel<<<grid, settings.block_size>>>(
                 scene, settings.transport, settings.width, settings.height,
                 offset, count, sample, settings.seed, buffers.states.data(),
-                buffers.active_indices.data());
+                buffers.active_indices.data(), buffers.active_count.data());
             RT_CUDA_CHECK(cudaGetLastError());
 
-            RT_CUDA_CHECK(cudaMemcpy(buffers.active_count.data(), &count,
-                                     sizeof(count), cudaMemcpyHostToDevice));
             for (std::uint32_t depth = 0;
                  depth < settings.transport.max_depth; ++depth) {
                 RT_CUDA_CHECK(cudaMemset(buffers.next_count.data(), 0,

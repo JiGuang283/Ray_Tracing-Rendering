@@ -5,6 +5,7 @@
 #include "renderer.h"
 #include "scene_loader.h"
 
+#include <atomic>
 #include <chrono>
 #include <stdexcept>
 #include <utility>
@@ -32,6 +33,21 @@ class CpuRenderSession final : public IRenderSession {
     RenderResult render(const RenderRequest &request,
                         const CancellationToken &cancel,
                         PreviewSurface *preview) override {
+        bool expected = false;
+        if (!m_rendering.compare_exchange_strong(expected, true)) {
+            throw std::logic_error("CPU render session is already rendering");
+        }
+        struct Guard {
+            std::atomic<bool> &state;
+            ~Guard() {
+                state.store(false, std::memory_order_relaxed);
+            }
+        } guard{m_rendering};
+        validate_render_request(request);
+        if (!integrator_supported(request.integrator, RenderBackend::CPU)) {
+            throw std::invalid_argument(
+                "integrator is not supported by the CPU backend");
+        }
         m_renderer.set_integrator(make_cpu_integrator(request.integrator));
         RenderResult result = m_renderer.render(
             m_scene.scene.world, m_camera, m_scene.preset.background,
@@ -47,6 +63,7 @@ class CpuRenderSession final : public IRenderSession {
     std::shared_ptr<camera> m_camera;
     Renderer m_renderer;
     PreparationStats m_preparation;
+    std::atomic<bool> m_rendering{false};
 };
 
 } // namespace

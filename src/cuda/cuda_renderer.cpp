@@ -5,6 +5,7 @@
 #include "scene_compiler.h"
 #include "wavefront_renderer.h"
 
+#include <atomic>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -40,7 +41,22 @@ class CudaRenderSession final : public IRenderSession {
     RenderResult render(const RenderRequest &request,
                         const CancellationToken &cancel,
                         PreviewSurface *preview) override {
+        bool expected = false;
+        if (!m_rendering.compare_exchange_strong(expected, true)) {
+            throw std::logic_error(
+                "CUDA render session is already rendering");
+        }
+        struct Guard {
+            std::atomic<bool> &state;
+            ~Guard() {
+                state.store(false, std::memory_order_relaxed);
+            }
+        } guard{m_rendering};
         validate_render_request(request);
+        if (!integrator_supported(request.integrator, RenderBackend::CUDA)) {
+            throw std::invalid_argument(
+                "integrator is not supported by the CUDA backend");
+        }
         const auto begin = std::chrono::steady_clock::now();
         CudaRenderSettings transport_settings;
         transport_settings.transport.policy =
@@ -131,6 +147,7 @@ class CudaRenderSession final : public IRenderSession {
     CudaRenderWorkspace m_workspace;
     PreparationStats m_preparation;
     std::string m_device_name;
+    std::atomic<bool> m_rendering{false};
 };
 
 std::unique_ptr<IRenderSession> make_cuda_render_session(const SceneIR &ir) {

@@ -51,8 +51,8 @@ color emitted_radiance(const integrator_common::ShadedSurface &shaded,
 
     const double light_pdf = light_sampler.pdf(
         current_ray.origin(), current_ray.direction());
-    return shaded.shading.emission * integrator_common::power_heuristic(
-                                         previous_bsdf_pdf, light_pdf);
+    return shaded.shading.emission *
+           integrator_common::power_heuristic(previous_bsdf_pdf, light_pdf);
 }
 
 } // namespace
@@ -93,25 +93,26 @@ color CpuPathIntegrator::Li(const ray &r, const hittable &scene,
     for (int depth = 0; depth < m_max_depth; ++depth) {
         hit_record record;
         if (!scene.hit(current_ray, 0.001, infinity, record, rng)) {
-            radiance += throughput * miss_radiance(
-                                         current_ray, background,
-                                         light_sampler, m_policy, depth,
-                                         delta_bounce, previous_bsdf_pdf);
+            radiance += throughput *
+                        miss_radiance(current_ray, background, light_sampler,
+                                      m_policy, depth, delta_bounce,
+                                      previous_bsdf_pdf);
             break;
         }
 
         const auto shaded = integrator_common::shade_surface(
             record, current_ray, context.shader_scratch);
-        radiance += throughput * emitted_radiance(
-                                     shaded, current_ray, light_sampler,
+        radiance += throughput *
+                    emitted_radiance(shaded, current_ray, light_sampler,
                                      m_policy, depth, delta_bounce,
                                      previous_bsdf_pdf);
 
         if (m_policy.uses_direct_lighting() &&
             !shaded.shading.bsdf.empty() && !light_sampler.empty()) {
-            radiance += throughput * integrator_common::sample_direct_lighting(
-                                         shaded, scene, light_sampler, rng,
-                                         m_policy.uses_mis());
+            radiance +=
+                throughput * integrator_common::sample_direct_lighting(
+                                 shaded, scene, light_sampler, rng,
+                                 m_policy.uses_mis());
         }
 
         if (depth + 1 >= m_max_depth) {

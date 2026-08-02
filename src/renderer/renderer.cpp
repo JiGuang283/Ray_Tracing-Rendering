@@ -15,26 +15,6 @@
 Renderer::Renderer() : m_is_rendering(false) {
 }
 
-RenderStats
-Renderer::render(shared_ptr<hittable> world, shared_ptr<camera> cam,
-                 const color &background, RenderBuffer &target_buffer,
-                 const std::vector<shared_ptr<Light>> &lights) {
-    RenderRequest request;
-    request.extent = make_image_extent(target_buffer.width(),
-                                       target_buffer.height());
-    request.samples_per_pixel =
-        static_cast<std::uint32_t>(m_settings.samples_per_pixel);
-    request.seed = m_settings.seed;
-    request.threads = static_cast<std::uint32_t>(
-        std::max(0, m_settings.thread_count));
-    request.sample_clamp = m_settings.sample_clamp;
-    request.color_pipeline = m_settings.color_pipeline;
-    RenderResult result =
-        render(std::move(world), std::move(cam), background, lights, request);
-    target_buffer = std::move(result.display);
-    return result.stats;
-}
-
 RenderResult Renderer::render(
     shared_ptr<hittable> world, shared_ptr<camera> cam,
     const color &background, const std::vector<shared_ptr<Light>> &lights,
@@ -129,10 +109,10 @@ RenderResult Renderer::render(
                                 request.seed, pixel_index, s));
                             IntegratorContext integrator_context{
                                 sampler.rng(), shader_scratch, &light_sampler};
-                        CameraSample sample = sampler.next_camera_sample(
-                            i, j, image_width, image_height);
-                        ray r = cam->get_ray(sample.u, sample.v,
-                                             sampler.rng());
+                            CameraSample sample = sampler.next_camera_sample(
+                                i, j, image_width, image_height);
+                            ray r = cam->get_ray(sample.u, sample.v,
+                                                 sampler.rng());
                             const FilteredCameraSample filtered =
                                 filter_camera_sample(
                                     m_integrator->Li(r, *world, background,

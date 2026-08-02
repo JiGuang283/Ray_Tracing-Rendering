@@ -61,17 +61,24 @@ if(RAYTRACER_ENABLE_CUDA)
         COMMAND cuda_shading_check --ids 7,8,11,23 --grid-width 9
                 --grid-height 7
     )
-    add_test(
-        NAME cuda_transport_check
-        COMMAND cuda_transport_check --ids 1,7,23 --width 8
-                --height 6 --spp 1 --max-depth 6 --batch-size 17
-    )
+    foreach(integrator RANGE 0 4)
+        add_test(
+            NAME cuda_transport_policy_${integrator}
+            COMMAND cuda_transport_check --ids 1,7,23 --width 8
+                    --height 6 --spp 1 --max-depth 6 --batch-size 17
+                    --integrator ${integrator}
+        )
+    endforeach()
 
     set_tests_properties(
         cuda_scene_check
         cuda_light_check
         cuda_shading_check
-        cuda_transport_check
+        cuda_transport_policy_0
+        cuda_transport_policy_1
+        cuda_transport_policy_2
+        cuda_transport_policy_3
+        cuda_transport_policy_4
         PROPERTIES
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             SKIP_RETURN_CODE 77

@@ -33,7 +33,9 @@ enum IntegratorPolicyFlags : std::uint32_t {
 
 struct IntegratorPolicy {
     IntegratorKind kind = IntegratorKind::MISPath;
-    std::uint32_t flags = INTEGRATOR_POLICY_NONE;
+    std::uint32_t flags = INTEGRATOR_POLICY_DIRECT_LIGHTING |
+                          INTEGRATOR_POLICY_MIS |
+                          INTEGRATOR_POLICY_RUSSIAN_ROULETTE;
     std::uint32_t rr_start_depth = 3;
     float rr_min_survival = 0.05f;
 
@@ -56,12 +58,24 @@ valid_integrator_policy(const IntegratorPolicy &policy) noexcept {
     return static_cast<std::uint32_t>(policy.kind) <=
                static_cast<std::uint32_t>(IntegratorKind::MISPath) &&
            (policy.flags & ~known_flags) == 0 &&
+           (!policy.uses_mis() || policy.uses_direct_lighting()) &&
            policy.rr_min_survival >= 0.0f &&
            policy.rr_min_survival <= 0.95f;
 }
 
+struct IntegratorDescriptor {
+    IntegratorKind kind = IntegratorKind::MISPath;
+    int id = 4;
+    const char *name = "mis_path";
+    IntegratorPolicy policy;
+    bool supports_cpu = true;
+    bool supports_cuda = true;
+};
+
 IntegratorKind integrator_kind_from_id(int id);
 int integrator_id(IntegratorKind kind) noexcept;
+const IntegratorDescriptor &integrator_descriptor(IntegratorKind kind);
+bool integrator_supported(IntegratorKind kind, RenderBackend backend);
 IntegratorPolicy integrator_policy(IntegratorKind kind);
 
 struct ImageExtent {

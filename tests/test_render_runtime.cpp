@@ -89,6 +89,45 @@ TEST_CASE(render_request_rejects_invalid_dimensions_and_integrators) {
         rejected_integrator = true;
     }
     REQUIRE(rejected_integrator);
+
+    RenderRequest request = test_request(1);
+    request.samples_per_pixel = 0;
+    bool rejected_spp = false;
+    try {
+        validate_render_request(request);
+    } catch (const std::invalid_argument &) {
+        rejected_spp = true;
+    }
+    REQUIRE(rejected_spp);
+
+    request = test_request(1);
+    request.max_depth = 0;
+    bool rejected_depth = false;
+    try {
+        validate_render_request(request);
+    } catch (const std::invalid_argument &) {
+        rejected_depth = true;
+    }
+    REQUIRE(rejected_depth);
+}
+
+TEST_CASE(integrator_ids_map_to_shared_transport_policies) {
+    for (int id = 0; id <= 4; ++id) {
+        const IntegratorKind kind = integrator_kind_from_id(id);
+        const IntegratorDescriptor &descriptor = integrator_descriptor(kind);
+        const IntegratorPolicy policy = integrator_policy(kind);
+        REQUIRE(valid_integrator_policy(policy));
+        REQUIRE(descriptor.id == id);
+        REQUIRE(integrator_id(policy.kind) == id);
+        REQUIRE(integrator_supported(kind, RenderBackend::CPU));
+        REQUIRE(integrator_supported(kind, RenderBackend::CUDA));
+    }
+    REQUIRE(!integrator_policy(IntegratorKind::Path)
+                 .uses_russian_roulette());
+    REQUIRE(integrator_policy(IntegratorKind::DirectLighting)
+                .uses_direct_lighting());
+    REQUIRE(!integrator_policy(IntegratorKind::DirectLighting).uses_mis());
+    REQUIRE(integrator_policy(IntegratorKind::MISPath).uses_mis());
 }
 
 TEST_CASE(preview_surface_supports_concurrent_publish_and_snapshot) {

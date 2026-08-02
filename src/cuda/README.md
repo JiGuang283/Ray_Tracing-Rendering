@@ -11,6 +11,8 @@ complete camera light transport, and GPU Film accumulation.
 - `DeviceBuffer<T>` is move-only RAII ownership for one device allocation.
 - `DeviceSceneStorage` owns one device buffer for every `CompiledScene` array.
 - `DeviceSceneView` is a trivially-copyable borrowed view passed to kernels.
+- `CudaRenderSession` compiles and uploads one scene during construction, then
+  retains `DeviceSceneStorage` and a reusable `CudaRenderWorkspace`.
 - Scene upload validates all packed ranges first and commits only after every
   allocation and copy succeeds.
 - Empty host arrays become null device pointers with a zero count.
@@ -53,17 +55,19 @@ lighting, visibility, and BSDF work together for one bounce.
 
 ## Wavefront Transport
 
-`render_wavefront_cuda()` assigns one `PackedPathState` to every active camera
-sample in a batch. Two compact index queues alternate between bounces. Each
-path owns its RNG state, so atomic queue ordering cannot change its random
-sequence. Finished paths are filtered and accumulated into a linear float
-Film on the device; only the completed Film and counters are downloaded.
+`render_wavefront_cuda()` assigns one `PackedPathState` to every camera sample
+in a batch. Two compact index queues and two queue counts alternate between
+bounces. Counts remain on the device; every depth launches a fixed batch grid,
+and inactive threads return immediately. There is no bounce-level device to
+host count copy. Each path owns its RNG state, so atomic queue ordering cannot
+change its random sequence.
 
-The host stops launching bounce work when the compact queue becomes empty.
-Batching caps temporary memory independently of image resolution, while each
-sample layer is accumulated in a fixed order for repeatable single-device
-results. Transport errors remain typed and are counted rather than silently
-turning into successful black paths.
+The host synchronizes once after each batch for cancellation and error
+handling. Finished paths are filtered and accumulated into a linear float Film
+on the device; only the completed Film and counters are downloaded. Workspace
+buffers grow on demand and retain their addresses and capacities across
+session renders. Transport errors remain typed and are counted rather than
+silently turning into successful black paths.
 
 ## Build And Check
 
@@ -94,9 +98,9 @@ for every material so validation is not limited to camera-visible surfaces.
 `cuda_light_check` compares every packed light type, conditional PDFs, global
 non-delta selection, and final RNG states on the CPU and GPU.
 
-`cuda_transport_check` compares the CPU packed reference and the compact CUDA
-path queue at the Film boundary, checks status counts, and renders each case
-twice to verify deterministic GPU accumulation.
+`cuda_transport_check` compares the CPU packed reference and CUDA path queue at
+the Film boundary, checks status counts, renders each case twice for
+determinism, and verifies that workspace addresses and capacities are reused.
 
 The CUDA option defaults to `OFF`, so normal CPU builds do not require a CUDA
 compiler or runtime. `--backend cpu` remains the application default. A CPU-only
