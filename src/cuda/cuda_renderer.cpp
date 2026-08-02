@@ -54,7 +54,7 @@ class CudaRenderSession final : public IRenderSession {
         transport_settings.sample_clamp =
             static_cast<float>(request.sample_clamp);
         const CudaRenderOutput output = render_wavefront_cuda(
-            m_device_scene.view(), transport_settings,
+            m_device_scene.view(), transport_settings, m_workspace,
             cancel.native_flag());
 
         BeautyFilm beauty(request.extent);
@@ -104,6 +104,11 @@ class CudaRenderSession final : public IRenderSession {
         stats.device_seconds = output.stats.milliseconds / 1000.0;
         stats.scene_bytes = m_preparation.scene_bytes;
         stats.workspace_bytes = output.stats.workspace_bytes;
+        stats.workspace_generation = output.stats.workspace_generation;
+        stats.workspace_pixel_capacity =
+            output.stats.workspace_pixel_capacity;
+        stats.workspace_path_capacity =
+            output.stats.workspace_path_capacity;
         stats.traversal_steps = output.stats.traversal_steps;
         stats.shadow_rays = output.stats.shadow_rays;
         stats.batch_size = static_cast<int>(output.stats.batch_size);
@@ -123,6 +128,7 @@ class CudaRenderSession final : public IRenderSession {
 
   private:
     DeviceSceneStorage m_device_scene;
+    CudaRenderWorkspace m_workspace;
     PreparationStats m_preparation;
     std::string m_device_name;
 };

@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -41,6 +42,9 @@ struct CudaRenderStats {
     std::uint32_t batch_size = 0;
     std::uint32_t batch_count = 0;
     std::size_t workspace_bytes = 0;
+    std::uint64_t workspace_generation = 0;
+    std::uint32_t workspace_pixel_capacity = 0;
+    std::uint32_t workspace_path_capacity = 0;
     std::array<std::uint64_t, 8> status_counts{};
     bool cancelled = false;
 };
@@ -49,6 +53,42 @@ struct CudaRenderOutput {
     std::vector<CudaFilmPixel> film;
     CudaRenderStats stats;
 };
+
+struct CudaWorkspaceInfo {
+    std::size_t bytes = 0;
+    std::uint64_t generation = 0;
+    std::uint32_t pixel_capacity = 0;
+    std::uint32_t path_capacity = 0;
+    std::uintptr_t film_address = 0;
+    std::uintptr_t path_address = 0;
+};
+
+class CudaRenderWorkspace {
+  public:
+    CudaRenderWorkspace();
+    ~CudaRenderWorkspace();
+
+    CudaRenderWorkspace(const CudaRenderWorkspace &) = delete;
+    CudaRenderWorkspace &operator=(const CudaRenderWorkspace &) = delete;
+    CudaRenderWorkspace(CudaRenderWorkspace &&) noexcept;
+    CudaRenderWorkspace &operator=(CudaRenderWorkspace &&) noexcept;
+
+    CudaWorkspaceInfo info() const noexcept;
+
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+
+    friend CudaRenderOutput render_wavefront_cuda(
+        DeviceSceneView scene, const CudaRenderSettings &settings,
+        CudaRenderWorkspace &workspace,
+        const std::atomic<bool> *cancel);
+};
+
+CudaRenderOutput render_wavefront_cuda(
+    DeviceSceneView scene, const CudaRenderSettings &settings,
+    CudaRenderWorkspace &workspace,
+    const std::atomic<bool> *cancel = nullptr);
 
 CudaRenderOutput render_wavefront_cuda(
     DeviceSceneView scene, const CudaRenderSettings &settings,

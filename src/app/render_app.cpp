@@ -217,6 +217,12 @@ int run_benchmark(const AppOptions &options) {
                   << " device_seconds=" << last_stats.device_seconds
                   << " scene_bytes=" << last_stats.scene_bytes
                   << " workspace_bytes=" << last_stats.workspace_bytes
+                  << " workspace_generation="
+                  << last_stats.workspace_generation
+                  << " workspace_pixel_capacity="
+                  << last_stats.workspace_pixel_capacity
+                  << " workspace_path_capacity="
+                  << last_stats.workspace_path_capacity
                   << " batch_size=" << last_stats.batch_size
                   << " batch_count=" << last_stats.batch_count
                   << " traversal_steps=" << last_stats.traversal_steps
@@ -253,6 +259,12 @@ int run_benchmark(const AppOptions &options) {
               << " median_device_seconds=" << median_device_seconds
               << " scene_bytes=" << last_stats.scene_bytes
               << " workspace_bytes=" << last_stats.workspace_bytes
+              << " workspace_generation="
+              << last_stats.workspace_generation
+              << " workspace_pixel_capacity="
+              << last_stats.workspace_pixel_capacity
+              << " workspace_path_capacity="
+              << last_stats.workspace_path_capacity
               << " batch_size=" << last_stats.batch_size
               << " batch_count=" << last_stats.batch_count
               << " clamped_samples=" << clamped_samples

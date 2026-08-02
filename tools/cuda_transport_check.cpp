@@ -223,16 +223,27 @@ bool check_scene(int id, const std::filesystem::path &path,
     cuda_backend::DeviceSceneStorage device_scene;
     const cuda_backend::DeviceSceneUploadStats upload =
         device_scene.upload(scene);
+    cuda_backend::CudaRenderWorkspace workspace;
     const cuda_backend::CudaRenderOutput gpu =
-        cuda_backend::render_wavefront_cuda(device_scene.view(), settings);
+        cuda_backend::render_wavefront_cuda(device_scene.view(), settings,
+                                            workspace);
+    const cuda_backend::CudaWorkspaceInfo first_workspace = workspace.info();
     const cuda_backend::CudaRenderOutput repeated =
-        cuda_backend::render_wavefront_cuda(device_scene.view(), settings);
+        cuda_backend::render_wavefront_cuda(device_scene.view(), settings,
+                                            workspace);
+    const cuda_backend::CudaWorkspaceInfo second_workspace = workspace.info();
     const std::size_t pixel_errors = compare_film(cpu.film, gpu.film);
     const bool deterministic = identical_output(gpu, repeated);
     const bool status_match =
         cpu.stats.status_counts == gpu.stats.status_counts;
+    const bool workspace_reused =
+        first_workspace.generation == second_workspace.generation &&
+        first_workspace.pixel_capacity == second_workspace.pixel_capacity &&
+        first_workspace.path_capacity == second_workspace.path_capacity &&
+        first_workspace.film_address == second_workspace.film_address &&
+        first_workspace.path_address == second_workspace.path_address;
     const bool passed = pixel_errors == 0 && deterministic && status_match &&
-                        gpu.stats.invalid_samples == 0;
+                        workspace_reused && gpu.stats.invalid_samples == 0;
     std::cout << "CUDA_TRANSPORT scene=" << id
               << " pixels=" << settings.width * settings.height
               << " spp=" << settings.samples_per_pixel
@@ -240,6 +251,7 @@ bool check_scene(int id, const std::filesystem::path &path,
               << " pixel_errors=" << pixel_errors
               << " status_match=" << (status_match ? 1 : 0)
               << " deterministic=" << (deterministic ? 1 : 0)
+              << " workspace_reused=" << (workspace_reused ? 1 : 0)
               << " invalid=" << gpu.stats.invalid_samples
               << " traversal_steps=" << gpu.stats.traversal_steps
               << " shadow_rays=" << gpu.stats.shadow_rays

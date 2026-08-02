@@ -86,11 +86,11 @@ __global__ void initialize_paths_kernel(
 __global__ void advance_paths_kernel(
     DeviceSceneView scene, PackedTransportSettings transport,
     PackedPathState *states, const std::uint32_t *active_indices,
-    std::uint32_t active_count, std::uint32_t *next_indices,
+    const std::uint32_t *active_count, std::uint32_t *next_indices,
     std::uint32_t *next_count) {
     const std::uint32_t queue_index =
         blockIdx.x * blockDim.x + threadIdx.x;
-    if (queue_index >= active_count) {
+    if (queue_index >= *active_count) {
         return;
     }
     const std::uint32_t path_index = active_indices[queue_index];
@@ -183,13 +183,15 @@ std::size_t workspace_bytes(std::uint32_t pixel_count,
            static_cast<std::size_t>(batch_size) * sizeof(PackedPathState) +
            static_cast<std::size_t>(batch_size) *
                2 * sizeof(std::uint32_t) +
-           sizeof(std::uint32_t) + sizeof(DeviceRenderCounters);
+           2 * sizeof(std::uint32_t) + sizeof(DeviceRenderCounters);
 }
 
-void ensure_workspace_fits(std::size_t bytes) {
+void ensure_workspace_fits(std::size_t bytes,
+                           std::size_t current_bytes) {
     const DeviceMemoryInfo memory = query_device_memory();
-    const std::size_t usable = memory.free_bytes > kMemoryReserve
-                                   ? memory.free_bytes - kMemoryReserve
+    const std::size_t available = memory.free_bytes + current_bytes;
+    const std::size_t usable = available > kMemoryReserve
+                                   ? available - kMemoryReserve
                                    : 0;
     if (bytes <= usable) {
         return;
@@ -203,9 +205,79 @@ void ensure_workspace_fits(std::size_t bytes) {
 
 } // namespace
 
+struct CudaRenderWorkspace::Impl {
+    DeviceBuffer<CudaFilmPixel> film;
+    DeviceBuffer<PackedPathState> states;
+    DeviceBuffer<std::uint32_t> active_indices;
+    DeviceBuffer<std::uint32_t> next_indices;
+    DeviceBuffer<std::uint32_t> active_count;
+    DeviceBuffer<std::uint32_t> next_count;
+    DeviceBuffer<DeviceRenderCounters> counters;
+    std::uint64_t generation = 0;
+
+    std::size_t allocated_bytes() const noexcept {
+        return film.bytes() + states.bytes() + active_indices.bytes() +
+               next_indices.bytes() + active_count.bytes() +
+               next_count.bytes() + counters.bytes();
+    }
+
+    void ensure_capacity(std::uint32_t pixel_count,
+                         std::uint32_t batch_size) {
+        const std::uint32_t pixel_capacity =
+            std::max(pixel_count, film.size());
+        const std::uint32_t path_capacity =
+            std::max(batch_size, states.size());
+        const std::size_t required =
+            workspace_bytes(pixel_capacity, path_capacity);
+        const std::size_t current = allocated_bytes();
+        if (required > current) {
+            ensure_workspace_fits(required, current);
+        }
+
+        bool changed = false;
+        changed |= film.ensure_capacity_discard(pixel_count);
+        changed |= states.ensure_capacity_discard(batch_size);
+        changed |= active_indices.ensure_capacity_discard(batch_size);
+        changed |= next_indices.ensure_capacity_discard(batch_size);
+        changed |= active_count.ensure_capacity_discard(1);
+        changed |= next_count.ensure_capacity_discard(1);
+        changed |= counters.ensure_capacity_discard(1);
+        if (changed) {
+            ++generation;
+        }
+    }
+
+    CudaWorkspaceInfo info() const noexcept {
+        CudaWorkspaceInfo result;
+        result.bytes = allocated_bytes();
+        result.generation = generation;
+        result.pixel_capacity = film.size();
+        result.path_capacity = states.size();
+        result.film_address =
+            reinterpret_cast<std::uintptr_t>(film.data());
+        result.path_address =
+            reinterpret_cast<std::uintptr_t>(states.data());
+        return result;
+    }
+};
+
+CudaRenderWorkspace::CudaRenderWorkspace()
+    : m_impl(std::make_unique<Impl>()) {
+}
+
+CudaRenderWorkspace::~CudaRenderWorkspace() = default;
+CudaRenderWorkspace::CudaRenderWorkspace(CudaRenderWorkspace &&) noexcept =
+    default;
+CudaRenderWorkspace &CudaRenderWorkspace::operator=(
+    CudaRenderWorkspace &&) noexcept = default;
+
+CudaWorkspaceInfo CudaRenderWorkspace::info() const noexcept {
+    return m_impl ? m_impl->info() : CudaWorkspaceInfo{};
+}
+
 CudaRenderOutput render_wavefront_cuda(
     DeviceSceneView scene, const CudaRenderSettings &settings,
-    const std::atomic<bool> *cancel) {
+    CudaRenderWorkspace &workspace, const std::atomic<bool> *cancel) {
     validate_settings(settings);
     if (scene.scene.aggregates.count == 0) {
         throw std::invalid_argument("CUDA render scene is empty");
@@ -214,24 +286,13 @@ CudaRenderOutput render_wavefront_cuda(
     const std::uint32_t pixel_count = settings.width * settings.height;
     const std::uint32_t batch_size =
         choose_batch_size(settings, pixel_count);
-    const std::size_t required_workspace =
-        workspace_bytes(pixel_count, batch_size);
-    ensure_workspace_fits(required_workspace);
-
-    DeviceBuffer<CudaFilmPixel> film;
-    DeviceBuffer<PackedPathState> states;
-    DeviceBuffer<std::uint32_t> active_indices;
-    DeviceBuffer<std::uint32_t> next_indices;
-    DeviceBuffer<std::uint32_t> next_count;
-    DeviceBuffer<DeviceRenderCounters> counters;
-    film.allocate(pixel_count);
-    states.allocate(batch_size);
-    active_indices.allocate(batch_size);
-    next_indices.allocate(batch_size);
-    next_count.allocate(1);
-    counters.allocate(1);
-    RT_CUDA_CHECK(cudaMemset(film.data(), 0, film.bytes()));
-    RT_CUDA_CHECK(cudaMemset(counters.data(), 0, counters.bytes()));
+    workspace.m_impl->ensure_capacity(pixel_count, batch_size);
+    CudaRenderWorkspace::Impl &buffers = *workspace.m_impl;
+    RT_CUDA_CHECK(cudaMemset(buffers.film.data(), 0,
+                             static_cast<std::size_t>(pixel_count) *
+                                 sizeof(CudaFilmPixel)));
+    RT_CUDA_CHECK(cudaMemset(buffers.counters.data(), 0,
+                             sizeof(DeviceRenderCounters)));
 
     CudaEvent begin;
     CudaEvent end;
@@ -253,43 +314,40 @@ CudaRenderOutput render_wavefront_cuda(
                 (count + settings.block_size - 1) / settings.block_size;
             initialize_paths_kernel<<<grid, settings.block_size>>>(
                 scene, settings.transport, settings.width, settings.height,
-                offset, count, sample, settings.seed, states.data(),
-                active_indices.data());
+                offset, count, sample, settings.seed, buffers.states.data(),
+                buffers.active_indices.data());
             RT_CUDA_CHECK(cudaGetLastError());
 
-            std::uint32_t active_paths = count;
+            RT_CUDA_CHECK(cudaMemcpy(buffers.active_count.data(), &count,
+                                     sizeof(count), cudaMemcpyHostToDevice));
             for (std::uint32_t depth = 0;
-                 depth < settings.transport.max_depth && active_paths != 0;
-                 ++depth) {
-                RT_CUDA_CHECK(cudaMemset(next_count.data(), 0,
+                 depth < settings.transport.max_depth; ++depth) {
+                RT_CUDA_CHECK(cudaMemset(buffers.next_count.data(), 0,
                                          sizeof(std::uint32_t)));
-                const std::uint32_t active_grid =
-                    (active_paths + settings.block_size - 1) /
-                    settings.block_size;
-                advance_paths_kernel<<<active_grid, settings.block_size>>>(
-                    scene, settings.transport, states.data(),
-                    active_indices.data(), active_paths,
-                    next_indices.data(), next_count.data());
+                advance_paths_kernel<<<grid, settings.block_size>>>(
+                    scene, settings.transport, buffers.states.data(),
+                    buffers.active_indices.data(),
+                    buffers.active_count.data(), buffers.next_indices.data(),
+                    buffers.next_count.data());
                 RT_CUDA_CHECK(cudaGetLastError());
-                RT_CUDA_CHECK(cudaMemcpy(&active_paths, next_count.data(),
-                                         sizeof(active_paths),
-                                         cudaMemcpyDeviceToHost));
-                active_indices.swap(next_indices);
+                buffers.active_indices.swap(buffers.next_indices);
+                buffers.active_count.swap(buffers.next_count);
             }
 
             accumulate_paths_kernel<<<grid, settings.block_size>>>(
-                states.data(), count, settings.sample_clamp, film.data(),
-                counters.data());
+                buffers.states.data(), count, settings.sample_clamp,
+                buffers.film.data(), buffers.counters.data());
             RT_CUDA_CHECK(cudaGetLastError());
+            RT_CUDA_CHECK(cudaStreamSynchronize(nullptr));
         }
     }
     RT_CUDA_CHECK(cudaEventRecord(end));
     RT_CUDA_CHECK(cudaEventSynchronize(end));
 
     CudaRenderOutput output;
-    film.download(output.film);
+    buffers.film.download_prefix(output.film, pixel_count);
     std::vector<DeviceRenderCounters> host_counters;
-    counters.download(host_counters);
+    buffers.counters.download_prefix(host_counters, 1);
     const DeviceRenderCounters &counter = host_counters.front();
     RT_CUDA_CHECK(cudaEventElapsedTime(&output.stats.milliseconds, begin, end));
     output.stats.traversal_steps = counter.traversal_steps;
@@ -298,7 +356,11 @@ CudaRenderOutput render_wavefront_cuda(
     output.stats.invalid_samples = counter.invalid_samples;
     output.stats.batch_size = batch_size;
     output.stats.batch_count = batch_count;
-    output.stats.workspace_bytes = required_workspace;
+    const CudaWorkspaceInfo workspace_info = workspace.info();
+    output.stats.workspace_bytes = workspace_info.bytes;
+    output.stats.workspace_generation = workspace_info.generation;
+    output.stats.workspace_pixel_capacity = workspace_info.pixel_capacity;
+    output.stats.workspace_path_capacity = workspace_info.path_capacity;
     output.stats.cancelled = cancelled;
     for (std::size_t index = 0; index < output.stats.status_counts.size();
          ++index) {
@@ -306,6 +368,13 @@ CudaRenderOutput render_wavefront_cuda(
         output.stats.sample_count += counter.status_counts[index];
     }
     return output;
+}
+
+CudaRenderOutput render_wavefront_cuda(
+    DeviceSceneView scene, const CudaRenderSettings &settings,
+    const std::atomic<bool> *cancel) {
+    CudaRenderWorkspace workspace;
+    return render_wavefront_cuda(scene, settings, workspace, cancel);
 }
 
 } // namespace cuda_backend

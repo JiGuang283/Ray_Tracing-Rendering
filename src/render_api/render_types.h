@@ -114,6 +114,9 @@ struct RenderStats {
     std::string device_name = "host";
     std::size_t scene_bytes = 0;
     std::size_t workspace_bytes = 0;
+    std::uint64_t workspace_generation = 0;
+    std::uint32_t workspace_pixel_capacity = 0;
+    std::uint32_t workspace_path_capacity = 0;
     std::uint64_t traversal_steps = 0;
     std::uint64_t shadow_rays = 0;
     int batch_size = 0;

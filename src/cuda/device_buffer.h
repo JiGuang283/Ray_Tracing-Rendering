@@ -72,6 +72,35 @@ public:
         }
     }
 
+    void download_prefix(std::vector<T> &destination,
+                         std::size_t count) const {
+        if (count > m_count) {
+            throw std::out_of_range("CUDA buffer download exceeds capacity");
+        }
+        destination.resize(count);
+        if (count != 0) {
+            RT_CUDA_CHECK(cudaMemcpy(destination.data(), m_data,
+                                     count * sizeof(T),
+                                     cudaMemcpyDeviceToHost));
+        }
+    }
+
+    bool ensure_capacity_discard(std::size_t count) {
+        if (count <= m_count) {
+            return false;
+        }
+        if (count > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::overflow_error("CUDA buffer exceeds uint32 capacity");
+        }
+        reset();
+        if (count != 0) {
+            RT_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&m_data),
+                                     count * sizeof(T)));
+            m_count = static_cast<std::uint32_t>(count);
+        }
+        return true;
+    }
+
     void reset() noexcept {
         if (m_data != nullptr) {
             cudaFree(m_data);
