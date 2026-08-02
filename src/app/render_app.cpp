@@ -1,5 +1,7 @@
 #include "render_app.h"
 
+#include "raytracer/build_config.h"
+
 #include "WindowsApp.h"
 #include "direct_light_integrator.h"
 #include "image_output.h"

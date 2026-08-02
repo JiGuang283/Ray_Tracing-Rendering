@@ -1,0 +1,113 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "BUILD_TESTING": true,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "RAYTRACER_BUILD_APP": true,
+        "RAYTRACER_BUILD_TOOLS": true,
+        "RAYTRACER_ENABLE_CUDA": false,
+        "RAYTRACER_ENABLE_RENDER_DEBUG": false
+      }
+    },
+    {
+      "name": "cpu-release",
+      "displayName": "CPU Release",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "cpu-debug",
+      "displayName": "CPU Debug with renderer diagnostics",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "RAYTRACER_ENABLE_RENDER_DEBUG": true
+      }
+    },
+    {
+      "name": "cuda-release",
+      "displayName": "CUDA Release",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-cuda",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CUDA_ARCHITECTURES": "89",
+        "RAYTRACER_ENABLE_CUDA": true
+      }
+    },
+    {
+      "name": "cuda-render-debug",
+      "displayName": "CUDA RelWithDebInfo with renderer diagnostics",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-cuda-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CUDA_ARCHITECTURES": "89",
+        "RAYTRACER_ENABLE_CUDA": true,
+        "RAYTRACER_ENABLE_RENDER_DEBUG": true
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "cpu-release",
+      "configurePreset": "cpu-release"
+    },
+    {
+      "name": "cpu-debug",
+      "configurePreset": "cpu-debug"
+    },
+    {
+      "name": "cuda-release",
+      "configurePreset": "cuda-release"
+    },
+    {
+      "name": "cuda-render-debug",
+      "configurePreset": "cuda-render-debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "cpu-release",
+      "configurePreset": "cpu-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cpu-debug",
+      "configurePreset": "cpu-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cuda-release",
+      "configurePreset": "cuda-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cuda-render-debug",
+      "configurePreset": "cuda-render-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

@@ -12,4 +12,6 @@ if(RAYTRACER_ENABLE_CUDA)
     add_subdirectory(cuda)
 endif()
 
-add_subdirectory(app)
+if(RAYTRACER_BUILD_APP)
+    add_subdirectory(app)
+endif()

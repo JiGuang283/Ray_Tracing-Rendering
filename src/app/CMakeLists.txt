@@ -26,7 +26,4 @@ if(RAYTRACER_ENABLE_CUDA)
         raytracer::render_data
         raytracer::cuda
     )
-    target_compile_definitions(CGAssignment4 PRIVATE RAYTRACER_HAS_CUDA=1)
-else()
-    target_compile_definitions(CGAssignment4 PRIVATE RAYTRACER_HAS_CUDA=0)
 endif()
