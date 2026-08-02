@@ -4,7 +4,9 @@
 #include "render_data/scene_compiler.h"
 #include "scene_description.h"
 #include "scene_ir.h"
+#include "triangle_scale_fixture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -143,6 +145,80 @@ struct ComparisonResult {
     std::size_t errors = 0;
 };
 
+ComparisonResult compare_triangle_scale_fixture() {
+    const triangle_scale_fixture::Fixture fixture =
+        triangle_scale_fixture::make_fixture();
+    const CompiledSceneView view = make_scene_view(fixture.packed);
+    ComparisonResult result;
+    std::size_t reported_errors = 0;
+    auto report = [&](std::size_t index, const std::string &message) {
+        ++result.errors;
+        if (reported_errors++ < 8) {
+            std::cerr << "TRIANGLE_SCALE_MISMATCH ray=" << index
+                      << " error=" << message << '\n';
+        }
+    };
+
+    const ValidationReport validation =
+        validate_compiled_scene(fixture.packed);
+    if (!validation.ok()) {
+        report(0, validation.errors.front());
+        return result;
+    }
+
+    for (std::size_t index = 0; index < fixture.rays.size(); ++index) {
+        ++result.rays;
+        const PackedRay &packed_ray = fixture.rays[index];
+        const triangle_scale_fixture::ExpectedHit &expected =
+            fixture.expected[index];
+        const ray reference_ray(
+            point3(packed_ray.origin.x, packed_ray.origin.y,
+                   packed_ray.origin.z),
+            vec3(packed_ray.direction.x, packed_ray.direction.y,
+                 packed_ray.direction.z));
+        hit_record reference_hit;
+        const bool reference_found = fixture.reference->hit(
+            reference_ray, packed_ray.t_min, packed_ray.t_max,
+            reference_hit);
+        PackedHit packed_hit;
+        const bool packed_found =
+            intersect_compiled_scene(view, packed_ray, packed_hit);
+        if (reference_found != expected.found ||
+            packed_found != expected.found) {
+            std::ostringstream message;
+            message << "hit/miss differs expected=" << expected.found
+                    << " reference=" << reference_found
+                    << " packed=" << packed_found;
+            report(index, message.str());
+            continue;
+        }
+        if (!expected.found) {
+            continue;
+        }
+        ++result.hits;
+        const double t_tolerance =
+            5e-5 * std::max(1.0, std::abs(static_cast<double>(expected.t)));
+        if (std::abs(reference_hit.t - expected.t) > t_tolerance ||
+            std::abs(static_cast<double>(packed_hit.t) - expected.t) >
+                t_tolerance) {
+            report(index, "hit distance differs");
+        }
+        if (std::abs(reference_hit.u - expected.barycentric_u) > 2e-5 ||
+            std::abs(reference_hit.v - expected.barycentric_v) > 2e-5 ||
+            std::abs(packed_hit.barycentric_u - expected.barycentric_u) >
+                2e-5f ||
+            std::abs(packed_hit.barycentric_v - expected.barycentric_v) >
+                2e-5f) {
+            report(index, "barycentrics differ");
+        }
+        if (reference_hit.primitive_id != 0 || packed_hit.instance_id != 0 ||
+            packed_hit.primitive_id != 0) {
+            report(index, "primitive or instance ID differs");
+        }
+    }
+    return result;
+}
+
 ComparisonResult compare_scene(const std::filesystem::path &path,
                                const Options &options) {
     const SceneDescription description = load_scene_description(path.string());
@@ -203,11 +279,26 @@ ComparisonResult compare_scene(const std::filesystem::path &path,
                 report(x, y, "packed hit reconstruction failed");
                 continue;
             }
+            const double uv_tolerance =
+                (surface.flags & PACKED_HIT_SPHERE) != 0 ? 1e-3 : 5e-4;
             if (std::abs(static_cast<double>(surface.uv.x) - reference_hit.u) >
-                    5e-4 ||
+                    uv_tolerance ||
                 std::abs(static_cast<double>(surface.uv.y) - reference_hit.v) >
-                    5e-4) {
-                report(x, y, "UV differs");
+                    uv_tolerance) {
+                std::ostringstream message;
+                message << "UV differs reference=(" << reference_hit.u
+                        << ',' << reference_hit.v << ") packed=("
+                        << surface.uv.x << ',' << surface.uv.y
+                        << ") reference_primitive="
+                        << reference_hit.primitive_id
+                        << " packed_triangle=" << packed_hit.primitive_id
+                        << " packed_source_primitive="
+                        << surface.primitive_id << " reference_t="
+                        << reference_hit.t << " packed_t=" << packed_hit.t
+                        << " packed_barycentric=("
+                        << packed_hit.barycentric_u << ','
+                        << packed_hit.barycentric_v << ')';
+                report(x, y, message.str());
             }
             if (normal_dot(surface.geometric_normal,
                            reference_hit.geometric_normal) < 0.999) {
@@ -236,6 +327,12 @@ int main(int argc, char **argv) {
         const nlohmann::json catalog = load_json(options.catalog);
         std::size_t passed = 0;
         std::size_t failed = 0;
+        const ComparisonResult scale_result =
+            compare_triangle_scale_fixture();
+        const bool scale_ok = scale_result.errors == 0;
+        std::cout << "TRIANGLE_SCALE_CHECK rays=" << scale_result.rays
+                  << " hits=" << scale_result.hits
+                  << " errors=" << scale_result.errors << '\n';
         for (const nlohmann::json &entry : catalog.at("scenes")) {
             const int id = entry.at("id").get<int>();
             if (options.scene_ids.count(id) == 0) {
@@ -253,7 +350,7 @@ int main(int argc, char **argv) {
         }
         std::cout << "INTERSECTION_CHECK_SUMMARY passed=" << passed
                   << " failed=" << failed << '\n';
-        return failed == 0 ? 0 : 1;
+        return failed == 0 && scale_ok ? 0 : 1;
     } catch (const std::exception &error) {
         std::cerr << "scene_intersection_check: " << error.what() << '\n';
         return 1;

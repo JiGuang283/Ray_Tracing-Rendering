@@ -4,7 +4,9 @@
 #include "external/json.hpp"
 #include "render_data/flat_intersector.h"
 #include "render_data/scene_compiler.h"
+#include "triangle_scale_fixture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -137,25 +139,23 @@ struct CheckResult {
     float kernel_ms = 0.0f;
 };
 
-CheckResult check_scene(const std::filesystem::path &path,
-                        const Options &options) {
-    const CompiledScene packed = load_compiled_scene(path.string());
+CheckResult check_packed_scene(
+    const std::string &label, const CompiledScene &packed,
+    const std::vector<PackedRay> &rays,
+    const std::vector<triangle_scale_fixture::ExpectedHit> *expected,
+    const Options &options) {
     const CompiledSceneView host_view = make_scene_view(packed);
-    const std::size_t ray_count =
-        static_cast<std::size_t>(options.grid_width) * options.grid_height;
+    const std::size_t ray_count = rays.size();
+    if (expected != nullptr && expected->size() != ray_count) {
+        throw std::runtime_error(
+            "synthetic ray and expected-result counts differ");
+    }
 
-    std::vector<PackedRay> rays;
     std::vector<std::uint32_t> initial_rng_states;
-    rays.reserve(ray_count);
     initial_rng_states.reserve(ray_count);
-    for (int y = 0; y < options.grid_height; ++y) {
-        for (int x = 0; x < options.grid_width; ++x) {
-            rays.push_back(make_camera_ray(packed.camera, x, y,
-                                           options.grid_width,
-                                           options.grid_height));
-            initial_rng_states.push_back(mix_seed(
-                1234u, static_cast<std::uint32_t>(rays.size())));
-        }
+    for (std::size_t index = 0; index < ray_count; ++index) {
+        initial_rng_states.push_back(mix_seed(
+            1234u, static_cast<std::uint32_t>(index + 1)));
     }
 
     std::vector<PackedHit> cpu_hits(ray_count);
@@ -202,12 +202,36 @@ CheckResult check_scene(const std::filesystem::path &path,
     auto report = [&](std::size_t index, const std::string &message) {
         ++result.errors;
         if (reported++ < 8) {
-            std::cerr << "CUDA_RAY_MISMATCH scene=" << path.string()
+            std::cerr << "CUDA_RAY_MISMATCH scene=" << label
                       << " ray=" << index << " error=" << message << '\n';
         }
     };
 
     for (std::size_t index = 0; index < ray_count; ++index) {
+        if (expected != nullptr) {
+            const triangle_scale_fixture::ExpectedHit &value =
+                (*expected)[index];
+            const bool cpu_found =
+                cpu_status[index] == PackedTraversalStatus::Hit;
+            if (cpu_found != value.found) {
+                report(index, "host hit/miss differs from expected result");
+            } else if (cpu_found) {
+                const PackedHit &cpu = cpu_hits[index];
+                const float t_tolerance =
+                    5e-5f * std::max(1.0f, std::abs(value.t));
+                if (!nearly_equal(cpu.t, value.t, t_tolerance) ||
+                    !nearly_equal(cpu.barycentric_u,
+                                  value.barycentric_u, 2e-5f) ||
+                    !nearly_equal(cpu.barycentric_v,
+                                  value.barycentric_v, 2e-5f)) {
+                    report(index, "host hit differs from expected values");
+                }
+                if (cpu.instance_id != 0 || cpu.primitive_id != 0) {
+                    report(index,
+                           "host primitive or instance ID is unexpected");
+                }
+            }
+        }
         if (cpu_status[index] != gpu_status[index]) {
             report(index, "traversal status differs");
             continue;
@@ -230,7 +254,11 @@ CheckResult check_scene(const std::filesystem::path &path,
         }
         if (!nearly_equal(cpu.barycentric_u, gpu.barycentric_u) ||
             !nearly_equal(cpu.barycentric_v, gpu.barycentric_v)) {
-            report(index, "barycentrics differ");
+            std::ostringstream message;
+            message << "barycentrics differ cpu=(" << cpu.barycentric_u
+                    << ',' << cpu.barycentric_v << ") gpu=("
+                    << gpu.barycentric_u << ',' << gpu.barycentric_v << ')';
+            report(index, message.str());
         }
         if (cpu.instance_id != gpu.instance_id) {
             report(index, "instance ID differs");
@@ -243,6 +271,29 @@ CheckResult check_scene(const std::filesystem::path &path,
         }
     }
     return result;
+}
+
+CheckResult check_scene(const std::filesystem::path &path,
+                        const Options &options) {
+    const CompiledScene packed = load_compiled_scene(path.string());
+    std::vector<PackedRay> rays;
+    rays.reserve(static_cast<std::size_t>(options.grid_width) *
+                 options.grid_height);
+    for (int y = 0; y < options.grid_height; ++y) {
+        for (int x = 0; x < options.grid_width; ++x) {
+            rays.push_back(make_camera_ray(packed.camera, x, y,
+                                           options.grid_width,
+                                           options.grid_height));
+        }
+    }
+    return check_packed_scene(path.string(), packed, rays, nullptr, options);
+}
+
+CheckResult check_triangle_scale_fixture(const Options &options) {
+    const triangle_scale_fixture::Fixture fixture =
+        triangle_scale_fixture::make_fixture();
+    return check_packed_scene("synthetic_scaled_triangle", fixture.packed,
+                              fixture.rays, &fixture.expected, options);
 }
 
 } // namespace
@@ -266,6 +317,15 @@ int main(int argc, char **argv) {
         std::size_t passed = 0;
         std::size_t failed = 0;
         std::size_t selected = 0;
+        const CheckResult scale_result =
+            check_triangle_scale_fixture(options);
+        const bool scale_ok = scale_result.errors == 0;
+        std::cout << "CUDA_TRIANGLE_SCALE_CHECK rays=" << scale_result.rays
+                  << " hits=" << scale_result.hits
+                  << " errors=" << scale_result.errors
+                  << " bytes=" << scale_result.bytes
+                  << " upload_ms=" << scale_result.upload_ms
+                  << " kernel_ms=" << scale_result.kernel_ms << '\n';
         for (const nlohmann::json &entry : catalog.at("scenes")) {
             const int id = entry.at("id").get<int>();
             if (!options.all && options.scene_ids.count(id) == 0) {
@@ -296,7 +356,7 @@ int main(int argc, char **argv) {
         }
         std::cout << "CUDA_SCENE_CHECK_SUMMARY passed=" << passed
                   << " failed=" << failed << '\n';
-        return failed == 0 ? 0 : 1;
+        return failed == 0 && scale_ok ? 0 : 1;
     } catch (const std::exception &error) {
         std::cerr << "cuda_scene_check: " << error.what() << '\n';
         return 1;
