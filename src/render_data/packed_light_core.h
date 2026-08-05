@@ -362,6 +362,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool triangle_geometry(
     if ((instance.flags & PACKED_INSTANCE_FLIP_FACE) != 0) {
         unnormalized = math::multiply(unnormalized, -1.0f);
     }
+    if ((triangle.flags & PACKED_TRIANGLE_REVERSE_EMITTER_NORMAL) != 0) {
+        unnormalized = math::multiply(unnormalized, -1.0f);
+    }
     geometry.area = 0.5f * math::length(unnormalized);
     geometry.normal = math::normalize(unnormalized);
     geometry.triangle = &triangle;

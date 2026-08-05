@@ -222,7 +222,8 @@ struct GeneratedMesh {
                       const std::array<vec2, 3> &uvs, bool has_normals,
                       bool has_uvs, const MaterialHandle &material,
                       const Transform &object_to_world, bool flip,
-                      std::uint32_t source_id) {
+                      std::uint32_t source_id,
+                      bool reverse_emitter_normal = false) {
         std::array<std::size_t, 3> order{0, flip ? 2u : 1u,
                                         flip ? 1u : 2u};
         const std::uint32_t first_vertex =
@@ -266,13 +267,17 @@ struct GeneratedMesh {
         if (has_uvs) {
             triangle.attributes |= MESH_ATTRIBUTE_UV0;
         }
+        if (reverse_emitter_normal) {
+            triangle.flags |= MESH_TRIANGLE_REVERSE_EMITTER_NORMAL;
+        }
         triangles.push_back(triangle);
     }
 
     void add_quad(const point3 &origin, const vec3 &u, const vec3 &v,
                   bool reverse_winding, const MaterialHandle &material,
                   const Transform &transform, bool flip,
-                  std::uint32_t source_id) {
+                  std::uint32_t source_id,
+                  bool reverse_emitter_normal = false) {
         const point3 p00 = origin;
         const point3 p10 = origin + u;
         const point3 p11 = origin + u + v;
@@ -281,17 +286,21 @@ struct GeneratedMesh {
         if (!reverse_winding) {
             add_triangle({p00, p10, p11}, no_normals,
                          {vec2(0, 0), vec2(1, 0), vec2(1, 1)}, false, true,
-                         material, transform, flip, source_id);
+                         material, transform, flip, source_id,
+                         reverse_emitter_normal);
             add_triangle({p00, p11, p01}, no_normals,
                          {vec2(0, 0), vec2(1, 1), vec2(0, 1)}, false, true,
-                         material, transform, flip, source_id);
+                         material, transform, flip, source_id,
+                         reverse_emitter_normal);
         } else {
             add_triangle({p00, p01, p11}, no_normals,
                          {vec2(0, 0), vec2(0, 1), vec2(1, 1)}, false, true,
-                         material, transform, flip, source_id);
+                         material, transform, flip, source_id,
+                         reverse_emitter_normal);
             add_triangle({p00, p11, p10}, no_normals,
                          {vec2(0, 0), vec2(1, 1), vec2(1, 0)}, false, true,
-                         material, transform, flip, source_id);
+                         material, transform, flip, source_id,
+                         reverse_emitter_normal);
         }
     }
 };
@@ -436,6 +445,9 @@ class SceneCompiler {
             if (has_mesh_attribute(source.attributes,
                                    MESH_ATTRIBUTE_TANGENT)) {
                 triangle.flags |= PACKED_TRIANGLE_HAS_TANGENT;
+            }
+            if ((source.flags & MESH_TRIANGLE_REVERSE_EMITTER_NORMAL) != 0) {
+                triangle.flags |= PACKED_TRIANGLE_REVERSE_EMITTER_NORMAL;
             }
             m_scene.triangles.push_back(triangle);
         }
@@ -1331,7 +1343,7 @@ class SceneCompiler {
                             vec3(typed.a1 - typed.a0, 0, 0),
                             vec3(0, 0, typed.b1 - typed.b0), true, mat,
                             transform, flip,
-                            checked_index(id, "source object id"));
+                            checked_index(id, "source object id"), true);
                     } else {
                         aggregate.generated.add_quad(
                             point3(typed.k, typed.a0, typed.b0),

@@ -243,6 +243,52 @@ TEST_CASE(packed_mesh_emitter_sample_pdf_and_hit_mis_are_consistent) {
                  2e-4);
 }
 
+TEST_CASE(packed_xz_rect_emitter_uses_the_cpu_compatible_light_normal) {
+    SceneIR ir;
+    ir.source_path = "packed_xz_emitter_test.json";
+    ir.textures.push_back(
+        {"emission", ConstantTextureIR{color(6.0, 5.0, 4.0)}});
+    ir.materials.push_back(
+        {"light", DiffuseLightMaterialIR{TextureIRId{0}}});
+    AxisRectObjectIR rectangle;
+    rectangle.plane = AxisRectPlane::XZ;
+    rectangle.a0 = -1.0;
+    rectangle.a1 = 1.0;
+    rectangle.b0 = -1.0;
+    rectangle.b1 = 1.0;
+    rectangle.k = 2.0;
+    rectangle.material = "light";
+    ir.object_nodes.push_back({"ceiling light", rectangle});
+    ir.objects = {0};
+    ir.auto_emitters = true;
+
+    const CompiledScene scene = compile_scene(ir);
+    REQUIRE(validate_compiled_scene(scene).ok());
+    const std::uint32_t light_id =
+        find_light(scene, PackedLightType::MeshEmitter);
+    REQUIRE(light_id != kInvalidPackedIndex);
+    const PackedLight &light = scene.lights[light_id];
+    REQUIRE(light.element_indices.count == 2);
+    for (std::uint32_t local = 0; local < light.element_indices.count;
+         ++local) {
+        const std::uint32_t triangle_id = scene.light_element_indices[
+            light.element_indices.offset + local];
+        REQUIRE((scene.triangles[triangle_id].flags &
+                 PACKED_TRIANGLE_REVERSE_EMITTER_NORMAL) != 0);
+    }
+
+    const CompiledSceneView view = make_scene_view(scene);
+    PackedLightSample sample;
+    REQUIRE(sample_packed_light(view, light_id, {0, 0, 0}, {0.3f, 0.7f},
+                                sample) == PackedLightStatus::Success);
+    REQUIRE(sample.wi.y > 0.0f);
+    REQUIRE(sample.radiance.x > 0.0f);
+    float pdf = 0.0f;
+    REQUIRE(evaluate_packed_light_pdf(view, light_id, {0, 0, 0}, sample.wi,
+                                      pdf) == PackedLightStatus::Success);
+    REQUIRE_NEAR(pdf, sample.pdf, 2e-4);
+}
+
 TEST_CASE(packed_light_sampler_pdf_excludes_invisible_explicit_quad) {
     CompiledScene scene;
     scene.aggregates.push_back({});

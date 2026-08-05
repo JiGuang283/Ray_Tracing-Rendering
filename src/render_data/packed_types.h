@@ -167,7 +167,8 @@ enum PackedTriangleFlags : std::uint32_t {
     PACKED_TRIANGLE_HAS_NORMALS = 1u << 0,
     PACKED_TRIANGLE_HAS_UV = 1u << 1,
     PACKED_TRIANGLE_HAS_COLOR = 1u << 2,
-    PACKED_TRIANGLE_HAS_TANGENT = 1u << 3
+    PACKED_TRIANGLE_HAS_TANGENT = 1u << 3,
+    PACKED_TRIANGLE_REVERSE_EMITTER_NORMAL = 1u << 4
 };
 
 enum PackedSphereFlags : std::uint32_t {

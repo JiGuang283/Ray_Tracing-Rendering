@@ -17,6 +17,11 @@ enum MeshAttributeFlags : std::uint8_t {
     MESH_ATTRIBUTE_COLOR0 = 1 << 3
 };
 
+enum MeshTriangleFlags : std::uint8_t {
+    MESH_TRIANGLE_NONE = 0,
+    MESH_TRIANGLE_REVERSE_EMITTER_NORMAL = 1 << 0
+};
+
 inline bool has_mesh_attribute(std::uint8_t flags,
                                MeshAttributeFlags attribute) {
     return (flags & static_cast<std::uint8_t>(attribute)) != 0;
@@ -37,6 +42,7 @@ struct MeshTriangle {
     std::uint32_t primitive_index = 0;
     std::uint32_t material_slot = 0;
     std::uint8_t attributes = MESH_ATTRIBUTE_NONE;
+    std::uint8_t flags = MESH_TRIANGLE_NONE;
 };
 
 struct MeshPrimitive {
