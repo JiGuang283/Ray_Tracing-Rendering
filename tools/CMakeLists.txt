@@ -11,6 +11,12 @@ raytracer_add_cpu_tool(scene_data_check)
 raytracer_add_cpu_tool(scene_intersection_check)
 raytracer_add_cpu_tool(packed_transport_check)
 
+add_executable(restir_reservoir_check restir_reservoir_check.cpp)
+set_target_properties(restir_reservoir_check PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+)
+target_link_libraries(restir_reservoir_check PRIVATE raytracer::restir)
+
 target_link_libraries(scene_intersection_check PRIVATE
     raytracer::scene_runtime
 )
@@ -31,4 +37,19 @@ if(RAYTRACER_ENABLE_CUDA)
     raytracer_add_cuda_tool(cuda_light_check)
     raytracer_add_cuda_tool(cuda_shading_check)
     raytracer_add_cuda_tool(cuda_transport_check)
+
+    add_executable(cuda_restir_check cuda_restir_check.cu)
+    set_target_properties(cuda_restir_check PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+        CUDA_EXTENSIONS OFF
+    )
+    target_link_libraries(cuda_restir_check PRIVATE
+        raytracer::restir
+        CUDA::cudart
+    )
+    target_compile_options(cuda_restir_check PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+    )
 endif()

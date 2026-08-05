@@ -11,6 +11,7 @@ add_executable(raytracer_tests
     test_packed_light.cpp
     test_packed_shading.cpp
     test_packed_transport.cpp
+    test_restir_reservoir.cpp
     test_render_runtime.cpp
     test_sample_filter.cpp
     test_scene_ir.cpp
@@ -35,6 +36,7 @@ target_link_libraries(raytracer_tests PRIVATE
     raytracer::renderer
     raytracer::scene
     raytracer::render_data
+    raytracer::restir
 )
 
 add_test(NAME raytracer_tests COMMAND raytracer_tests)
@@ -48,6 +50,7 @@ set_tests_properties(packed_transport_check PROPERTIES
 )
 
 if(RAYTRACER_ENABLE_CUDA)
+    add_test(NAME cuda_restir_reservoir_check COMMAND cuda_restir_check)
     add_test(
         NAME cuda_scene_check
         COMMAND cuda_scene_check --ids 1,7,23 --grid-width 9
@@ -79,6 +82,7 @@ if(RAYTRACER_ENABLE_CUDA)
         cuda_transport_policy_2
         cuda_transport_policy_3
         cuda_transport_policy_4
+        cuda_restir_reservoir_check
         PROPERTIES
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             SKIP_RETURN_CODE 77
