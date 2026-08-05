@@ -28,7 +28,7 @@
     {"type": "sphere", "center": [0.0, 1.4, -1.2], "radius": 1.4, "material": "near_specular"},
     {"type": "sphere", "center": [3.2, 1.15, -0.6], "radius": 1.15, "material": "rough_blue"},
     {"type": "box", "min": [-1.1, 0.0, 1.6], "max": [1.1, 1.0, 3.8], "material": "diffuse"},
-    {"type": "flip_face", "object": {"type": "xz_rect", "x0": -1.4, "x1": 1.4, "z0": -2.2, "z1": 0.6, "k": 5.7, "material": "light"}}
+    {"type": "xz_rect", "x0": -1.4, "x1": 1.4, "z0": -2.2, "z1": 0.6, "k": 5.7, "material": "light"}
   ],
   "lights": []
 }

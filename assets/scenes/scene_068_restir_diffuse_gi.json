@@ -25,7 +25,7 @@
     {"type": "xz_rect", "x0": -3.0, "x1": 3.0, "z0": -3.0, "z1": 3.0, "k": 0.0, "material": "white"},
     {"type": "xz_rect", "x0": -3.0, "x1": 3.0, "z0": -3.0, "z1": 3.0, "k": 6.0, "material": "white"},
     {"type": "xy_rect", "x0": -3.0, "x1": 3.0, "y0": 0.0, "y1": 6.0, "k": -3.0, "material": "white"},
-    {"type": "flip_face", "object": {"type": "xz_rect", "x0": -1.0, "x1": 1.0, "z0": -1.0, "z1": 1.0, "k": 5.95, "material": "light"}},
+    {"type": "xz_rect", "x0": -1.0, "x1": 1.0, "z0": -1.0, "z1": 1.0, "k": 5.95, "material": "light"},
     {"type": "box", "min": [-2.35, 0.0, -1.5], "max": [-0.55, 3.9, 0.3], "material": "white"},
     {"type": "box", "min": [0.55, 0.0, -0.4], "max": [2.35, 2.0, 1.4], "material": "blue"}
   ],
