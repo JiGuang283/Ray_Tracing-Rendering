@@ -24,6 +24,8 @@ struct BenchmarkOptions {
     bool enabled = false;
     bool save = false;
     int runs = 1;
+    std::string image_output_path;
+    std::string linear_output_path;
 };
 
 struct AppOptions {

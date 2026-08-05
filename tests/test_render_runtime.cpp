@@ -1,6 +1,7 @@
 #include "test_harness.h"
 
 #include "camera.h"
+#include "beauty_film.h"
 #include "cpu_path_integrator.h"
 #include "hittable_list.h"
 #include "material_programs.h"
@@ -11,8 +12,13 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <limits>
 #include <stdexcept>
+#include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -230,4 +236,63 @@ TEST_CASE(renderer_seed_is_independent_of_worker_count) {
         REQUIRE(a.radiance_sum.y() == b.radiance_sum.y());
         REQUIRE(a.radiance_sum.z() == b.radiance_sum.z());
     }
+}
+
+TEST_CASE(beauty_film_pfm_contains_linear_sample_average) {
+    BeautyFilm film(make_image_extent(2, 2));
+    film.set_pixel(0, 0, color(2.0, 4.0, 6.0), 2);
+    film.set_pixel(1, 0, color(4.0, 6.0, 8.0), 2);
+    film.set_pixel(0, 1, color(3.0, 6.0, 9.0), 3);
+    film.set_pixel(1, 1, color(0.0, 0.0, 0.0), 0);
+
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() /
+        "raytracer_beauty_film_test.pfm";
+    film.save_to_pfm(path.string());
+
+    std::ifstream input(path, std::ios::binary);
+    std::string magic;
+    std::string dimensions;
+    std::string scale;
+    std::getline(input, magic);
+    std::getline(input, dimensions);
+    std::getline(input, scale);
+    REQUIRE(magic == "PF");
+    REQUIRE(dimensions == "2 2");
+    REQUIRE(scale == "-1.0");
+
+    std::vector<float> pixels(12);
+    input.read(reinterpret_cast<char *>(pixels.data()),
+               static_cast<std::streamsize>(pixels.size() * sizeof(float)));
+    REQUIRE(input.gcount() ==
+            static_cast<std::streamsize>(pixels.size() * sizeof(float)));
+    REQUIRE_NEAR(pixels[0], 1.0, 1e-7);
+    REQUIRE_NEAR(pixels[1], 2.0, 1e-7);
+    REQUIRE_NEAR(pixels[2], 3.0, 1e-7);
+    REQUIRE_NEAR(pixels[3], 2.0, 1e-7);
+    REQUIRE_NEAR(pixels[4], 3.0, 1e-7);
+    REQUIRE_NEAR(pixels[5], 4.0, 1e-7);
+    REQUIRE_NEAR(pixels[6], 1.0, 1e-7);
+    REQUIRE_NEAR(pixels[7], 2.0, 1e-7);
+    REQUIRE_NEAR(pixels[8], 3.0, 1e-7);
+    REQUIRE_NEAR(pixels[9], 0.0, 1e-7);
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(beauty_film_pfm_rejects_non_finite_radiance) {
+    BeautyFilm film(make_image_extent(2, 2));
+    film.set_pixel(0, 0,
+                   color(std::numeric_limits<double>::infinity(), 0.0, 0.0),
+                   1);
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() /
+        "raytracer_beauty_film_invalid_test.pfm";
+    bool rejected = false;
+    try {
+        film.save_to_pfm(path.string());
+    } catch (const std::runtime_error &) {
+        rejected = true;
+    }
+    REQUIRE(rejected);
+    std::filesystem::remove(path);
 }

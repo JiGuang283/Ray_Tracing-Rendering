@@ -57,7 +57,9 @@ void print_usage() {
         << "  --threads N          Set render worker count (default hardware)\n"
         << "  --sample-clamp N     Clamp camera-sample luminance (0 disables)\n"
         << "  --cuda-batch-size N  Override CUDA active-path batch size\n"
-        << "  --save               Save final rendered image\n";
+        << "  --save               Save final rendered image\n"
+        << "  --save-image PATH    Save benchmark display image to PATH\n"
+        << "  --save-linear PATH   Save benchmark linear RGB film as PFM\n";
 }
 
 AppOptions parse_options(int argc, char *args[]) {
@@ -75,6 +77,10 @@ AppOptions parse_options(int argc, char *args[]) {
             options.benchmark.enabled = true;
         } else if (arg == "--save") {
             options.benchmark.save = true;
+        } else if (arg == "--save-image" && i + 1 < argc) {
+            options.benchmark.image_output_path = args[++i];
+        } else if (arg == "--save-linear" && i + 1 < argc) {
+            options.benchmark.linear_output_path = args[++i];
         } else if (arg == "--scene-file" && i + 1 < argc) {
             options.scene_file = args[++i];
         } else if (arg == "--integrator" && i + 1 < argc) {
@@ -162,6 +168,12 @@ AppOptions parse_options(int argc, char *args[]) {
     }
 
     if (!options.valid) {
+        return options;
+    }
+    if ((!options.benchmark.image_output_path.empty() ||
+         !options.benchmark.linear_output_path.empty()) &&
+        !options.benchmark.enabled) {
+        fail("--save-image and --save-linear require --bench.");
         return options;
     }
     if (!options.scene_file.empty() && !positional.empty()) {

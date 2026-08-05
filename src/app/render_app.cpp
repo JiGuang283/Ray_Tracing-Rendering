@@ -172,8 +172,8 @@ int run_benchmark(const AppOptions &options) {
     RenderStats last_stats;
     long long clamped_samples = 0;
     long long invalid_samples = 0;
-    RenderBuffer saved_buffer;
-    bool has_saved_buffer = false;
+    RenderResult saved_result;
+    bool has_saved_result = false;
 
     std::cout << "BENCH_PREP"
               << " scene=" << options.scene_id
@@ -191,8 +191,8 @@ int run_benchmark(const AppOptions &options) {
         device_seconds.push_back(last_stats.device_seconds);
         clamped_samples += last_stats.clamped_samples;
         invalid_samples += last_stats.invalid_samples;
-        saved_buffer = std::move(result.display);
-        has_saved_buffer = true;
+        saved_result = std::move(result);
+        has_saved_result = true;
 
         double samples_per_second =
             last_stats.seconds > 0.0
@@ -270,9 +270,17 @@ int run_benchmark(const AppOptions &options) {
               << " clamped_samples=" << clamped_samples
               << " invalid_samples=" << invalid_samples << std::endl;
 
-    if (options.benchmark.save && has_saved_buffer) {
-        save_rendered_image(saved_buffer, options.scene_id,
+    if (options.benchmark.save && has_saved_result) {
+        save_rendered_image(saved_result.display, options.scene_id,
                             options.integrator_id);
+    }
+    if (!options.benchmark.image_output_path.empty() && has_saved_result) {
+        save_rendered_image_to(saved_result.display,
+                               options.benchmark.image_output_path);
+    }
+    if (!options.benchmark.linear_output_path.empty() && has_saved_result) {
+        save_linear_film_to(saved_result.film,
+                            options.benchmark.linear_output_path);
     }
 
     return 0;

@@ -7,6 +7,7 @@
 #include "vec3.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 enum class FilmChannel : std::uint32_t {
@@ -32,6 +33,8 @@ class BeautyFilm {
                    std::uint32_t sample_count);
     const BeautyFilmPixel &pixel(int x, int y) const;
     const std::vector<BeautyFilmPixel> &pixels() const noexcept;
+
+    void save_to_pfm(const std::string &filename) const;
 
   private:
     std::size_t index(int x, int y) const;
