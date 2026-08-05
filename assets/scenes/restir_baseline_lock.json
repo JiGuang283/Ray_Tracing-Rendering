@@ -1,0 +1,412 @@
+{
+  "entries": {
+    "memory:scene64_2k_workspace:cuda": {
+      "recorded_memory": {
+        "scene_bytes": 773529156,
+        "workspace_bytes": 90439784,
+        "workspace_path_capacity": 262144,
+        "workspace_pixel_capacity": 3686400
+      },
+      "settings": {
+        "integrator": 4,
+        "max_depth": 1,
+        "seed": 123,
+        "spp": 1,
+        "width": 2560
+      }
+    },
+    "reference:diffuse_gi:cpu": {
+      "linear_statistics": {
+        "height": 128,
+        "invalid_pixels": 0,
+        "max_luminance": 5.827715230655671,
+        "mean_luminance": 0.23955393543053954,
+        "mean_rgb": [
+          0.2789166614813965,
+          0.23613904812427222,
+          0.15747376705145655
+        ],
+        "p999_luminance": 5.612753841209411,
+        "p99_luminance": 0.694737454521656,
+        "valid_pixels": 16384,
+        "width": 128
+      },
+      "pfm_sha256": "8ca3534f285e8fbe399e4038356e12e7d0d4459cad59603a30ad6b2b35928712",
+      "png_sha256": "07cdb02e021d725a9624dac4c7e6f388d9ea93336fa493c6e299a91de048467e",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 16,
+        "seed": 123,
+        "spp": 4096,
+        "width": 128
+      }
+    },
+    "reference:disocclusion:cpu": {
+      "linear_statistics": {
+        "height": 72,
+        "invalid_pixels": 0,
+        "max_luminance": 1.1636074454307557,
+        "mean_luminance": 0.20109923764613802,
+        "mean_rgb": [
+          0.2079385159034296,
+          0.19781934513249172,
+          0.21345032584918044
+        ],
+        "p999_luminance": 1.13526537797451,
+        "p99_luminance": 1.0294077728271485,
+        "valid_pixels": 9216,
+        "width": 128
+      },
+      "pfm_sha256": "c8720620242c1e0d0d8b4abafa12cbe9bb9f8972b3a5288465d7371e8c06c881",
+      "png_sha256": "5e2d6b8579d99f771e2237409e815348fcf0e9708be875ef7d8ea6a6ec8776a0",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 12,
+        "seed": 123,
+        "spp": 2048,
+        "width": 128
+      }
+    },
+    "reference:glossy_gi:cpu": {
+      "linear_statistics": {
+        "height": 72,
+        "invalid_pixels": 0,
+        "max_luminance": 3.450034431427717,
+        "mean_luminance": 0.06606513618333985,
+        "mean_rgb": [
+          0.08711546181136023,
+          0.06165278482039582,
+          0.04778832823680861
+        ],
+        "p999_luminance": 1.760885977232456,
+        "p99_luminance": 0.28584981347620486,
+        "valid_pixels": 9216,
+        "width": 128
+      },
+      "pfm_sha256": "39b46e62f3a7c9f019411f261bd6a036198070066042e63f7641a2570dfe389c",
+      "png_sha256": "8e9907ad59a66dec4bef2b73dd10d3fbf425d2d1be570b47a96b1a9336d99939",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 16,
+        "seed": 123,
+        "spp": 4096,
+        "width": 128
+      }
+    },
+    "reference:many_light:cpu": {
+      "linear_statistics": {
+        "height": 72,
+        "invalid_pixels": 0,
+        "max_luminance": 2.3077625353336333,
+        "mean_luminance": 0.10446902563682056,
+        "mean_rgb": [
+          0.10778735806820172,
+          0.1036182704273819,
+          0.10312529503957535
+        ],
+        "p999_luminance": 1.129584106040001,
+        "p99_luminance": 0.41168120876550673,
+        "valid_pixels": 9216,
+        "width": 128
+      },
+      "pfm_sha256": "bc56f811a937fdbb02d4a9c51f28ab65b08a3c10ee0f9b38584de9a291d597bf",
+      "png_sha256": "e5eacd9098dbecf3b9a033e459091c5938446dc2d25dc06a2a7631c0d2b77347",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 12,
+        "seed": 123,
+        "spp": 2048,
+        "width": 128
+      }
+    },
+    "reference:occlusion:cpu": {
+      "linear_statistics": {
+        "height": 72,
+        "invalid_pixels": 0,
+        "max_luminance": 6.542782205152511,
+        "mean_luminance": 0.10902661152419466,
+        "mean_rgb": [
+          0.11236918651754498,
+          0.1070446651361452,
+          0.11881686932401021
+        ],
+        "p999_luminance": 4.543608677196502,
+        "p99_luminance": 0.788597954595089,
+        "valid_pixels": 9216,
+        "width": 128
+      },
+      "pfm_sha256": "efa989288d28fdcb2def77ec1939a1bc51b82a90dc2cd4797fa05b65f55d0c0c",
+      "png_sha256": "fe29289d0df82f524765a22a568548ab484f53caa3f7f1199928a239822e3ff1",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 12,
+        "seed": 123,
+        "spp": 2048,
+        "width": 128
+      }
+    },
+    "regression:scene07_cornell:cpu": {
+      "linear_statistics": {
+        "height": 96,
+        "invalid_pixels": 0,
+        "max_luminance": 2.7521634839057922,
+        "mean_luminance": 0.07405169531038167,
+        "mean_rgb": [
+          0.08950933097700838,
+          0.07114583240626778,
+          0.05732011368015197
+        ],
+        "p999_luminance": 1.0490768550157548,
+        "p99_luminance": 0.2842492710351944,
+        "valid_pixels": 9216,
+        "width": 96
+      },
+      "pfm_sha256": "714508014b5655af3f8857f6a1a494945e45787ca09938ffa93e2cb0b040eed8",
+      "png_sha256": "696ae6c3fafcf2c806d52a8df6ae11e37623e175011e05485a443d98bdc2a5d2",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 12,
+        "seed": 123,
+        "spp": 16,
+        "width": 96
+      }
+    },
+    "regression:scene07_cornell:cuda": {
+      "linear_statistics": {
+        "height": 96,
+        "invalid_pixels": 0,
+        "max_luminance": 2.751343353366852,
+        "mean_luminance": 0.07404079414856474,
+        "mean_rgb": [
+          0.08953648699086011,
+          0.07112375923386415,
+          0.05730781731645772
+        ],
+        "p999_luminance": 1.0461127273797988,
+        "p99_luminance": 0.28497100616693494,
+        "valid_pixels": 9216,
+        "width": 96
+      },
+      "pfm_sha256": "822e734d7a824d6bb4efef1992b30c88700c43ad1b8afb23f2b67a1868ac76ff",
+      "png_sha256": "9c27f6a19d84a55a8b3e600bbcb44ed886e20d439693814ce7af8349125bf478",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 12,
+        "seed": 123,
+        "spp": 16,
+        "width": 96
+      }
+    },
+    "regression:scene23_mis:cpu": {
+      "linear_statistics": {
+        "height": 54,
+        "invalid_pixels": 0,
+        "max_luminance": 11.191947937011719,
+        "mean_luminance": 1.3934412469077087,
+        "mean_rgb": [
+          1.4351964400452701,
+          1.3878033047353961,
+          1.3263373989934777
+        ],
+        "p999_luminance": 9.169135093688963,
+        "p99_luminance": 4.797729969024658,
+        "valid_pixels": 5184,
+        "width": 96
+      },
+      "pfm_sha256": "d4d0ba37025f0e3fdf1706954e0af7fc72911882cb299c5ec1911df392e3b0be",
+      "png_sha256": "f99589be34448bf4b73ee3f0205f5eb6b9db9d6cff4efce06bfa6daf3c996a76",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 12,
+        "seed": 123,
+        "spp": 16,
+        "width": 96
+      }
+    },
+    "regression:scene23_mis:cuda": {
+      "linear_statistics": {
+        "height": 54,
+        "invalid_pixels": 0,
+        "max_luminance": 11.32624340057373,
+        "mean_luminance": 1.389292185469595,
+        "mean_rgb": [
+          1.4302616565055695,
+          1.3837841544368095,
+          1.3232150975527024
+        ],
+        "p999_luminance": 9.261540412902832,
+        "p99_luminance": 5.0070319175720215,
+        "valid_pixels": 5184,
+        "width": 96
+      },
+      "pfm_sha256": "f2fbd0c86a6dee29086e3151d05092547038128fb5defc17ab54f0bfdfeaf04a",
+      "png_sha256": "051b714043813629b86f2a58a6c1cb6e6ca03e00bd1cb3c96cfadd2b2c092eef",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 12,
+        "seed": 123,
+        "spp": 16,
+        "width": 96
+      }
+    },
+    "regression:scene59_mesh:cpu": {
+      "linear_statistics": {
+        "height": 54,
+        "invalid_pixels": 0,
+        "max_luminance": 0.7931800059914589,
+        "mean_luminance": 0.4596357284619973,
+        "mean_rgb": [
+          0.4181343397379991,
+          0.46028973655124844,
+          0.5753621641585293
+        ],
+        "p999_luminance": 0.7931800059914589,
+        "p99_luminance": 0.7931800059914589,
+        "valid_pixels": 5184,
+        "width": 96
+      },
+      "pfm_sha256": "a3abf64ac2bb1b75f77e6490ec2ed79e8a7c2c102dd441e4bebfad7b47862174",
+      "png_sha256": "8c2629588acec36866fc376640112e23d734ed12bb574d06173ab1c55e9f50f5",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 8,
+        "seed": 123,
+        "spp": 8,
+        "width": 96
+      }
+    },
+    "regression:scene59_mesh:cuda": {
+      "linear_statistics": {
+        "height": 54,
+        "invalid_pixels": 0,
+        "max_luminance": 0.7931800359487533,
+        "mean_luminance": 0.4596379965309783,
+        "mean_rgb": [
+          0.41814478249131,
+          0.4602898004677514,
+          0.5753621949970917
+        ],
+        "p999_luminance": 0.7931800359487533,
+        "p99_luminance": 0.7931800359487533,
+        "valid_pixels": 5184,
+        "width": 96
+      },
+      "pfm_sha256": "7d5851967182d2223277e063d571c6e006e5dbfdfb145bdd0862ec3f4be152bf",
+      "png_sha256": "14881218773a787c6c09af833643170b82e52a36226a95b907b703b1638a2fc5",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 8,
+        "seed": 123,
+        "spp": 8,
+        "width": 96
+      }
+    },
+    "regression:scene62_textures:cpu": {
+      "linear_statistics": {
+        "height": 54,
+        "invalid_pixels": 0,
+        "max_luminance": 65.915266116333,
+        "mean_luminance": 0.4318551452004455,
+        "mean_rgb": [
+          0.41825646463919564,
+          0.42858044605489065,
+          0.5043363684168242
+        ],
+        "p999_luminance": 6.821533659553528,
+        "p99_luminance": 2.2767209323406217,
+        "valid_pixels": 5184,
+        "width": 96
+      },
+      "pfm_sha256": "fbfafc0911f102e348f4e71e80cc896ee97fd5104b8698b9da605f559ef37665",
+      "png_sha256": "88e9a6ccbabdb889de260b447861126ebe8f11b595a33a234b53d489179c9000",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 8,
+        "seed": 123,
+        "spp": 8,
+        "width": 96
+      }
+    },
+    "regression:scene62_textures:cuda": {
+      "linear_statistics": {
+        "height": 54,
+        "invalid_pixels": 0,
+        "max_luminance": 9.230838016319275,
+        "mean_luminance": 0.4064396779712013,
+        "mean_rgb": [
+          0.4017845477701541,
+          0.40225247518013996,
+          0.46162483194501996
+        ],
+        "p999_luminance": 5.357592508316039,
+        "p99_luminance": 2.281800920915604,
+        "valid_pixels": 5184,
+        "width": 96
+      },
+      "pfm_sha256": "d1e20dbea517bffe232e7695eb3ea077ef950be058727c4f9e5c7291f17eefed",
+      "png_sha256": "f8fdaee86fe3bfe862c2b3af2c7949163929f071eb425e57540d88d16ecd120a",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 8,
+        "seed": 123,
+        "spp": 8,
+        "width": 96
+      }
+    },
+    "regression:scene64_asset_stress:cpu": {
+      "linear_statistics": {
+        "height": 54,
+        "invalid_pixels": 0,
+        "max_luminance": 36.30784800891876,
+        "mean_luminance": 0.1955710982076405,
+        "mean_rgb": [
+          0.23543424887268413,
+          0.18303558471975562,
+          0.20236463581355432
+        ],
+        "p999_luminance": 4.60253772983551,
+        "p99_luminance": 1.278428678882122,
+        "valid_pixels": 5184,
+        "width": 96
+      },
+      "pfm_sha256": "b1ea1c1def429a082831da686e46ae53ed19576eeeead274dba38bdae06c335b",
+      "png_sha256": "f311eb5d6ab5fbc4027ec345dc8c6090d9bf86ad4c913c30e4170eb37fb3837f",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 8,
+        "seed": 123,
+        "spp": 4,
+        "width": 96
+      }
+    },
+    "regression:scene64_asset_stress:cuda": {
+      "linear_statistics": {
+        "height": 54,
+        "invalid_pixels": 0,
+        "max_luminance": 40.59292432441711,
+        "mean_luminance": 0.19967763112122486,
+        "mean_rgb": [
+          0.24321495936273035,
+          0.18564945264075602,
+          0.2104382580614913
+        ],
+        "p999_luminance": 9.914106007766723,
+        "p99_luminance": 1.340784877514839,
+        "valid_pixels": 5184,
+        "width": 96
+      },
+      "pfm_sha256": "d2681e9df112844a01cdb257d8f762380c24712ebb8696c07412db13ecf480fa",
+      "png_sha256": "6d3d1dd7d920c7f45db53bede581561548924e99d040736a9e852552d787bc71",
+      "settings": {
+        "integrator": 4,
+        "max_depth": 8,
+        "seed": 123,
+        "spp": 4,
+        "width": 96
+      }
+    }
+  },
+  "format": "restir_baseline_lock_v1",
+  "source_revision": "31cec810eb1628517644ea1ddcc1178672a891d5",
+  "suite": "assets/scenes/restir_baseline_suite.json"
+}
