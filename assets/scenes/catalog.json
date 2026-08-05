@@ -296,6 +296,31 @@
       "id": 64,
       "name": "complex_gltf_light_lab",
       "path": "assets/scenes/scene_064_complex_gltf_light_lab.json"
+    },
+    {
+      "id": 65,
+      "name": "restir_many_light",
+      "path": "assets/scenes/scene_065_restir_many_light.json"
+    },
+    {
+      "id": 66,
+      "name": "restir_occlusion",
+      "path": "assets/scenes/scene_066_restir_occlusion.json"
+    },
+    {
+      "id": 67,
+      "name": "restir_disocclusion",
+      "path": "assets/scenes/scene_067_restir_disocclusion.json"
+    },
+    {
+      "id": 68,
+      "name": "restir_diffuse_gi",
+      "path": "assets/scenes/scene_068_restir_diffuse_gi.json"
+    },
+    {
+      "id": 69,
+      "name": "restir_glossy_gi",
+      "path": "assets/scenes/scene_069_restir_glossy_gi.json"
     }
   ]
 }

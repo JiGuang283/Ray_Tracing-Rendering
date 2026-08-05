@@ -1,0 +1,35 @@
+{
+  "name": "restir_occlusion",
+  "camera": {
+    "lookfrom": [0.0, 3.2, 10.0],
+    "lookat": [0.0, 1.5, -0.5],
+    "vup": [0.0, 1.0, 0.0],
+    "vfov": 36.0,
+    "aperture": 0.0,
+    "focus_dist": 10.0,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {"width": 960, "spp": 512, "background": [0.0, 0.0, 0.0], "sample_clamp": 0.0},
+  "world_accel": true,
+  "auto_emitters": true,
+  "materials": {
+    "white": {"type": "lambertian", "albedo": [0.68, 0.68, 0.68]},
+    "dark": {"type": "lambertian", "albedo": [0.08, 0.09, 0.11]},
+    "orange": {"type": "lambertian", "albedo": [0.72, 0.22, 0.04]},
+    "metal": {"type": "principled", "base_color": [0.72, 0.76, 0.82], "roughness": 0.35, "metallic": 0.8}
+  },
+  "objects": [
+    {"type": "xz_rect", "x0": -6.0, "x1": 6.0, "z0": -5.0, "z1": 5.0, "k": 0.0, "material": "white"},
+    {"type": "xy_rect", "x0": -6.0, "x1": 6.0, "y0": 0.0, "y1": 6.0, "k": -5.0, "material": "dark"},
+    {"type": "sphere", "center": [0.0, 1.25, -1.2], "radius": 1.25, "material": "metal"},
+    {"type": "sphere", "center": [-3.4, 0.85, 0.8], "radius": 0.85, "material": "orange"},
+    {"type": "sphere", "center": [3.4, 0.85, 0.8], "radius": 0.85, "material": "orange"},
+    {"type": "box", "min": [-2.7, 0.0, -0.8], "max": [-1.4, 3.8, 0.5], "material": "dark"},
+    {"type": "box", "min": [1.4, 0.0, -0.8], "max": [2.7, 2.8, 0.5], "material": "dark"}
+  ],
+  "lights": [
+    {"type": "quad", "Q": [-4.8, 5.5, -3.5], "u": [2.4, 0.0, 0.0], "v": [0.0, 0.0, 2.4], "intensity": [18.0, 5.0, 3.0]},
+    {"type": "quad", "Q": [-1.2, 5.5, -3.5], "u": [2.4, 0.0, 0.0], "v": [0.0, 0.0, 2.4], "intensity": [8.0, 15.0, 22.0]},
+    {"type": "quad", "Q": [2.4, 5.5, -3.5], "u": [2.4, 0.0, 0.0], "v": [0.0, 0.0, 2.4], "intensity": [17.0, 16.0, 10.0]}
+  ]
+}

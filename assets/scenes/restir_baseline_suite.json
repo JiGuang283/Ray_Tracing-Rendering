@@ -1,0 +1,21 @@
+{
+  "format": "restir_baseline_suite_v1",
+  "artifact_root": "output/restir/baselines",
+  "regression": [
+    {"name": "scene07_cornell", "scene_id": 7, "width": 96, "spp": 16, "max_depth": 12, "seed": 123, "integrator": 4, "backends": ["cpu", "cuda"]},
+    {"name": "scene23_mis", "scene_id": 23, "width": 96, "spp": 16, "max_depth": 12, "seed": 123, "integrator": 4, "backends": ["cpu", "cuda"]},
+    {"name": "scene59_mesh", "scene_id": 59, "width": 96, "spp": 8, "max_depth": 8, "seed": 123, "integrator": 4, "backends": ["cpu", "cuda"]},
+    {"name": "scene62_textures", "scene_id": 62, "width": 96, "spp": 8, "max_depth": 8, "seed": 123, "integrator": 4, "backends": ["cpu", "cuda"]},
+    {"name": "scene64_asset_stress", "scene_id": 64, "width": 96, "spp": 4, "max_depth": 8, "seed": 123, "integrator": 4, "backends": ["cpu", "cuda"]}
+  ],
+  "reference": [
+    {"name": "many_light", "scene_id": 65, "width": 128, "spp": 2048, "max_depth": 12, "seed": 123, "integrator": 4, "backends": ["cpu"]},
+    {"name": "occlusion", "scene_id": 66, "width": 128, "spp": 2048, "max_depth": 12, "seed": 123, "integrator": 4, "backends": ["cpu"]},
+    {"name": "disocclusion", "scene_id": 67, "width": 128, "spp": 2048, "max_depth": 12, "seed": 123, "integrator": 4, "backends": ["cpu"]},
+    {"name": "diffuse_gi", "scene_id": 68, "width": 128, "spp": 4096, "max_depth": 16, "seed": 123, "integrator": 4, "backends": ["cpu"]},
+    {"name": "glossy_gi", "scene_id": 69, "width": 128, "spp": 4096, "max_depth": 16, "seed": 123, "integrator": 4, "backends": ["cpu"]}
+  ],
+  "memory": [
+    {"name": "scene64_2k_workspace", "scene_id": 64, "width": 2560, "spp": 1, "max_depth": 1, "seed": 123, "integrator": 4, "backends": ["cuda"], "save_artifacts": false}
+  ]
+}

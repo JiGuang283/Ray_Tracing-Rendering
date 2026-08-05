@@ -1,0 +1,34 @@
+{
+  "name": "restir_glossy_gi",
+  "camera": {
+    "lookfrom": [0.0, 3.4, 11.5],
+    "lookat": [0.0, 1.6, -0.4],
+    "vup": [0.0, 1.0, 0.0],
+    "vfov": 35.0,
+    "aperture": 0.0,
+    "focus_dist": 11.5,
+    "aspect_ratio": 1.7777777777777777
+  },
+  "render": {"width": 960, "spp": 1024, "background": [0.001, 0.001, 0.002], "sample_clamp": 0.0},
+  "world_accel": true,
+  "auto_emitters": true,
+  "materials": {
+    "floor": {"type": "principled", "base_color": [0.34, 0.36, 0.4], "roughness": 0.24, "metallic": 0.12},
+    "wall": {"type": "lambertian", "albedo": [0.16, 0.18, 0.22]},
+    "rough_gold": {"type": "principled", "base_color": [0.92, 0.55, 0.13], "roughness": 0.34, "metallic": 1.0},
+    "rough_blue": {"type": "principled", "base_color": [0.08, 0.2, 0.76], "roughness": 0.18, "metallic": 0.75},
+    "near_specular": {"type": "principled", "base_color": [0.86, 0.9, 0.96], "roughness": 0.045, "metallic": 1.0},
+    "diffuse": {"type": "lambertian", "albedo": [0.58, 0.13, 0.08]},
+    "light": {"type": "diffuse_light", "color": [20.0, 16.0, 11.0]}
+  },
+  "objects": [
+    {"type": "xz_rect", "x0": -6.0, "x1": 6.0, "z0": -5.0, "z1": 5.0, "k": 0.0, "material": "floor"},
+    {"type": "xy_rect", "x0": -6.0, "x1": 6.0, "y0": 0.0, "y1": 6.0, "k": -5.0, "material": "wall"},
+    {"type": "sphere", "center": [-3.1, 1.2, -0.8], "radius": 1.2, "material": "rough_gold"},
+    {"type": "sphere", "center": [0.0, 1.4, -1.2], "radius": 1.4, "material": "near_specular"},
+    {"type": "sphere", "center": [3.2, 1.15, -0.6], "radius": 1.15, "material": "rough_blue"},
+    {"type": "box", "min": [-1.1, 0.0, 1.6], "max": [1.1, 1.0, 3.8], "material": "diffuse"},
+    {"type": "flip_face", "object": {"type": "xz_rect", "x0": -1.4, "x1": 1.4, "z0": -2.2, "z1": 0.6, "k": 5.7, "material": "light"}}
+  ],
+  "lights": []
+}
