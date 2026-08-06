@@ -2,6 +2,7 @@
 
 #include "restir_gbuffer_core.h"
 #include "restir_di_core.h"
+#include "restir_spatial_core.h"
 
 #include <algorithm>
 #include <cmath>
@@ -201,6 +202,77 @@ RestirDIHostCheckResult compare_restir_initial_di_host(
                   host_film[pixel].radiance.y) ||
             !near(device_film[pixel].radiance.z,
                   host_film[pixel].radiance.z)) {
+            ++result.direct_film_errors;
+        }
+    }
+    return result;
+}
+
+RestirDISpatialHostCheckResult compare_restir_spatial_di_basic_host(
+    const CompiledSceneView &scene, std::uint32_t width,
+    std::uint32_t height, std::uint32_t iteration,
+    std::uint32_t candidate_count, std::uint32_t neighbor_count,
+    std::uint32_t pass_count, std::uint32_t max_candidates,
+    float normal_threshold, float depth_threshold, std::uint32_t seed,
+    const std::vector<restir::RestirSurface> &device_surfaces,
+    const std::vector<restir::RestirDIReservoir> &device_reservoirs,
+    const std::vector<cuda_backend::CudaFilmPixel> &device_film) {
+    RestirDISpatialHostCheckResult result;
+    const std::uint32_t pixel_count = width * height;
+    if (device_surfaces.size() != pixel_count ||
+        device_reservoirs.size() != pixel_count ||
+        device_film.size() != pixel_count || pass_count == 0u) {
+        result.reservoir_errors = pixel_count;
+        result.direct_film_errors = pixel_count;
+        return result;
+    }
+
+    std::vector<restir::RestirDIReservoir> source(pixel_count);
+    std::vector<restir::RestirDIReservoir> destination(pixel_count);
+    for (std::uint32_t pixel = 0; pixel < pixel_count; ++pixel) {
+        restir::RestirDICandidateStats initial_stats;
+        (void)restir::generate_initial_di_reservoir(
+            scene, device_surfaces[pixel], width, height, pixel, iteration,
+            seed, candidate_count, source[pixel], initial_stats);
+    }
+    for (std::uint32_t pass = 0; pass < pass_count; ++pass) {
+        for (std::uint32_t pixel = 0; pixel < pixel_count; ++pixel) {
+            restir::RestirDISpatialStats spatial_stats;
+            const restir::RestirDIStatus status =
+                restir::spatial_resample_di_basic(
+                    scene, device_surfaces.data(), source.data(), width,
+                    height, pixel, iteration, pass, seed, neighbor_count,
+                    max_candidates, normal_threshold, depth_threshold,
+                    destination[pixel], spatial_stats);
+            ++result.spatial_status[static_cast<std::uint32_t>(status)];
+            result.spatial_candidates += spatial_stats.candidates;
+            result.spatial_accepted += spatial_stats.accepted;
+            result.spatial_rejected += spatial_stats.rejected;
+            for (std::size_t index = 0;
+                 index < result.compatibility.size(); ++index) {
+                result.compatibility[index] +=
+                    spatial_stats.compatibility[index];
+            }
+        }
+        source.swap(destination);
+    }
+
+    for (std::uint32_t pixel = 0; pixel < pixel_count; ++pixel) {
+        if (!compare_reservoir(device_reservoirs[pixel], source[pixel])) {
+            ++result.reservoir_errors;
+        }
+        Float3 radiance{};
+        std::uint32_t visibility_rays = 0u;
+        const restir::RestirDIStatus shading =
+            restir::shade_initial_di_reservoir(
+                scene, device_surfaces[pixel], source[pixel], width, height,
+                pixel, iteration, seed, radiance, visibility_rays);
+        ++result.shading_status[static_cast<std::uint32_t>(shading)];
+        result.visibility_rays += visibility_rays;
+        if (device_film[pixel].sample_count != 1u ||
+            !near(device_film[pixel].radiance.x, radiance.x) ||
+            !near(device_film[pixel].radiance.y, radiance.y) ||
+            !near(device_film[pixel].radiance.z, radiance.z)) {
             ++result.direct_film_errors;
         }
     }

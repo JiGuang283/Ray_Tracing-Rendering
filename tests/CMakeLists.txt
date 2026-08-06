@@ -83,6 +83,11 @@ if(RAYTRACER_ENABLE_CUDA)
                 --scene-file assets/scenes/scene_065_restir_many_light.json
                 --width 32 --height 18 --spp 64 --max-depth 1 --seed 123
     )
+    add_test(NAME cuda_restir_spatial_basic_check
+        COMMAND cuda_restir_check --mode spatial
+                --scene-file assets/scenes/scene_065_restir_many_light.json
+                --width 32 --height 18 --spp 1 --max-depth 4 --seed 123
+    )
     add_test(
         NAME cuda_scene_check
         COMMAND cuda_scene_check --ids 1,7,23 --grid-width 9
@@ -121,6 +126,7 @@ if(RAYTRACER_ENABLE_CUDA)
         cuda_restir_sphere_mesh_check
         cuda_restir_delta_only_check
         cuda_restir_initial_di_statistics
+        cuda_restir_spatial_basic_check
         PROPERTIES
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             SKIP_RETURN_CODE 77

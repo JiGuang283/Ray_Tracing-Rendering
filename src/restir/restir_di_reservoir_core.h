@@ -128,6 +128,36 @@ RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_di_weight(
                                     represented_count);
 }
 
+RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult
+represent_di_candidates(RestirDIReservoir &reservoir,
+                        std::uint32_t represented_count,
+                        float effective_count) noexcept {
+    if (!detail::di_raw_state_valid(reservoir)) {
+        return detail::operation_result(
+            reservoir_is_finalized(reservoir)
+                ? ReservoirRejectReason::ReservoirFinalized
+                : ReservoirRejectReason::InvalidReservoirState);
+    }
+    if (represented_count == 0u || !(effective_count > 0.0f)) {
+        return detail::operation_result(ReservoirRejectReason::EmptyReservoir);
+    }
+    if (reservoir.M > std::numeric_limits<std::uint32_t>::max() -
+                          represented_count) {
+        return detail::operation_result(
+            ReservoirRejectReason::CandidateCountOverflow);
+    }
+    const float new_effective_M = reservoir.effective_M + effective_count;
+    if (!detail::finite(effective_count) ||
+        !detail::finite(new_effective_M)) {
+        return detail::operation_result(
+            ReservoirRejectReason::NonFiniteUnbiasedContributionWeight);
+    }
+    reservoir.M += represented_count;
+    reservoir.effective_M = new_effective_M;
+    return detail::operation_result(ReservoirRejectReason::ZeroTarget, false,
+                                    represented_count);
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_candidate(
     RestirDIReservoir &reservoir, const RestirDICandidate &candidate,
     float random) noexcept {

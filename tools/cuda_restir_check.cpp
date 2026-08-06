@@ -61,7 +61,7 @@ Options parse_options(int argc, char **argv) {
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
-                   "[--mode reservoir|gbuffer|statistics] "
+                   "[--mode reservoir|gbuffer|spatial|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
                    "[--spp N] [--max-depth N] [--seed N]\n";
             std::exit(0);
@@ -70,10 +70,11 @@ Options parse_options(int argc, char **argv) {
         }
     }
     if ((options.mode != "reservoir" && options.mode != "gbuffer" &&
-         options.mode != "statistics") ||
+         options.mode != "spatial" && options.mode != "statistics") ||
         options.width < 2u || options.height < 2u || options.spp == 0u ||
         options.max_depth == 0u ||
-        (options.mode == "gbuffer" && options.spp != 1u)) {
+        ((options.mode == "gbuffer" || options.mode == "spatial") &&
+         options.spp != 1u)) {
         throw std::runtime_error("invalid CUDA ReSTIR check settings");
     }
     return options;
@@ -148,6 +149,8 @@ bool check_gbuffer(const Options &options) {
     settings.frame.render.sample_clamp = 0.0;
     settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
     settings.frame.render.restir.initial_bsdf_candidates = 0u;
+    settings.frame.render.restir.temporal_reuse = false;
+    settings.frame.render.restir.spatial_reuse = false;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::MISPath);
@@ -315,6 +318,8 @@ bool check_statistics(const Options &options) {
     settings.frame.render.sample_clamp = 0.0;
     settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
     settings.frame.render.restir.initial_bsdf_candidates = 0u;
+    settings.frame.render.restir.temporal_reuse = false;
+    settings.frame.render.restir.spatial_reuse = false;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::DirectLighting);
@@ -387,6 +392,87 @@ bool check_statistics(const Options &options) {
     return passed;
 }
 
+bool check_spatial(const Options &options) {
+    const SceneIR ir = load_scene_ir_file(options.scene_file.string());
+    const CompiledScene compiled = compile_scene(ir);
+    const CompiledSceneView host_scene = make_scene_view(compiled);
+    cuda_backend::DeviceSceneStorage device_scene;
+    device_scene.upload(compiled);
+
+    cuda_backend::CudaRestirSkeletonSettings settings;
+    settings.frame.render.extent =
+        make_image_extent(static_cast<int>(options.width),
+                          static_cast<int>(options.height));
+    settings.frame.render.integrator = IntegratorKind::ReSTIRDI;
+    settings.frame.render.samples_per_pixel = 1u;
+    settings.frame.render.max_depth = options.max_depth;
+    settings.frame.render.seed = options.seed;
+    settings.frame.render.sample_clamp = 0.0;
+    settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
+    settings.frame.render.restir.initial_bsdf_candidates = 0u;
+    settings.frame.render.restir.temporal_reuse = false;
+    settings.frame.render.restir.spatial_reuse = true;
+    settings.frame.render.restir.spatial_neighbors = 5u;
+    settings.frame.render.restir.spatial_passes = 1u;
+    settings.frame.render.restir.max_reservoir_candidates = 32u;
+    settings.frame.render.restir.bias_correction =
+        RestirBiasCorrection::Basic;
+    settings.frame.camera = ir.camera;
+    settings.reference_transport.policy =
+        integrator_policy(IntegratorKind::MISPath);
+    settings.reference_transport.max_depth = options.max_depth;
+
+    cuda_backend::CudaRestirWorkspace workspace;
+    const cuda_backend::CudaRestirSchedulerOutput output =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace);
+    const RestirDISpatialHostCheckResult host =
+        compare_restir_spatial_di_basic_host(
+            host_scene, options.width, options.height, 0u,
+            settings.frame.render.restir.initial_light_candidates,
+            settings.frame.render.restir.spatial_neighbors,
+            settings.frame.render.restir.spatial_passes,
+            settings.frame.render.restir.max_reservoir_candidates,
+            settings.frame.render.restir.normal_threshold,
+            settings.frame.render.restir.depth_threshold, options.seed,
+            output.gbuffer, output.di_reservoirs, output.direct_film);
+    const bool stats_match =
+        output.stats.spatial_candidates == host.spatial_candidates &&
+        output.stats.spatial_accepted == host.spatial_accepted &&
+        output.stats.spatial_rejected == host.spatial_rejected &&
+        output.stats.visibility_rays == host.visibility_rays &&
+        output.stats.di_spatial_status == host.spatial_status &&
+        output.stats.di_shading_status == host.shading_status &&
+        output.stats.spatial_compatibility == host.compatibility;
+    std::uint64_t capped_errors = 0u;
+    for (const restir::RestirDIReservoir &reservoir :
+         output.di_reservoirs) {
+        if (reservoir.M >
+            settings.frame.render.restir.max_reservoir_candidates) {
+            ++capped_errors;
+        }
+    }
+    const cuda_backend::CudaRestirWorkspaceInfo info = workspace.info();
+    const bool distinct_commits = info.committed_gbuffer == 0u &&
+                                  info.committed_di_reservoir == 1u;
+    const bool passed = host.reservoir_errors == 0u &&
+                        host.direct_film_errors == 0u && stats_match &&
+                        capped_errors == 0u && distinct_commits;
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=spatial"
+              << " pixels=" << options.width * options.height
+              << " reservoir_errors=" << host.reservoir_errors
+              << " direct_errors=" << host.direct_film_errors
+              << " candidates=" << output.stats.spatial_candidates
+              << " accepted=" << output.stats.spatial_accepted
+              << " rejected=" << output.stats.spatial_rejected
+              << " capped_errors=" << capped_errors
+              << " distinct_commits=" << (distinct_commits ? 1 : 0)
+              << " stats=" << (stats_match ? "pass" : "fail")
+              << " result=" << (passed ? "pass" : "fail") << '\n';
+    return passed;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -397,11 +483,14 @@ int main(int argc, char **argv) {
             return 77;
         }
         const Options options = parse_options(argc, argv);
-        const bool passed = options.mode == "reservoir"
-                                ? check_reservoir()
-                                : (options.mode == "gbuffer"
-                                       ? check_gbuffer(options)
-                                       : check_statistics(options));
+        const bool passed =
+            options.mode == "reservoir"
+                ? check_reservoir()
+                : (options.mode == "gbuffer"
+                       ? check_gbuffer(options)
+                       : (options.mode == "spatial"
+                              ? check_spatial(options)
+                              : check_statistics(options)));
         return passed
                    ? 0
                    : 1;

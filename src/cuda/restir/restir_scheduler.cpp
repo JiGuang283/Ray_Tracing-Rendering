@@ -4,6 +4,7 @@
 #include "restir_gbuffer.h"
 #include "restir_initial_di.h"
 #include "restir_reference_shading.h"
+#include "restir_spatial_di.h"
 #include "restir_workspace_internal.h"
 
 #include <cuda_runtime.h>
@@ -63,6 +64,16 @@ void validate_settings(const CudaRestirSkeletonSettings &settings) {
     if (settings.frame.render.restir.initial_bsdf_candidates != 0u) {
         throw std::invalid_argument(
             "BSDF-generated ReSTIR DI candidates are not implemented");
+    }
+    if (settings.frame.render.restir.temporal_reuse) {
+        throw std::invalid_argument(
+            "ReSTIR DI temporal reuse is not implemented yet");
+    }
+    if (settings.frame.render.restir.spatial_reuse &&
+        settings.frame.render.restir.bias_correction !=
+            RestirBiasCorrection::Basic) {
+        throw std::invalid_argument(
+            "this stage supports basic ReSTIR DI spatial correction only");
     }
     if (!std::isfinite(settings.frame.render.sample_clamp) ||
         settings.frame.render.sample_clamp < 0.0) {
@@ -136,9 +147,30 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             settings.frame.render.restir.initial_light_candidates,
             buffers.di_reservoir[write_reservoir].data(),
             buffers.counters.data(), settings.block_size);
+        std::uint32_t final_reservoir = write_reservoir;
+        if (settings.frame.render.restir.spatial_reuse) {
+            for (std::uint32_t pass = 0;
+                 pass < settings.frame.render.restir.spatial_passes;
+                 ++pass) {
+                const std::uint32_t destination_reservoir =
+                    final_reservoir ^ 1u;
+                launch_restir_spatial_di_basic(
+                    scene, buffers.gbuffer[write_gbuffer].data(),
+                    buffers.di_reservoir[final_reservoir].data(),
+                    buffers.di_reservoir[destination_reservoir].data(),
+                    width, height, iteration, pass,
+                    settings.frame.render.seed,
+                    settings.frame.render.restir.spatial_neighbors,
+                    settings.frame.render.restir.max_reservoir_candidates,
+                    settings.frame.render.restir.normal_threshold,
+                    settings.frame.render.restir.depth_threshold,
+                    buffers.counters.data(), settings.block_size);
+                final_reservoir = destination_reservoir;
+            }
+        }
         launch_restir_initial_di_shading(
             scene, buffers.gbuffer[write_gbuffer].data(),
-            buffers.di_reservoir[write_reservoir].data(), width, height,
+            buffers.di_reservoir[final_reservoir].data(), width, height,
             iteration, settings.frame.render.seed,
             static_cast<float>(settings.frame.render.sample_clamp),
             buffers.direct_film.data(), buffers.counters.data(),
@@ -152,7 +184,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             settings.block_size);
         RT_CUDA_CHECK(cudaStreamSynchronize(nullptr));
         restir::commit_restir_iteration(
-            buffers.frame_state, write_gbuffer, write_reservoir,
+            buffers.frame_state, write_gbuffer, final_reservoir,
             settings.frame.frame_index);
         ++completed;
     }
@@ -197,11 +229,21 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             counter.di_generation_status[index];
         output.stats.di_shading_status[index] =
             counter.di_shading_status[index];
+        output.stats.di_spatial_status[index] =
+            counter.di_spatial_status[index];
+    }
+    for (std::size_t index = 0;
+         index < output.stats.spatial_compatibility.size(); ++index) {
+        output.stats.spatial_compatibility[index] =
+            counter.spatial_compatibility[index];
     }
     output.stats.initial_candidates = counter.initial_candidates;
     output.stats.represented_candidates =
         counter.represented_candidates;
     output.stats.rejected_candidates = counter.rejected_candidates;
+    output.stats.spatial_candidates = counter.spatial_candidates;
+    output.stats.spatial_accepted = counter.spatial_accepted;
+    output.stats.spatial_rejected = counter.spatial_rejected;
     output.stats.visibility_rays = counter.visibility_rays;
     output.stats.di_clamped_samples = counter.di_clamped_samples;
     output.stats.di_invalid_samples = counter.di_invalid_samples;

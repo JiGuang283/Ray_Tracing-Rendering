@@ -29,6 +29,14 @@ struct RestirSpatialNeighbor {
     std::uint32_t valid = 0;
 };
 
+struct RestirDISpatialStats {
+    std::uint32_t candidates = 0;
+    std::uint32_t accepted = 0;
+    std::uint32_t rejected = 0;
+    std::uint32_t compatibility[
+        static_cast<std::uint32_t>(RestirSpatialCompatibility::Count)]{};
+};
+
 RT_HOST_DEVICE RT_FORCE_INLINE RestirSpatialNeighbor restir_spatial_neighbor(
     std::uint32_t center_pixel, std::uint32_t ordinal,
     std::uint32_t width, std::uint32_t height, std::uint32_t iteration,
@@ -139,6 +147,185 @@ restir_spatial_compatibility(const RestirSurface &center,
         return RestirSpatialCompatibility::NormalMismatch;
     }
     return RestirSpatialCompatibility::Compatible;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus
+evaluate_restir_sample_target(const CompiledSceneView &scene,
+                              const RestirDIPixelContext &context,
+                              const RestirLightSample &sample,
+                              float &target) noexcept {
+    target = 0.0f;
+    PackedLightSample evaluated;
+    const PackedLightStatus light_status =
+        evaluate_restir_light_sample_core(
+            scene, sample, context.surface.position, evaluated);
+    if (light_status == PackedLightStatus::NoSample) {
+        return RestirDIStatus::Success;
+    }
+    if (light_status != PackedLightStatus::Success) {
+        return RestirDIStatus::LightFailure;
+    }
+    Float3 integrand{};
+    return evaluate_unshadowed_restir_direct(context, evaluated, integrand,
+                                              target);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE void capped_di_source_mass(
+    const RestirDIReservoir &source, std::uint32_t current_M,
+    std::uint32_t max_candidates, std::uint32_t &represented_count,
+    float &effective_count, float &mass_fraction) noexcept {
+    represented_count = source.M;
+    effective_count = source.effective_M;
+    mass_fraction = 1.0f;
+    if (max_candidates == 0u ||
+        current_M >= max_candidates || source.M == 0u) {
+        if (max_candidates != 0u && current_M >= max_candidates) {
+            represented_count = 0u;
+            effective_count = 0.0f;
+            mass_fraction = 0.0f;
+        }
+        return;
+    }
+    const std::uint32_t remaining = max_candidates - current_M;
+    if (represented_count > remaining) {
+        represented_count = remaining;
+        mass_fraction = static_cast<float>(remaining) /
+                        static_cast<float>(source.M);
+        effective_count *= mass_fraction;
+    }
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus combine_basic_di_source(
+    const CompiledSceneView &scene, const RestirDIPixelContext &destination,
+    const RestirDIReservoir &source, std::uint32_t max_candidates,
+    float random, RestirDIReservoir &output, bool &accepted) noexcept {
+    accepted = false;
+    std::uint32_t represented_count = 0u;
+    float effective_count = 0.0f;
+    float mass_fraction = 0.0f;
+    capped_di_source_mass(source, output.M, max_candidates,
+                          represented_count, effective_count, mass_fraction);
+    if (represented_count == 0u) {
+        return RestirDIStatus::Success;
+    }
+    if (!reservoir_is_usable(source)) {
+        const ReservoirOperationResult represented =
+            represent_di_candidates(output, represented_count,
+                                    effective_count);
+        return represented.accepted() ||
+                       represented.rejection ==
+                           ReservoirRejectReason::ZeroTarget
+                   ? RestirDIStatus::Success
+                   : RestirDIStatus::ReservoirFailure;
+    }
+
+    float destination_target = 0.0f;
+    const RestirDIStatus target_status = evaluate_restir_sample_target(
+        scene, destination, source.sample, destination_target);
+    if (target_status != RestirDIStatus::Success) {
+        return target_status;
+    }
+    if (!(destination_target > 0.0f)) {
+        const ReservoirOperationResult represented =
+            represent_di_candidates(output, represented_count,
+                                    effective_count);
+        return represented.accepted() ||
+                       represented.rejection ==
+                           ReservoirRejectReason::ZeroTarget
+                   ? RestirDIStatus::Success
+                   : RestirDIStatus::ReservoirFailure;
+    }
+    const float stream_normalization =
+        source.unbiased_contribution_weight * source.effective_M *
+        mass_fraction;
+    const float weight = destination_target * stream_normalization;
+    const ReservoirOperationResult combined = stream_di_weight(
+        output, source.sample, destination_target, weight,
+        represented_count, effective_count, random);
+    if (!combined.accepted()) {
+        return RestirDIStatus::ReservoirFailure;
+    }
+    accepted = true;
+    return RestirDIStatus::Success;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus spatial_resample_di_basic(
+    const CompiledSceneView &scene, const RestirSurface *surfaces,
+    const RestirDIReservoir *source_reservoirs, std::uint32_t width,
+    std::uint32_t height, std::uint32_t pixel, std::uint32_t iteration,
+    std::uint32_t pass_index, std::uint32_t seed,
+    std::uint32_t neighbor_count, std::uint32_t max_candidates,
+    float normal_threshold, float depth_threshold,
+    RestirDIReservoir &output, RestirDISpatialStats &stats) noexcept {
+    reset_reservoir(output);
+    stats = {};
+    if (surfaces == nullptr || source_reservoirs == nullptr || width < 2u ||
+        height < 2u ||
+        pixel >= static_cast<std::uint64_t>(width) * height ||
+        neighbor_count > kMaxRestirSpatialNeighbors) {
+        return RestirDIStatus::ReservoirFailure;
+    }
+    RestirDIPixelContext destination;
+    const RestirDIStatus context_status = reconstruct_restir_di_context(
+        scene, surfaces[pixel], width, height, pixel, iteration, seed,
+        destination);
+    if (context_status != RestirDIStatus::Success) {
+        return context_status;
+    }
+    constexpr std::uint32_t kSpatialReservoirDomain = 0x53505253u;
+    RNG rng(restir_random_seed(seed, pixel, iteration,
+                              kSpatialReservoirDomain ^ pass_index));
+
+    ++stats.candidates;
+    bool accepted = false;
+    RestirDIStatus status = combine_basic_di_source(
+        scene, destination, source_reservoirs[pixel], max_candidates,
+        static_cast<float>(rng.next()), output, accepted);
+    if (status != RestirDIStatus::Success) {
+        ++stats.rejected;
+        return status;
+    }
+    stats.accepted += accepted ? 1u : 0u;
+
+    for (std::uint32_t ordinal = 0; ordinal < neighbor_count; ++ordinal) {
+        if (max_candidates != 0u && output.M >= max_candidates) {
+            break;
+        }
+        const RestirSpatialNeighbor neighbor = restir_spatial_neighbor(
+            pixel, ordinal, width, height, iteration, pass_index, seed);
+        if (neighbor.valid == 0u) {
+            continue;
+        }
+        ++stats.candidates;
+        const RestirSpatialCompatibility compatibility =
+            restir_spatial_compatibility(
+                surfaces[pixel], surfaces[neighbor.pixel], normal_threshold,
+                depth_threshold);
+        ++stats.compatibility[static_cast<std::uint32_t>(compatibility)];
+        if (compatibility != RestirSpatialCompatibility::Compatible) {
+            ++stats.rejected;
+            continue;
+        }
+        accepted = false;
+        status = combine_basic_di_source(
+            scene, destination, source_reservoirs[neighbor.pixel],
+            max_candidates, static_cast<float>(rng.next()), output,
+            accepted);
+        if (status != RestirDIStatus::Success) {
+            ++stats.rejected;
+            return status;
+        }
+        stats.accepted += accepted ? 1u : 0u;
+    }
+    const ReservoirOperationResult finalized = finalize_reservoir(output);
+    if (!finalized.accepted()) {
+        return finalized.rejection == ReservoirRejectReason::EmptyReservoir ||
+                       finalized.rejection ==
+                           ReservoirRejectReason::NoSelectedSample
+                   ? RestirDIStatus::ReservoirEmpty
+                   : RestirDIStatus::ReservoirFailure;
+    }
+    return RestirDIStatus::Success;
 }
 
 } // namespace restir

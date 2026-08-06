@@ -10,9 +10,14 @@ struct DeviceRestirCounters {
     unsigned long long transport_status[8]{};
     unsigned long long di_generation_status[11]{};
     unsigned long long di_shading_status[11]{};
+    unsigned long long di_spatial_status[11]{};
+    unsigned long long spatial_compatibility[9]{};
     unsigned long long initial_candidates = 0;
     unsigned long long represented_candidates = 0;
     unsigned long long rejected_candidates = 0;
+    unsigned long long spatial_candidates = 0;
+    unsigned long long spatial_accepted = 0;
+    unsigned long long spatial_rejected = 0;
     unsigned long long visibility_rays = 0;
     unsigned long long di_clamped_samples = 0;
     unsigned long long di_invalid_samples = 0;

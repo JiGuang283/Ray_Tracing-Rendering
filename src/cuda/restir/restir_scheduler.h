@@ -29,9 +29,14 @@ struct CudaRestirSchedulerStats {
     std::array<std::uint64_t, 8> transport_status{};
     std::array<std::uint64_t, 11> di_generation_status{};
     std::array<std::uint64_t, 11> di_shading_status{};
+    std::array<std::uint64_t, 11> di_spatial_status{};
+    std::array<std::uint64_t, 9> spatial_compatibility{};
     std::uint64_t initial_candidates = 0;
     std::uint64_t represented_candidates = 0;
     std::uint64_t rejected_candidates = 0;
+    std::uint64_t spatial_candidates = 0;
+    std::uint64_t spatial_accepted = 0;
+    std::uint64_t spatial_rejected = 0;
     std::uint64_t visibility_rays = 0;
     std::uint64_t di_clamped_samples = 0;
     std::uint64_t di_invalid_samples = 0;
