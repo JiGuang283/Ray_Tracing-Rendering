@@ -117,16 +117,17 @@ class DiffuseLightProgram final : public MaterialProgram {
                   const MaterialParameterBlock &parameters, ShaderScratch &,
                   MaterialOutput &output) const override {
         output.reset(context.frame, context.geometry_normal);
-        if (context.front_face) {
+        if (context.front_face || parameters.get<bool>(1)) {
             output.set_emission(evaluate_color(
                 parameters.get<TextureHandle>(0), context));
         }
     }
 
     void validate(const MaterialParameterBlock &parameters) const override {
-        require_size(parameters, 1, "DiffuseLightProgram");
+        require_size(parameters, 2, "DiffuseLightProgram");
         require_parameter<TextureHandle>(parameters, 0,
                                          "DiffuseLightProgram");
+        require_parameter<bool>(parameters, 1, "DiffuseLightProgram");
     }
 
     std::size_t max_closures() const override {
@@ -291,21 +292,25 @@ MaterialHandle make_dielectric_material(double ior) {
                          DielectricMaterialDescription{ior});
 }
 
-MaterialHandle make_diffuse_light_material(TextureHandle emission) {
+MaterialHandle make_diffuse_light_material(TextureHandle emission,
+                                           bool double_sided) {
     MaterialMetadata metadata;
     metadata.emissive = true;
+    metadata.double_sided = double_sided;
     metadata.emission_estimate = estimate_texture(emission);
     MaterialParameterBlock parameters;
-    DiffuseLightMaterialDescription description{emission};
+    DiffuseLightMaterialDescription description{emission, double_sided};
     parameters.add(std::move(emission));
+    parameters.add(double_sided);
     return make_instance(program_instance<DiffuseLightProgram>(),
                          std::move(parameters), metadata,
                          std::move(description));
 }
 
-MaterialHandle make_diffuse_light_material(const color &emission) {
+MaterialHandle make_diffuse_light_material(const color &emission,
+                                           bool double_sided) {
     return make_diffuse_light_material(
-        std::make_shared<SolidColorTexture>(emission));
+        std::make_shared<SolidColorTexture>(emission), double_sided);
 }
 
 MaterialHandle make_principled_material(

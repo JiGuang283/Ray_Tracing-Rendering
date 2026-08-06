@@ -115,9 +115,31 @@ TEST_CASE(packed_material_evaluator_emits_expected_closures) {
     REQUIRE_NEAR(output.emission.x, 3.0, 1e-6);
     REQUIRE_NEAR(output.emission.y, 2.0, 1e-6);
 
+    PackedSurfaceInteraction back_surface = surface;
+    back_surface.flags &= ~PACKED_HIT_FRONT_FACE;
+    REQUIRE(evaluate_packed_material(view, light.value, back_surface,
+                                     output));
+    REQUIRE_NEAR(output.emission.x, 3.0, 1e-6);
+    REQUIRE_NEAR(output.emission.y, 2.0, 1e-6);
+
     REQUIRE(evaluate_packed_material(view, phase.value, surface, output));
     REQUIRE(output.closure_count == 1);
     REQUIRE(output.closures[0].type == PackedClosureType::IsotropicPhase);
+}
+
+TEST_CASE(packed_diffuse_light_preserves_one_sided_emission) {
+    CompiledScene scene;
+    PackedResourceCompiler compiler(scene);
+    const MaterialId light = compiler.compile_material(
+        make_diffuse_light_material(color(3.0, 2.0, 1.0), false));
+    const CompiledSceneView view = make_scene_view(scene);
+    PackedSurfaceInteraction surface = test_surface();
+    surface.flags &= ~PACKED_HIT_FRONT_FACE;
+    PackedMaterialOutput output;
+
+    REQUIRE(evaluate_packed_material(view, light.value, surface, output));
+    REQUIRE_NEAR(output.emission.x, 0.0, 1e-6);
+    REQUIRE_NEAR(output.emission.y, 0.0, 1e-6);
 }
 
 TEST_CASE(packed_principled_material_applies_normal_map_and_metadata) {

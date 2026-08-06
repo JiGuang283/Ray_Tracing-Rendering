@@ -105,6 +105,7 @@ struct DielectricMaterialIR {
 
 struct DiffuseLightMaterialIR {
     TextureIRId emission = kInvalidTextureIR;
+    bool double_sided = true;
 };
 
 struct PrincipledMaterialIR {

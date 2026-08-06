@@ -62,6 +62,7 @@ TEST_CASE(material_metadata_is_available_without_shader_evaluation) {
     const MaterialHandle material =
         make_diffuse_light_material(emission);
     REQUIRE(material->is_emissive());
+    REQUIRE(material->is_double_sided());
     REQUIRE_NEAR(material->emission_estimate().x(), 4.0, 1e-12);
 
     ShaderScratch scratch;
@@ -69,6 +70,26 @@ TEST_CASE(material_metadata_is_available_without_shader_evaluation) {
     material->evaluate(default_context(), scratch, output);
     REQUIRE(output.has_emission);
     REQUIRE_NEAR(output.emission.y(), 3.0, 1e-12);
+
+    ShaderEvalContext back_context = default_context();
+    back_context.front_face = false;
+    material->evaluate(back_context, scratch, output);
+    REQUIRE(output.has_emission);
+    REQUIRE_NEAR(output.emission.y(), 3.0, 1e-12);
+}
+
+TEST_CASE(diffuse_light_can_be_explicitly_one_sided) {
+    const MaterialHandle material =
+        make_diffuse_light_material(color(4.0, 3.0, 2.0), false);
+    REQUIRE(material->is_emissive());
+    REQUIRE(!material->is_double_sided());
+
+    ShaderEvalContext context = default_context();
+    context.front_face = false;
+    ShaderScratch scratch;
+    MaterialOutput output;
+    material->evaluate(context, scratch, output);
+    REQUIRE(!output.has_emission);
 }
 
 TEST_CASE(material_factories_preserve_typed_host_descriptions) {
@@ -139,6 +160,43 @@ TEST_CASE(scene_ir_lowers_material_and_texture_types) {
         ir.textures[0].data));
     REQUIRE(std::holds_alternative<LambertianMaterialIR>(
         ir.materials[0].data));
+}
+
+TEST_CASE(scene_ir_defaults_diffuse_lights_to_double_sided) {
+    SceneDescription description;
+    description.source_path = "test.json";
+    description.root = nlohmann::json::parse(R"({
+        "materials": {
+            "two_sided": {
+                "type": "diffuse_light",
+                "color": [2, 2, 2]
+            },
+            "one_sided": {
+                "type": "diffuse_light",
+                "color": [2, 2, 2],
+                "double_sided": false
+            }
+        },
+        "objects": []
+    })");
+
+    const SceneIR ir = parse_scene_ir(description);
+    REQUIRE(ir.materials.size() == 2);
+    bool found_two_sided = false;
+    bool found_one_sided = false;
+    for (const MaterialIR &material : ir.materials) {
+        const bool double_sided =
+            std::get<DiffuseLightMaterialIR>(material.data).double_sided;
+        if (material.name == "two_sided") {
+            REQUIRE(double_sided);
+            found_two_sided = true;
+        } else if (material.name == "one_sided") {
+            REQUIRE(!double_sided);
+            found_one_sided = true;
+        }
+    }
+    REQUIRE(found_two_sided);
+    REQUIRE(found_one_sided);
 }
 
 TEST_CASE(scene_ir_rejects_unknown_texture_references) {

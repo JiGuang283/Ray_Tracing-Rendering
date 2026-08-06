@@ -288,6 +288,18 @@ TEST_CASE(packed_xz_rect_emitter_uses_the_cpu_compatible_light_normal) {
     REQUIRE(evaluate_packed_light_pdf(view, light_id, {0, 0, 0}, sample.wi,
                                       pdf) == PackedLightStatus::Success);
     REQUIRE_NEAR(pdf, sample.pdf, 2e-4);
+
+    PackedLightSample back_sample;
+    REQUIRE(sample_packed_light(view, light_id, {0, 4, 0},
+                                {0.3f, 0.7f}, back_sample) ==
+            PackedLightStatus::Success);
+    REQUIRE(back_sample.wi.y < 0.0f);
+    REQUIRE(back_sample.radiance.x > 0.0f);
+    float back_pdf = 0.0f;
+    REQUIRE(evaluate_packed_light_pdf(view, light_id, {0, 4, 0},
+                                      back_sample.wi, back_pdf) ==
+            PackedLightStatus::Success);
+    REQUIRE_NEAR(back_pdf, back_sample.pdf, 2e-4);
 }
 
 TEST_CASE(packed_light_sampler_pdf_excludes_invisible_explicit_quad) {

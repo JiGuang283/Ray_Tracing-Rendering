@@ -332,6 +332,9 @@ def validate_material(material: Dict[str, Any], textures: Set[str], context: str
         else:
             validate_texture_value(material[field], textures,
                                    f"{context}.{field}", reporter)
+        if "double_sided" in material and not isinstance(
+                material["double_sided"], bool):
+            reporter.error(f"{context}.double_sided", "expected boolean")
     elif material_type in {"pbr", "principled"}:
         base_field = "base_color" if "base_color" in material else "albedo"
         if base_field not in material:

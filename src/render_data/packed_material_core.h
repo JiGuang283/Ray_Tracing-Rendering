@@ -290,7 +290,8 @@ evaluate_packed_material_core(const CompiledSceneView &scene,
             front_face ? PACKED_CLOSURE_FRONT_FACE : PACKED_CLOSURE_NONE);
         break;
     case PackedMaterialType::DiffuseLight:
-        if (front_face) {
+        if (front_face ||
+            (material.flags & PACKED_MATERIAL_DOUBLE_SIDED) != 0) {
             status = evaluate_texture(scene, material.texture_ids[0],
                                       context, texture,
                                       max_texture_stack);

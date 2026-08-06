@@ -127,7 +127,8 @@ MaterialHandle build_material(const MaterialIR &material,
             } else if constexpr (std::is_same_v<T,
                                                 DiffuseLightMaterialIR>) {
                 return make_diffuse_light_material(build_texture(
-                    typed.emission, TextureSemantic::Color, context));
+                    typed.emission, TextureSemantic::Color, context),
+                    typed.double_sided);
             } else if constexpr (std::is_same_v<T,
                                                 PrincipledMaterialIR>) {
                 return make_principled_material(

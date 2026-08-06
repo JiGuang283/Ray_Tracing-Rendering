@@ -437,7 +437,8 @@ MaterialIR parse_material(const std::string &name, const json &value,
                        ? value["emit"]
                        : require_key(value, "color", context));
         material.data = DiffuseLightMaterialIR{
-            textures.parse_value(emission, context + ".emission")};
+            textures.parse_value(emission, context + ".emission"),
+            read_bool_or(value, "double_sided", true)};
         return material;
     }
     if (type == "pbr" || type == "principled") {

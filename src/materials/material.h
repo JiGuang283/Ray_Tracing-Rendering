@@ -54,6 +54,7 @@ struct DielectricMaterialDescription {
 
 struct DiffuseLightMaterialDescription {
     TextureHandle emission;
+    bool double_sided = true;
 };
 
 struct PrincipledMaterialDescription {

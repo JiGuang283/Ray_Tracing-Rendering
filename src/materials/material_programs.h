@@ -8,8 +8,10 @@ MaterialHandle make_lambertian_material(TextureHandle albedo);
 MaterialHandle make_lambertian_material(const color &albedo);
 MaterialHandle make_metal_material(const color &albedo, double roughness);
 MaterialHandle make_dielectric_material(double ior);
-MaterialHandle make_diffuse_light_material(TextureHandle emission);
-MaterialHandle make_diffuse_light_material(const color &emission);
+MaterialHandle make_diffuse_light_material(TextureHandle emission,
+                                           bool double_sided = true);
+MaterialHandle make_diffuse_light_material(const color &emission,
+                                           bool double_sided = true);
 MaterialHandle make_principled_material(
     TextureHandle base_color, TextureHandle roughness, TextureHandle metallic,
     TextureHandle normal_map = nullptr, TextureHandle emission = nullptr,
