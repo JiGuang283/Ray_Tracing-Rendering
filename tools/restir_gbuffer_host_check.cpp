@@ -481,6 +481,7 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
         device_current_surfaces;
     std::vector<restir::RestirGIReservoir> source(pixel_count);
     std::vector<restir::RestirGIReservoir> destination(pixel_count);
+    std::vector<Float3> fallback(pixel_count);
     for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
         current_surfaces[pixel].motion = kInvalidPackedIndex;
         restir::RestirGICandidateStats stats;
@@ -488,7 +489,7 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
             restir::generate_initial_gi_reservoir(
                 scene, current_surfaces[pixel], width, height, pixel,
                 iteration, seed, candidate_count, transport,
-                source[pixel], stats);
+                source[pixel], stats, &fallback[pixel]);
         increment(result.generation_status, status);
         result.initial_candidates += stats.attempted;
         result.represented_candidates += stats.represented;
@@ -587,6 +588,7 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
         const restir::RestirGIStatus status = restir::shade_gi_reservoir(
             scene, current_surfaces[pixel], source[pixel], width, height,
             pixel, iteration, seed, radiance, visibility_rays, failure);
+        radiance = packed_transport::math::add(radiance, fallback[pixel]);
         increment(result.shading_status, status);
         if (failure != restir::RestirGIShiftFailure::None) {
             increment(result.shift_failures, failure);

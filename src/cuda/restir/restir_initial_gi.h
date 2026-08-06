@@ -18,6 +18,7 @@ void launch_restir_initial_gi_candidates(
     std::uint32_t candidate_count,
     const PackedTransportSettings &transport,
     restir::RestirGIReservoir *reservoirs,
+    CudaFilmPixel *fallback_film,
     DeviceRestirCounters *counters, std::uint32_t block_size,
     std::uint32_t *status_output = nullptr);
 

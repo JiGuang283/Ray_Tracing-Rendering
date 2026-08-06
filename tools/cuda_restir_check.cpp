@@ -40,6 +40,7 @@ struct Options {
     RestirBiasCorrection bias = RestirBiasCorrection::Pairwise;
     bool spatial = false;
     bool temporal = false;
+    bool require_fallback = false;
 };
 
 Options parse_options(int argc, char **argv) {
@@ -81,6 +82,8 @@ Options parse_options(int argc, char **argv) {
             options.spatial = true;
         } else if (argument == "--temporal") {
             options.temporal = true;
+        } else if (argument == "--require-fallback") {
+            options.require_fallback = true;
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
@@ -430,7 +433,8 @@ bool check_initial_gi(const Options &options) {
     cuda_backend::launch_restir_initial_gi_candidates(
         device_scene.view(), device_surfaces.data(), options.width,
         options.height, 0u, options.seed, kCandidates, transport,
-        device_reservoirs.data(), device_counters.data(), kBlockSize,
+        device_reservoirs.data(), device_film.data(),
+        device_counters.data(), kBlockSize,
         device_generation_status.data());
     cuda_backend::launch_restir_initial_gi_shading(
         device_scene.view(), device_surfaces.data(),
@@ -466,11 +470,12 @@ bool check_initial_gi(const Options &options) {
             options.seed, host_surface);
         restir::RestirGIReservoir host_reservoir;
         restir::RestirGICandidateStats host_stats;
+        Float3 host_fallback{};
         const restir::RestirGIStatus generation =
             restir::generate_initial_gi_reservoir(
                 host_scene, host_surface, options.width, options.height,
                 pixel, 0u, options.seed, kCandidates, transport,
-                host_reservoir, host_stats);
+                host_reservoir, host_stats, &host_fallback);
         host_candidates += host_stats.attempted;
         Float3 host_radiance{};
         std::uint32_t visibility_rays = 0u;
@@ -480,6 +485,8 @@ bool check_initial_gi(const Options &options) {
                 host_scene, host_surface, host_reservoir, options.width,
                 options.height, pixel, 0u, options.seed, host_radiance,
                 visibility_rays, failure);
+        host_radiance = packed_transport::math::add(host_radiance,
+                                                    host_fallback);
         host_visibility += visibility_rays;
         reservoir_errors +=
             compare_gi_reservoir(reservoirs[pixel], host_reservoir)
@@ -731,6 +738,7 @@ bool check_gi_statistics(const Options &options) {
     std::uint64_t gi_visibility = 0u;
     std::uint64_t reference_shadow_rays = 0u;
     std::uint64_t invalid_samples = 0u;
+    std::uint64_t fallback_paths = 0u;
     bool sample_counts_valid = true;
     std::array<std::uint64_t, 16> generation_status{};
     std::array<std::uint64_t, 16> shading_status{};
@@ -784,6 +792,7 @@ bool check_gi_statistics(const Options &options) {
         invalid_samples += output.stats.gi_invalid_samples +
                            output.stats.di_invalid_samples +
                            output.stats.invalid_samples;
+        fallback_paths += output.stats.gi_fallbacks;
         for (std::size_t index = 0u; index < generation_status.size();
              ++index) {
             generation_status[index] +=
@@ -882,7 +891,8 @@ bool check_gi_statistics(const Options &options) {
                       : relative_error <= 0.02 && z_score <= 4.5;
     const bool passed = sample_counts_valid && invalid_samples == 0u &&
                         zero_emitter_pdfs == 0u && reuse_exercised &&
-                        statistical_threshold;
+                        statistical_threshold &&
+                        (!options.require_fallback || fallback_paths > 0u);
     std::cout << "CUDA_RESTIR_CHECK"
               << " mode=gi-statistics"
               << " seeds=" << kSeedCount
@@ -905,6 +915,7 @@ bool check_gi_statistics(const Options &options) {
               << " gi_visibility=" << gi_visibility
               << " reference_shadow_rays=" << reference_shadow_rays
               << " invalid_samples=" << invalid_samples
+              << " fallback_paths=" << fallback_paths
               << " emitter_hits=" << emitter_hits
               << " zero_emitter_pdfs=" << zero_emitter_pdfs
               << " average_bsdf_mis_weight="

@@ -54,6 +54,7 @@ struct RestirGICandidateStats {
     std::uint32_t rejected = 0u;
     std::uint32_t suffix_shadow_rays = 0u;
     std::uint32_t suffix_traversal_steps = 0u;
+    std::uint32_t fallback_paths = 0u;
 };
 
 struct RestirGIReconnectResult {
@@ -296,6 +297,59 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_suffix(
                : RestirGIStatus::NonFinite;
 }
 
+RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_gi_fallback_path(
+    const CompiledSceneView &scene, const PackedRay &secondary_ray,
+    const PackedMaterialOutput &primary_material,
+    const PackedBSDFSample &primary_sample,
+    const PackedTransportSettings &transport, RNG &rng, Float3 &radiance,
+    std::uint32_t &shadow_rays,
+    std::uint32_t &traversal_steps) noexcept {
+    radiance = {};
+    shadow_rays = 0u;
+    traversal_steps = 0u;
+    if (transport.max_depth < 2u ||
+        !valid_integrator_policy(transport.policy) ||
+        primary_sample.pdf <= 0.0f) {
+        return RestirGIStatus::BSDFFailure;
+    }
+    const float cosine =
+        packed_bsdf::abs_cos_theta(primary_material, primary_sample.wi);
+    const Float3 throughput = packed_transport::math::multiply(
+        primary_sample.f, cosine / primary_sample.pdf);
+    if (!packed_transport::math::finite(throughput)) {
+        return RestirGIStatus::NonFinite;
+    }
+    PackedPathState state{};
+    packed_transport::initialize_packed_path_state(
+        scene, secondary_ray, transport, rng.state, 0u, 0u, state);
+    if (!state.active()) {
+        return RestirGIStatus::TraversalFailure;
+    }
+    state.depth = 1u;
+    state.throughput = throughput;
+    state.previous_bsdf_pdf = primary_sample.pdf;
+    if (primary_sample.is_delta()) {
+        state.flags |= PACKED_PATH_DELTA_BOUNCE;
+    } else {
+        state.flags &= ~PACKED_PATH_DELTA_BOUNCE;
+    }
+    while (state.active()) {
+        packed_transport::advance_packed_path_core(scene, transport, state);
+    }
+    rng.state = state.rng_state;
+    shadow_rays = state.shadow_rays;
+    traversal_steps = state.traversal_steps;
+    if (state.status != PackedTransportStatus::Success) {
+        return state.status == PackedTransportStatus::TraversalFailure
+                   ? RestirGIStatus::TraversalFailure
+                   : RestirGIStatus::NonFinite;
+    }
+    radiance = state.radiance;
+    return packed_transport::math::finite(radiance)
+               ? RestirGIStatus::Success
+               : RestirGIStatus::NonFinite;
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_reconnection(
     const RestirDIPixelContext &destination,
     const RestirGISample &sample,
@@ -372,9 +426,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
     std::uint32_t candidate_count,
     const PackedTransportSettings &transport,
     RestirGIReservoir &reservoir,
-    RestirGICandidateStats &stats) noexcept {
+    RestirGICandidateStats &stats, Float3 *fallback_radiance = nullptr) noexcept {
     reset_reservoir(reservoir);
     stats = {};
+    if (fallback_radiance != nullptr) {
+        *fallback_radiance = {};
+    }
     if (candidate_count == 0u || transport.max_depth < 2u) {
         return RestirGIStatus::ReservoirEmpty;
     }
@@ -404,12 +461,6 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
             ++stats.rejected;
             return RestirGIStatus::BSDFFailure;
         }
-        if (primary_sample.is_delta()) {
-            const ReservoirOperationResult represented =
-                represent_gi_candidates(reservoir, 1u, 1.0f);
-            stats.represented += represented.represented_candidates;
-            continue;
-        }
         if (!(primary_sample.pdf >= 1e-8f)) {
             ++stats.rejected;
             return RestirGIStatus::BSDFFailure;
@@ -417,6 +468,29 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
 
         const PackedRay secondary_ray = packed_transport::spawn_ray(
             primary.surface, primary_sample.wi, stored.ray_time);
+        if (primary_sample.is_delta()) {
+            Float3 fallback{};
+            std::uint32_t fallback_shadow_rays = 0u;
+            std::uint32_t fallback_steps = 0u;
+            const RestirGIStatus fallback_status = evaluate_gi_fallback_path(
+                scene, secondary_ray, primary.material, primary_sample,
+                transport, rng, fallback, fallback_shadow_rays,
+                fallback_steps);
+            stats.suffix_shadow_rays += fallback_shadow_rays;
+            stats.suffix_traversal_steps += fallback_steps;
+            if (fallback_status != RestirGIStatus::Success) {
+                ++stats.rejected;
+                return fallback_status;
+            }
+            if (fallback_radiance != nullptr) {
+                *fallback_radiance = packed_transport::math::add(
+                    *fallback_radiance,
+                    packed_transport::math::multiply(
+                        fallback, 1.0f / static_cast<float>(candidate_count)));
+            }
+            ++stats.fallback_paths;
+            continue;
+        }
         PackedHit secondary_hit{};
         const PackedTraversalStatus traversal =
             packed_intersector::intersect_compiled_scene_core(
@@ -456,8 +530,27 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
             continue;
         }
         if (!is_diffuse_secondary(secondary_material)) {
-            ++stats.rejected;
-            return RestirGIStatus::UnsupportedSecondary;
+            Float3 fallback{};
+            std::uint32_t fallback_shadow_rays = 0u;
+            std::uint32_t fallback_steps = 0u;
+            const RestirGIStatus fallback_status = evaluate_gi_fallback_path(
+                scene, secondary_ray, primary.material, primary_sample,
+                transport, rng, fallback, fallback_shadow_rays,
+                fallback_steps);
+            stats.suffix_shadow_rays += fallback_shadow_rays;
+            stats.suffix_traversal_steps += fallback_steps;
+            if (fallback_status != RestirGIStatus::Success) {
+                ++stats.rejected;
+                return fallback_status;
+            }
+            if (fallback_radiance != nullptr) {
+                *fallback_radiance = packed_transport::math::add(
+                    *fallback_radiance,
+                    packed_transport::math::multiply(
+                        fallback, 1.0f / static_cast<float>(candidate_count)));
+            }
+            ++stats.fallback_paths;
+            continue;
         }
 
         const Float3 to_primary = packed_transport::math::multiply(

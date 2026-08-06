@@ -19,6 +19,7 @@ __global__ void generate_initial_gi_candidates_kernel(
     std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t candidate_count, PackedTransportSettings transport,
     restir::RestirGIReservoir *reservoirs,
+    CudaFilmPixel *fallback_film,
     DeviceRestirCounters *counters, std::uint32_t *status_output) {
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
@@ -26,10 +27,16 @@ __global__ void generate_initial_gi_candidates_kernel(
         return;
     }
     restir::RestirGICandidateStats stats;
+    Float3 fallback_radiance{};
     const restir::RestirGIStatus status =
         restir::generate_initial_gi_reservoir(
             scene.scene, surfaces[pixel], width, height, pixel, iteration,
-            seed, candidate_count, transport, reservoirs[pixel], stats);
+            seed, candidate_count, transport, reservoirs[pixel], stats,
+            &fallback_radiance);
+    if (fallback_film != nullptr) {
+        fallback_film[pixel].radiance = packed_transport::math::add(
+            fallback_film[pixel].radiance, fallback_radiance);
+    }
     const std::uint32_t status_value = gi_status_index(status);
     if (status_output != nullptr) {
         status_output[pixel] = status_value;
@@ -45,6 +52,8 @@ __global__ void generate_initial_gi_candidates_kernel(
               static_cast<unsigned long long>(stats.suffix_shadow_rays));
     atomicAdd(&counters->gi_suffix_traversal_steps,
               static_cast<unsigned long long>(stats.suffix_traversal_steps));
+    atomicAdd(&counters->gi_fallbacks,
+              static_cast<unsigned long long>(stats.fallback_paths));
 }
 
 __global__ void shade_initial_gi_kernel(
@@ -111,6 +120,7 @@ void launch_restir_initial_gi_candidates(
     std::uint32_t candidate_count,
     const PackedTransportSettings &transport,
     restir::RestirGIReservoir *reservoirs,
+    CudaFilmPixel *fallback_film,
     DeviceRestirCounters *counters, std::uint32_t block_size,
     std::uint32_t *status_output) {
     const std::uint32_t pixel_count = width * height;
@@ -118,7 +128,7 @@ void launch_restir_initial_gi_candidates(
         (pixel_count + block_size - 1u) / block_size;
     generate_initial_gi_candidates_kernel<<<grid, block_size>>>(
         scene, surfaces, width, height, iteration, seed, candidate_count,
-        transport, reservoirs, counters, status_output);
+        transport, reservoirs, fallback_film, counters, status_output);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 

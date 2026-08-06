@@ -313,6 +313,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 settings.frame.render.restir.initial_gi_candidates,
                 settings.reference_transport,
                 buffers.gi_reservoir[write_gi_reservoir].data(),
+                buffers.indirect_film.data(),
                 buffers.counters.data(), settings.block_size);
             if (cancel_at_pass_boundary()) {
                 break;
