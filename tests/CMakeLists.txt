@@ -79,6 +79,11 @@ if(RAYTRACER_ENABLE_CUDA)
                 --scene-file assets/scenes/scene_068_restir_diffuse_gi.json
                 --width 32 --height 32 --spp 1 --max-depth 4 --seed 123
     )
+    add_test(NAME cuda_restir_gi_reuse_check
+        COMMAND cuda_restir_check --mode gi-reuse
+                --scene-file assets/scenes/scene_068_restir_diffuse_gi.json
+                --width 32 --height 32 --spp 1 --max-depth 4 --seed 123
+    )
     add_test(NAME cuda_restir_spatial_pairwise_check
         COMMAND cuda_restir_check --mode spatial
                 --scene-file assets/scenes/scene_065_restir_many_light.json
@@ -164,6 +169,7 @@ if(RAYTRACER_ENABLE_CUDA)
         cuda_restir_gbuffer_check
         cuda_restir_quad_check
         cuda_restir_initial_gi_check
+        cuda_restir_gi_reuse_check
         cuda_restir_environment_check
         cuda_restir_sphere_mesh_check
         cuda_restir_delta_only_check

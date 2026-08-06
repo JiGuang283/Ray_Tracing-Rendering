@@ -84,7 +84,7 @@ Options parse_options(int argc, char **argv) {
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
-                   "[--mode reservoir|gbuffer|gi|spatial|temporal|statistics] "
+                   "[--mode reservoir|gbuffer|gi|gi-reuse|spatial|temporal|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
                    "[--spp N] [--max-depth N] [--seed N] "
                    "[--bias basic|pairwise] [--spatial] [--temporal]\n";
@@ -94,12 +94,13 @@ Options parse_options(int argc, char **argv) {
         }
     }
     if ((options.mode != "reservoir" && options.mode != "gbuffer" &&
-         options.mode != "gi" &&
+         options.mode != "gi" && options.mode != "gi-reuse" &&
          options.mode != "spatial" && options.mode != "temporal" &&
          options.mode != "statistics") ||
         options.width < 2u || options.height < 2u || options.spp == 0u ||
         options.max_depth == 0u ||
         ((options.mode == "gbuffer" || options.mode == "gi" ||
+          options.mode == "gi-reuse" ||
           options.mode == "spatial" ||
           options.mode == "temporal") &&
          options.spp != 1u)) {
@@ -495,6 +496,168 @@ bool check_initial_gi(const Options &options) {
               << " valid=" << counters[0].gi_valid_reservoirs
               << " visibility_rays=" << counters[0].gi_visibility_rays
               << " counter_match=" << (counter_match ? 1 : 0)
+              << " result=" << (passed ? "pass" : "fail") << '\n';
+    return passed;
+}
+
+bool check_gi_reuse(const Options &options) {
+    const SceneIR ir = load_scene_ir_file(options.scene_file.string());
+    const CompiledScene compiled = compile_scene(ir);
+    const CompiledSceneView host_scene = make_scene_view(compiled);
+    cuda_backend::DeviceSceneStorage device_scene;
+    device_scene.upload(compiled);
+
+    cuda_backend::CudaRestirSkeletonSettings settings;
+    settings.frame.render.extent =
+        make_image_extent(static_cast<int>(options.width),
+                          static_cast<int>(options.height));
+    settings.frame.render.integrator = IntegratorKind::ReSTIRGI;
+    settings.frame.render.samples_per_pixel = 1u;
+    settings.frame.render.max_depth = options.max_depth;
+    settings.frame.render.seed = options.seed;
+    settings.frame.render.sample_clamp = 0.0;
+    settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
+    settings.frame.render.restir.initial_bsdf_candidates = 0u;
+    settings.frame.render.restir.initial_gi_candidates = 1u;
+    settings.frame.render.restir.temporal_reuse = true;
+    settings.frame.render.restir.spatial_reuse = true;
+    settings.frame.render.restir.spatial_neighbors = 5u;
+    settings.frame.render.restir.spatial_passes = 1u;
+    settings.frame.render.restir.max_reservoir_candidates = 32u;
+    settings.frame.render.restir.bias_correction =
+        RestirBiasCorrection::Basic;
+    settings.frame.camera = ir.camera;
+    settings.reference_transport.policy =
+        integrator_policy(IntegratorKind::MISPath);
+    settings.reference_transport.max_depth = options.max_depth;
+
+    cuda_backend::CudaRestirWorkspace workspace;
+    const cuda_backend::CudaRestirSchedulerOutput previous =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace);
+    const cuda_backend::CudaRestirWorkspaceInfo previous_info =
+        workspace.info();
+
+    settings.frame.render.restir.history_mode = RestirHistoryMode::Continue;
+    settings.frame.frame_index = 1u;
+    const cuda_backend::CudaRestirSchedulerOutput current =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace);
+    const cuda_backend::CudaRestirWorkspaceInfo current_info =
+        workspace.info();
+    const RestirGIReuseHostCheckResult host =
+        compare_restir_gi_reuse_host(
+            host_scene, &host_scene.camera, options.width, options.height,
+            1u, settings.frame.render.restir.initial_gi_candidates,
+            settings.frame.render.restir.spatial_neighbors,
+            settings.frame.render.restir.spatial_passes,
+            settings.frame.render.restir.max_history_length,
+            settings.frame.render.restir.max_reservoir_candidates,
+            settings.frame.render.restir.normal_threshold,
+            settings.frame.render.restir.depth_threshold, options.seed,
+            settings.reference_transport, true, true, previous.gbuffer,
+            previous.gi_reservoirs, current.gbuffer,
+            current.gi_reservoirs, current.indirect_film);
+
+    const bool stats_match =
+        current.stats.gi_initial_candidates == host.initial_candidates &&
+        current.stats.gi_represented_candidates ==
+            host.represented_candidates &&
+        current.stats.gi_rejected_candidates == host.rejected_candidates &&
+        current.stats.gi_spatial_candidates == host.spatial_candidates &&
+        current.stats.gi_spatial_accepted == host.spatial_accepted &&
+        current.stats.gi_temporal_candidates == host.temporal_candidates &&
+        current.stats.gi_temporal_accepted == host.temporal_accepted &&
+        current.stats.gi_visibility_rays == host.visibility_rays &&
+        current.stats.gi_generation_status == host.generation_status &&
+        current.stats.gi_spatial_status == host.spatial_status &&
+        current.stats.gi_temporal_status == host.temporal_status &&
+        current.stats.gi_shading_status == host.shading_status &&
+        current.stats.gi_spatial_compatibility == host.compatibility &&
+        current.stats.gi_temporal_rejection == host.rejection &&
+        current.stats.gi_shift_failures == host.shift_failures;
+    std::uint64_t age_overflow = 0u;
+    std::uint64_t represented_overflow = 0u;
+    std::uint64_t aged = 0u;
+    for (const restir::RestirGIReservoir &reservoir :
+         current.gi_reservoirs) {
+        aged += reservoir.age > 0u ? 1u : 0u;
+        age_overflow +=
+            reservoir.age > settings.frame.render.restir.max_history_length
+                ? 1u
+                : 0u;
+        represented_overflow +=
+            reservoir.M >
+                    settings.frame.render.restir.max_reservoir_candidates
+                ? 1u
+                : 0u;
+    }
+    const bool workspace_reused =
+        previous_info.mode == cuda_backend::RestirWorkspaceMode::GI &&
+        current_info.mode == cuda_backend::RestirWorkspaceMode::GI &&
+        previous_info.allocation_generation ==
+            current_info.allocation_generation &&
+        previous_info.indirect_film_address != 0u &&
+        previous_info.indirect_film_address ==
+            current_info.indirect_film_address &&
+        previous_info.gi_reservoir_addresses[0] ==
+            current_info.gi_reservoir_addresses[0] &&
+        previous_info.gi_reservoir_addresses[1] ==
+            current_info.gi_reservoir_addresses[1] &&
+        previous_info.gi_reservoir_addresses[2] ==
+            current_info.gi_reservoir_addresses[2] &&
+        current_info.completed_history_iterations == 2u;
+
+    const std::uint32_t committed_gbuffer =
+        current_info.committed_gbuffer;
+    const std::uint32_t committed_di =
+        current_info.committed_di_reservoir;
+    const std::uint32_t committed_gi =
+        current_info.committed_gi_reservoir;
+    std::atomic<bool> cancel{true};
+    settings.frame.frame_index = 2u;
+    const cuda_backend::CudaRestirSchedulerOutput cancelled =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace, &cancel);
+    const cuda_backend::CudaRestirWorkspaceInfo cancelled_info =
+        workspace.info();
+    const bool cancellation_safe =
+        cancelled.stats.cancelled &&
+        cancelled.stats.completed_iterations == 0u &&
+        cancelled_info.completed_history_iterations == 2u &&
+        cancelled_info.committed_gbuffer == committed_gbuffer &&
+        cancelled_info.committed_di_reservoir == committed_di &&
+        cancelled_info.committed_gi_reservoir == committed_gi;
+
+    const bool exercised = current.stats.gi_temporal_accepted > 0u &&
+                           current.stats.gi_spatial_accepted > 0u &&
+                           current.stats.gi_visibility_rays > 0u &&
+                           aged > 0u;
+    const bool passed = host.reservoir_errors == 0u &&
+                        host.motion_errors == 0u &&
+                        host.indirect_film_errors == 0u && stats_match &&
+                        age_overflow == 0u && represented_overflow == 0u &&
+                        workspace_reused && cancellation_safe && exercised;
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=gi-reuse"
+              << " pixels=" << options.width * options.height
+              << " reservoir_errors=" << host.reservoir_errors
+              << " motion_errors=" << host.motion_errors
+              << " indirect_errors=" << host.indirect_film_errors
+              << " temporal_candidates="
+              << current.stats.gi_temporal_candidates
+              << " temporal_accepted="
+              << current.stats.gi_temporal_accepted
+              << " spatial_candidates="
+              << current.stats.gi_spatial_candidates
+              << " spatial_accepted="
+              << current.stats.gi_spatial_accepted
+              << " aged=" << aged
+              << " age_overflow=" << age_overflow
+              << " M_overflow=" << represented_overflow
+              << " workspace_reused=" << (workspace_reused ? 1 : 0)
+              << " cancellation=" << (cancellation_safe ? 1 : 0)
+              << " stats=" << (stats_match ? "pass" : "fail")
               << " result=" << (passed ? "pass" : "fail") << '\n';
     return passed;
 }
@@ -904,11 +1067,13 @@ int main(int argc, char **argv) {
                        ? check_gbuffer(options)
                        : (options.mode == "gi"
                               ? check_initial_gi(options)
+                       : (options.mode == "gi-reuse"
+                              ? check_gi_reuse(options)
                        : (options.mode == "spatial"
                               ? check_spatial(options)
                               : (options.mode == "temporal"
                                      ? check_temporal(options)
-                                     : check_statistics(options)))));
+                                     : check_statistics(options))))));
         return passed
                    ? 0
                    : 1;

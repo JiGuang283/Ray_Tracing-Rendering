@@ -3,6 +3,7 @@
 
 #include "restir_workspace.h"
 #include "restir_di_types.h"
+#include "restir_gi_types.h"
 
 #include <array>
 #include <atomic>
@@ -34,6 +35,13 @@ struct CudaRestirSchedulerStats {
     std::array<std::uint64_t, 11> di_temporal_status{};
     std::array<std::uint64_t, 9> spatial_compatibility{};
     std::array<std::uint64_t, 16> temporal_rejection{};
+    std::array<std::uint64_t, 16> gi_generation_status{};
+    std::array<std::uint64_t, 16> gi_shading_status{};
+    std::array<std::uint64_t, 16> gi_spatial_status{};
+    std::array<std::uint64_t, 16> gi_temporal_status{};
+    std::array<std::uint64_t, 9> gi_spatial_compatibility{};
+    std::array<std::uint64_t, 16> gi_temporal_rejection{};
+    std::array<std::uint64_t, 16> gi_shift_failures{};
     std::uint64_t initial_candidates = 0;
     std::uint64_t represented_candidates = 0;
     std::uint64_t rejected_candidates = 0;
@@ -51,6 +59,22 @@ struct CudaRestirSchedulerStats {
     std::uint64_t visibility_rays = 0;
     std::uint64_t di_clamped_samples = 0;
     std::uint64_t di_invalid_samples = 0;
+    std::uint64_t gi_initial_candidates = 0;
+    std::uint64_t gi_represented_candidates = 0;
+    std::uint64_t gi_rejected_candidates = 0;
+    std::uint64_t gi_spatial_candidates = 0;
+    std::uint64_t gi_spatial_accepted = 0;
+    std::uint64_t gi_temporal_candidates = 0;
+    std::uint64_t gi_temporal_accepted = 0;
+    std::uint64_t gi_valid_reservoirs = 0;
+    double gi_average_represented_M = 0.0;
+    double gi_average_effective_M = 0.0;
+    double gi_average_age = 0.0;
+    std::uint64_t gi_visibility_rays = 0;
+    std::uint64_t gi_fallbacks = 0;
+    std::uint64_t gi_invalid_samples = 0;
+    std::uint64_t gi_suffix_shadow_rays = 0;
+    std::uint64_t gi_suffix_traversal_steps = 0;
     restir::RestirHistoryResetReason history_reset_reason =
         restir::RestirHistoryResetReason::None;
     CudaRestirWorkspaceInfo workspace;
@@ -60,8 +84,10 @@ struct CudaRestirSchedulerStats {
 struct CudaRestirSchedulerOutput {
     std::vector<CudaFilmPixel> film;
     std::vector<CudaFilmPixel> direct_film;
+    std::vector<CudaFilmPixel> indirect_film;
     std::vector<restir::RestirSurface> gbuffer;
     std::vector<restir::RestirDIReservoir> di_reservoirs;
+    std::vector<restir::RestirGIReservoir> gi_reservoirs;
     CudaRestirSchedulerStats stats;
 };
 

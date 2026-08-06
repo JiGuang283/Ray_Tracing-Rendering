@@ -16,6 +16,8 @@ struct DeviceRestirCounters {
     unsigned long long gi_shading_status[16]{};
     unsigned long long gi_spatial_status[16]{};
     unsigned long long gi_temporal_status[16]{};
+    unsigned long long gi_spatial_compatibility[9]{};
+    unsigned long long gi_temporal_rejection[16]{};
     unsigned long long spatial_compatibility[9]{};
     unsigned long long temporal_rejection[16]{};
     unsigned long long initial_candidates = 0;
@@ -50,6 +52,8 @@ struct DeviceRestirCounters {
     unsigned long long gi_fallbacks = 0;
     unsigned long long gi_invalid_samples = 0;
     unsigned long long gi_shift_failures[16]{};
+    unsigned long long gi_suffix_shadow_rays = 0;
+    unsigned long long gi_suffix_traversal_steps = 0;
     unsigned long long traversal_steps = 0;
     unsigned long long shadow_rays = 0;
     unsigned long long clamped_samples = 0;

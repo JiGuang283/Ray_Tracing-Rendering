@@ -2,6 +2,9 @@
 
 #include "restir_gbuffer_core.h"
 #include "restir_di_core.h"
+#include "restir_gi_core.h"
+#include "restir_gi_spatial_core.h"
+#include "restir_gi_temporal_core.h"
 #include "restir_spatial_core.h"
 #include "restir_spatial_pairwise_core.h"
 #include "restir_temporal_core.h"
@@ -81,6 +84,52 @@ bool compare_reservoir(const restir::RestirDIReservoir &device,
            near(device.selected_target, host.selected_target) &&
            near(device.unbiased_contribution_weight,
                 host.unbiased_contribution_weight);
+}
+
+bool compare_reservoir(const restir::RestirGIReservoir &device,
+                       const restir::RestirGIReservoir &host) {
+    constexpr float kReuseTolerance = 5e-4f;
+    if (device.M != host.M || device.flags != host.flags ||
+        device.age != host.age ||
+        !near(device.weight_sum, host.weight_sum, kReuseTolerance) ||
+        !near(device.effective_M, host.effective_M, kReuseTolerance) ||
+        !near(device.selected_target, host.selected_target,
+              kReuseTolerance) ||
+        !near(device.unbiased_contribution_weight,
+              host.unbiased_contribution_weight, kReuseTolerance)) {
+        return false;
+    }
+    if (!restir::reservoir_has_sample(host)) {
+        return !restir::reservoir_has_sample(device);
+    }
+    return device.sample.material_id == host.sample.material_id &&
+           device.sample.instance_id == host.sample.instance_id &&
+           device.sample.primitive_id == host.sample.primitive_id &&
+           device.sample.source_pixel == host.sample.source_pixel &&
+           device.sample.geometric_normal == host.sample.geometric_normal &&
+           near(device.sample.position.x, host.sample.position.x,
+                kReuseTolerance) &&
+           near(device.sample.position.y, host.sample.position.y,
+                kReuseTolerance) &&
+           near(device.sample.position.z, host.sample.position.z,
+                kReuseTolerance) &&
+           near(device.sample.source_pdf_area,
+                host.sample.source_pdf_area, kReuseTolerance) &&
+           near(device.sample.suffix_radiance.x,
+                host.sample.suffix_radiance.x, kReuseTolerance) &&
+           near(device.sample.suffix_radiance.y,
+                host.sample.suffix_radiance.y, kReuseTolerance) &&
+           near(device.sample.suffix_radiance.z,
+                host.sample.suffix_radiance.z, kReuseTolerance);
+}
+
+template <std::size_t Size, typename Enum>
+void increment(std::array<std::uint64_t, Size> &buckets,
+               Enum value) {
+    const std::size_t index = static_cast<std::size_t>(value);
+    if (index < buckets.size()) {
+        ++buckets[index];
+    }
 }
 
 } // namespace
@@ -393,6 +442,162 @@ RestirDITemporalHostCheckResult compare_restir_temporal_di_host(
             !near(device_film[pixel].radiance.y, radiance.y) ||
             !near(device_film[pixel].radiance.z, radiance.z)) {
             ++result.direct_film_errors;
+        }
+    }
+    return result;
+}
+
+RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
+    const CompiledSceneView &scene, const PackedCamera *previous_camera,
+    std::uint32_t width, std::uint32_t height,
+    std::uint32_t iteration, std::uint32_t candidate_count,
+    std::uint32_t neighbor_count, std::uint32_t pass_count,
+    std::uint32_t max_history_length, std::uint32_t max_candidates,
+    float normal_threshold, float depth_threshold, std::uint32_t seed,
+    const PackedTransportSettings &transport, bool temporal_reuse,
+    bool spatial_reuse,
+    const std::vector<restir::RestirSurface> &previous_surfaces,
+    const std::vector<restir::RestirGIReservoir> &previous_reservoirs,
+    const std::vector<restir::RestirSurface> &device_current_surfaces,
+    const std::vector<restir::RestirGIReservoir> &device_reservoirs,
+    const std::vector<cuda_backend::CudaFilmPixel> &device_film) {
+    RestirGIReuseHostCheckResult result;
+    const std::uint32_t pixel_count = width * height;
+    const bool valid_history = !temporal_reuse ||
+        (previous_camera != nullptr &&
+         previous_surfaces.size() == pixel_count &&
+         previous_reservoirs.size() == pixel_count);
+    if (!valid_history || device_current_surfaces.size() != pixel_count ||
+        device_reservoirs.size() != pixel_count ||
+        device_film.size() != pixel_count ||
+        (spatial_reuse && pass_count == 0u)) {
+        result.reservoir_errors = pixel_count;
+        result.motion_errors = pixel_count;
+        result.indirect_film_errors = pixel_count;
+        return result;
+    }
+
+    std::vector<restir::RestirSurface> current_surfaces =
+        device_current_surfaces;
+    std::vector<restir::RestirGIReservoir> source(pixel_count);
+    std::vector<restir::RestirGIReservoir> destination(pixel_count);
+    for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
+        current_surfaces[pixel].motion = kInvalidPackedIndex;
+        restir::RestirGICandidateStats stats;
+        const restir::RestirGIStatus status =
+            restir::generate_initial_gi_reservoir(
+                scene, current_surfaces[pixel], width, height, pixel,
+                iteration, seed, candidate_count, transport,
+                source[pixel], stats);
+        increment(result.generation_status, status);
+        result.initial_candidates += stats.attempted;
+        result.represented_candidates += stats.represented;
+        result.rejected_candidates += stats.rejected;
+    }
+
+    if (temporal_reuse) {
+        for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
+            restir::RestirGITemporalStats stats;
+            const restir::RestirGIStatus status =
+                restir::temporal_resample_gi_basic(
+                    scene, current_surfaces[pixel], source[pixel],
+                    previous_camera, previous_surfaces.data(),
+                    previous_reservoirs.data(), width, height, pixel,
+                    iteration, seed, max_history_length, max_candidates,
+                    normal_threshold, depth_threshold, destination[pixel],
+                    stats);
+            increment(result.temporal_status, status);
+            increment(result.rejection, stats.rejection);
+            if (stats.shift_failure != restir::RestirGIShiftFailure::None) {
+                increment(result.shift_failures, stats.shift_failure);
+            }
+            result.temporal_candidates += stats.candidates;
+            result.temporal_accepted += stats.accepted;
+        }
+        source.swap(destination);
+    }
+
+    if (spatial_reuse) {
+        for (std::uint32_t pass = 0u; pass < pass_count; ++pass) {
+            for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
+                restir::RestirGISpatialStats stats;
+                const restir::RestirGIStatus status =
+                    restir::spatial_resample_gi_basic(
+                        scene, current_surfaces.data(), source.data(), width,
+                        height, pixel, iteration, pass, seed,
+                        neighbor_count, max_candidates, normal_threshold,
+                        depth_threshold, destination[pixel], stats);
+                increment(result.spatial_status, status);
+                result.spatial_candidates += stats.candidates;
+                result.spatial_accepted += stats.accepted;
+                result.spatial_rejected += stats.rejected;
+                for (std::size_t index = 0u;
+                     index < result.compatibility.size(); ++index) {
+                    result.compatibility[index] +=
+                        stats.compatibility[index];
+                }
+                for (std::size_t index = 0u;
+                     index < result.shift_failures.size(); ++index) {
+                    result.shift_failures[index] +=
+                        stats.shift_failures[index];
+                }
+            }
+            source.swap(destination);
+        }
+    }
+
+    for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
+        if (current_surfaces[pixel].motion !=
+            device_current_surfaces[pixel].motion) {
+            ++result.motion_errors;
+        }
+        if (!compare_reservoir(device_reservoirs[pixel], source[pixel])) {
+            if (result.reservoir_errors == 0u) {
+                const restir::RestirGIReservoir &device =
+                    device_reservoirs[pixel];
+                const restir::RestirGIReservoir &host = source[pixel];
+                std::cerr
+                    << "RESTIR_GI_RESERVOIR_MISMATCH pixel=" << pixel
+                    << " device_sample=" << device.sample.source_pixel
+                    << ':' << device.sample.instance_id << ':'
+                    << device.sample.primitive_id
+                    << " host_sample=" << host.sample.source_pixel << ':'
+                    << host.sample.instance_id << ':'
+                    << host.sample.primitive_id
+                    << " device_M=" << device.M
+                    << " host_M=" << host.M
+                    << " device_effective_M=" << device.effective_M
+                    << " host_effective_M=" << host.effective_M
+                    << " device_weight_sum=" << device.weight_sum
+                    << " host_weight_sum=" << host.weight_sum
+                    << " device_target=" << device.selected_target
+                    << " host_target=" << host.selected_target
+                    << " device_ucw="
+                    << device.unbiased_contribution_weight
+                    << " host_ucw=" << host.unbiased_contribution_weight
+                    << " device_age=" << device.age
+                    << " host_age=" << host.age << '\n';
+            }
+            ++result.reservoir_errors;
+        }
+        Float3 radiance{};
+        std::uint32_t visibility_rays = 0u;
+        restir::RestirGIShiftFailure failure =
+            restir::RestirGIShiftFailure::None;
+        const restir::RestirGIStatus status = restir::shade_gi_reservoir(
+            scene, current_surfaces[pixel], source[pixel], width, height,
+            pixel, iteration, seed, radiance, visibility_rays, failure);
+        increment(result.shading_status, status);
+        if (failure != restir::RestirGIShiftFailure::None) {
+            increment(result.shift_failures, failure);
+        }
+        result.visibility_rays += visibility_rays;
+        const cuda_backend::CudaFilmPixel &device = device_film[pixel];
+        if (device.sample_count != 1u ||
+            !near(device.radiance.x, radiance.x, 2e-4f) ||
+            !near(device.radiance.y, radiance.y, 2e-4f) ||
+            !near(device.radiance.z, radiance.z, 2e-4f)) {
+            ++result.indirect_film_errors;
         }
     }
     return result;

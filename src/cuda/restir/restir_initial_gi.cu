@@ -41,9 +41,9 @@ __global__ void generate_initial_gi_candidates_kernel(
               static_cast<unsigned long long>(stats.represented));
     atomicAdd(&counters->gi_rejected_candidates,
               static_cast<unsigned long long>(stats.rejected));
-    atomicAdd(&counters->shadow_rays,
+    atomicAdd(&counters->gi_suffix_shadow_rays,
               static_cast<unsigned long long>(stats.suffix_shadow_rays));
-    atomicAdd(&counters->traversal_steps,
+    atomicAdd(&counters->gi_suffix_traversal_steps,
               static_cast<unsigned long long>(stats.suffix_traversal_steps));
 }
 

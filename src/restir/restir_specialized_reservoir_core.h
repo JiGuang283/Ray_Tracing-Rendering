@@ -158,6 +158,32 @@ RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult represent_candidates(
                                     represented_count);
 }
 
+template <typename Reservoir>
+RT_HOST_DEVICE RT_FORCE_INLINE void capped_source_mass(
+    const Reservoir &source, std::uint32_t current_M,
+    std::uint32_t max_candidates, std::uint32_t &represented_count,
+    float &effective_count, float &mass_fraction) noexcept {
+    represented_count = source.M;
+    effective_count = source.effective_M;
+    mass_fraction = 1.0f;
+    if (max_candidates == 0u || current_M >= max_candidates ||
+        source.M == 0u) {
+        if (max_candidates != 0u && current_M >= max_candidates) {
+            represented_count = 0u;
+            effective_count = 0.0f;
+            mass_fraction = 0.0f;
+        }
+        return;
+    }
+    const std::uint32_t remaining = max_candidates - current_M;
+    if (represented_count > remaining) {
+        represented_count = remaining;
+        mass_fraction = static_cast<float>(remaining) /
+                        static_cast<float>(source.M);
+        effective_count *= mass_fraction;
+    }
+}
+
 template <typename Reservoir, typename Candidate>
 RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_candidate(
     Reservoir &reservoir, const Candidate &candidate, float random) noexcept {
