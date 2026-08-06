@@ -9,6 +9,8 @@
 namespace restir {
 
 constexpr std::uint32_t kInvalidHistoryBuffer = 0xffffffffu;
+constexpr std::uint32_t kRestirGBufferCount = 2u;
+constexpr std::uint32_t kRestirDIReservoirBufferCount = 3u;
 
 enum class RestirHistoryResetReason : std::uint32_t {
     None = 0,
@@ -70,6 +72,8 @@ void commit_restir_iteration(RestirFrameState &state,
                              std::uint32_t di_reservoir_buffer,
                              std::uint64_t frame_index);
 void reset_restir_history(RestirFrameState &state) noexcept;
+std::uint32_t next_di_reservoir_buffer(
+    std::uint32_t committed_buffer) noexcept;
 const char *restir_history_reset_reason_name(
     RestirHistoryResetReason reason) noexcept;
 

@@ -22,7 +22,8 @@ struct CudaRestirWorkspaceInfo {
     std::uint32_t committed_di_reservoir = 0;
     bool history_valid = false;
     std::uintptr_t gbuffer_addresses[2]{};
-    std::uintptr_t reservoir_addresses[2]{};
+    std::uintptr_t reservoir_addresses[
+        restir::kRestirDIReservoirBufferCount]{};
     std::uintptr_t film_address = 0;
     std::uintptr_t direct_film_address = 0;
 };

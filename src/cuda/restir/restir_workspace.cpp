@@ -19,6 +19,7 @@ CudaRestirWorkspaceInfo CudaRestirWorkspace::info() const noexcept {
 void CudaRestirWorkspace::reset_history() noexcept {
     if (m_impl) {
         restir::reset_restir_history(m_impl->frame_state);
+        m_impl->committed_camera_valid = false;
     }
 }
 

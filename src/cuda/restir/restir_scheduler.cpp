@@ -81,6 +81,17 @@ void validate_settings(const CudaRestirSkeletonSettings &settings) {
     }
 }
 
+std::uint32_t select_di_scratch(std::uint32_t source,
+                                std::uint32_t protected_history) {
+    for (std::uint32_t index = 0u;
+         index < restir::kRestirDIReservoirBufferCount; ++index) {
+        if (index != source && index != protected_history) {
+            return index;
+        }
+    }
+    throw std::logic_error("no transactional ReSTIR DI scratch buffer");
+}
+
 } // namespace
 
 CudaRestirSchedulerOutput render_restir_skeleton_cuda(
@@ -109,6 +120,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
         restir::prepare_restir_frame(buffers.frame_state, settings.frame);
     const restir::RestirHistoryResetReason reset_reason =
         preparation.reset_reason;
+    if (preparation.reset()) {
+        buffers.committed_camera_valid = false;
+    }
     SchedulerEvent begin;
     SchedulerEvent end;
     RT_CUDA_CHECK(cudaEventRecord(begin));
@@ -133,9 +147,14 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             buffers.frame_state.history_valid != 0u
                 ? buffers.frame_state.committed_gbuffer ^ 1u
                 : preparation.write_gbuffer;
+        const std::uint32_t protected_reservoir =
+            buffers.frame_state.history_valid != 0u
+                ? buffers.frame_state.committed_di_reservoir
+                : restir::kInvalidHistoryBuffer;
         const std::uint32_t write_reservoir =
             buffers.frame_state.history_valid != 0u
-                ? buffers.frame_state.committed_di_reservoir ^ 1u
+                ? restir::next_di_reservoir_buffer(
+                      buffers.frame_state.committed_di_reservoir)
                 : preparation.write_di_reservoir;
         launch_restir_gbuffer(
             scene, width, height, iteration, settings.frame.render.seed,
@@ -153,7 +172,8 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                  pass < settings.frame.render.restir.spatial_passes;
                  ++pass) {
                 const std::uint32_t destination_reservoir =
-                    final_reservoir ^ 1u;
+                    select_di_scratch(final_reservoir,
+                                      protected_reservoir);
                 if (settings.frame.render.restir.bias_correction ==
                     RestirBiasCorrection::Pairwise) {
                     launch_restir_spatial_di_pairwise(
@@ -201,6 +221,8 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
         restir::commit_restir_iteration(
             buffers.frame_state, write_gbuffer, final_reservoir,
             settings.frame.frame_index);
+        buffers.committed_camera = scene.scene.camera;
+        buffers.committed_camera_valid = true;
         ++completed;
     }
     RT_CUDA_CHECK(cudaEventRecord(end));

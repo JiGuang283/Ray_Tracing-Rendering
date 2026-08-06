@@ -265,6 +265,8 @@ bool check_gbuffer(const Options &options) {
             first_info.reservoir_addresses[0] &&
         continued_info.reservoir_addresses[1] ==
             first_info.reservoir_addresses[1] &&
+        continued_info.reservoir_addresses[2] ==
+            first_info.reservoir_addresses[2] &&
         continued_info.film_address == first_info.film_address &&
         continued_info.direct_film_address ==
             first_info.direct_film_address;

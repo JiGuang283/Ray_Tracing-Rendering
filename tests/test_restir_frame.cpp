@@ -243,6 +243,16 @@ TEST_CASE(restir_history_only_advances_after_iteration_commit) {
     REQUIRE(state.committed_gbuffer == 1u);
     REQUIRE(state.committed_di_reservoir == 1u);
     REQUIRE(state.completed_iterations == 2u);
+
+    request.frame_index = 12u;
+    const restir::RestirFramePreparation third =
+        restir::prepare_restir_frame(state, request);
+    REQUIRE(third.read_di_reservoir == 1u);
+    REQUIRE(third.write_di_reservoir == 2u);
+    restir::commit_restir_iteration(
+        state, third.write_gbuffer, third.write_di_reservoir,
+        request.frame_index);
+    REQUIRE(state.committed_di_reservoir == 2u);
 }
 
 TEST_CASE(restir_history_tracks_gbuffer_and_di_reservoir_independently) {
@@ -261,7 +271,7 @@ TEST_CASE(restir_history_tracks_gbuffer_and_di_reservoir_independently) {
     REQUIRE(next.read_gbuffer == 0u);
     REQUIRE(next.write_gbuffer == 1u);
     REQUIRE(next.read_di_reservoir == 1u);
-    REQUIRE(next.write_di_reservoir == 0u);
+    REQUIRE(next.write_di_reservoir == 2u);
 }
 
 TEST_CASE(restir_history_classifies_incompatible_keys) {

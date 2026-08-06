@@ -88,7 +88,8 @@ RestirFramePreparation prepare_restir_frame(
                                         ? state.committed_di_reservoir
                                         : kInvalidHistoryBuffer;
     preparation.write_di_reservoir = state.history_valid != 0u
-                                         ? state.committed_di_reservoir ^ 1u
+                                         ? next_di_reservoir_buffer(
+                                               state.committed_di_reservoir)
                                          : 0u;
     return preparation;
 }
@@ -97,15 +98,24 @@ void commit_restir_iteration(RestirFrameState &state,
                              std::uint32_t gbuffer_buffer,
                              std::uint32_t di_reservoir_buffer,
                              std::uint64_t frame_index) {
-    if (gbuffer_buffer > 1u || di_reservoir_buffer > 1u) {
+    if (gbuffer_buffer >= kRestirGBufferCount ||
+        di_reservoir_buffer >= kRestirDIReservoirBufferCount) {
         throw std::invalid_argument(
-            "ReSTIR history buffer index must be 0 or 1");
+            "ReSTIR history buffer index is outside its buffer set");
     }
     state.committed_gbuffer = gbuffer_buffer;
     state.committed_di_reservoir = di_reservoir_buffer;
     state.history_valid = 1u;
     ++state.completed_iterations;
     state.last_frame_index = frame_index;
+}
+
+std::uint32_t next_di_reservoir_buffer(
+    std::uint32_t committed_buffer) noexcept {
+    return committed_buffer < kRestirDIReservoirBufferCount
+               ? (committed_buffer + 1u) %
+                     kRestirDIReservoirBufferCount
+               : 0u;
 }
 
 void reset_restir_history(RestirFrameState &state) noexcept {
