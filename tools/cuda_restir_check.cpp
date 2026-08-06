@@ -1,8 +1,14 @@
 #include "cuda_restir_device_checks.h"
 
 #include "compiled_scene.h"
+#include "cuda_error.h"
+#include "device_buffer.h"
 #include "device_scene.h"
+#include "restir/restir_gbuffer.h"
+#include "restir/restir_initial_gi.h"
 #include "restir/restir_scheduler.h"
+#include "restir_gbuffer_core.h"
+#include "restir_gi_core.h"
 #include "restir_temporal_core.h"
 #include "restir_gbuffer_host_check.h"
 #include "scene_compiler.h"
@@ -78,7 +84,7 @@ Options parse_options(int argc, char **argv) {
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
-                   "[--mode reservoir|gbuffer|spatial|temporal|statistics] "
+                   "[--mode reservoir|gbuffer|gi|spatial|temporal|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
                    "[--spp N] [--max-depth N] [--seed N] "
                    "[--bias basic|pairwise] [--spatial] [--temporal]\n";
@@ -88,11 +94,13 @@ Options parse_options(int argc, char **argv) {
         }
     }
     if ((options.mode != "reservoir" && options.mode != "gbuffer" &&
+         options.mode != "gi" &&
          options.mode != "spatial" && options.mode != "temporal" &&
          options.mode != "statistics") ||
         options.width < 2u || options.height < 2u || options.spp == 0u ||
         options.max_depth == 0u ||
-        ((options.mode == "gbuffer" || options.mode == "spatial" ||
+        ((options.mode == "gbuffer" || options.mode == "gi" ||
+          options.mode == "spatial" ||
           options.mode == "temporal") &&
          options.spp != 1u)) {
         throw std::runtime_error("invalid CUDA ReSTIR check settings");
@@ -134,6 +142,39 @@ bool near(float left, float right, float tolerance = 2e-5f) {
     const float scale =
         std::max(1.0f, std::max(std::abs(left), std::abs(right)));
     return std::abs(left - right) <= tolerance * scale;
+}
+
+bool compare_gi_reservoir(const restir::RestirGIReservoir &device,
+                          const restir::RestirGIReservoir &host) {
+    if (device.M != host.M || device.flags != host.flags ||
+        device.age != host.age ||
+        !near(device.weight_sum, host.weight_sum, 2e-4f) ||
+        !near(device.effective_M, host.effective_M, 2e-4f) ||
+        !near(device.selected_target, host.selected_target, 2e-4f) ||
+        !near(device.unbiased_contribution_weight,
+              host.unbiased_contribution_weight, 2e-4f)) {
+        return false;
+    }
+    if (!restir::reservoir_has_sample(host)) {
+        return !restir::reservoir_has_sample(device);
+    }
+    return device.sample.material_id == host.sample.material_id &&
+           device.sample.instance_id == host.sample.instance_id &&
+           device.sample.primitive_id == host.sample.primitive_id &&
+           device.sample.source_pixel == host.sample.source_pixel &&
+           device.sample.geometric_normal ==
+               host.sample.geometric_normal &&
+           near(device.sample.position.x, host.sample.position.x, 2e-4f) &&
+           near(device.sample.position.y, host.sample.position.y, 2e-4f) &&
+           near(device.sample.position.z, host.sample.position.z, 2e-4f) &&
+           near(device.sample.source_pdf_area,
+                host.sample.source_pdf_area, 2e-4f) &&
+           near(device.sample.suffix_radiance.x,
+                host.sample.suffix_radiance.x, 2e-4f) &&
+           near(device.sample.suffix_radiance.y,
+                host.sample.suffix_radiance.y, 2e-4f) &&
+           near(device.sample.suffix_radiance.z,
+                host.sample.suffix_radiance.z, 2e-4f);
 }
 
 bool check_reservoir() {
@@ -320,6 +361,140 @@ bool check_gbuffer(const Options &options) {
               << " reused=" << (reused ? 1 : 0)
               << " cancellation=" << (cancellation_safe ? 1 : 0)
               << " workspace_bytes=" << first_info.bytes
+              << " result=" << (passed ? "pass" : "fail") << '\n';
+    return passed;
+}
+
+bool check_initial_gi(const Options &options) {
+    const SceneIR ir = load_scene_ir_file(options.scene_file.string());
+    const CompiledScene compiled = compile_scene(ir);
+    const CompiledSceneView host_scene = make_scene_view(compiled);
+    cuda_backend::DeviceSceneStorage device_scene;
+    device_scene.upload(compiled);
+
+    const std::uint32_t pixel_count = options.width * options.height;
+    cuda_backend::DeviceBuffer<restir::RestirSurface> device_surfaces;
+    cuda_backend::DeviceBuffer<restir::RestirGIReservoir> device_reservoirs;
+    cuda_backend::DeviceBuffer<cuda_backend::CudaFilmPixel> device_film;
+    cuda_backend::DeviceBuffer<cuda_backend::DeviceRestirCounters>
+        device_counters;
+    cuda_backend::DeviceBuffer<std::uint32_t> device_generation_status;
+    cuda_backend::DeviceBuffer<std::uint32_t> device_shading_status;
+    device_surfaces.allocate(pixel_count);
+    device_reservoirs.allocate(pixel_count);
+    device_film.allocate(pixel_count);
+    device_counters.allocate(1u);
+    device_generation_status.allocate(pixel_count);
+    device_shading_status.allocate(pixel_count);
+    RT_CUDA_CHECK(cudaMemset(device_film.data(), 0, device_film.bytes()));
+    RT_CUDA_CHECK(
+        cudaMemset(device_counters.data(), 0, device_counters.bytes()));
+
+    PackedTransportSettings transport;
+    transport.policy = integrator_policy(IntegratorKind::MISPath);
+    transport.max_depth = options.max_depth;
+    constexpr std::uint32_t kCandidates = 1u;
+    constexpr std::uint32_t kBlockSize = 128u;
+    cuda_backend::launch_restir_gbuffer(
+        device_scene.view(), options.width, options.height, 0u,
+        options.seed, device_surfaces.data(), device_counters.data(),
+        kBlockSize);
+    cuda_backend::launch_restir_initial_gi_candidates(
+        device_scene.view(), device_surfaces.data(), options.width,
+        options.height, 0u, options.seed, kCandidates, transport,
+        device_reservoirs.data(), device_counters.data(), kBlockSize,
+        device_generation_status.data());
+    cuda_backend::launch_restir_initial_gi_shading(
+        device_scene.view(), device_surfaces.data(),
+        device_reservoirs.data(), options.width, options.height, 0u,
+        options.seed, device_film.data(), device_counters.data(),
+        kBlockSize, device_shading_status.data());
+
+    std::vector<restir::RestirSurface> surfaces;
+    std::vector<restir::RestirGIReservoir> reservoirs;
+    std::vector<cuda_backend::CudaFilmPixel> film;
+    std::vector<cuda_backend::DeviceRestirCounters> counters;
+    std::vector<std::uint32_t> generation_status;
+    std::vector<std::uint32_t> shading_status;
+    device_surfaces.download(surfaces);
+    device_reservoirs.download(reservoirs);
+    device_film.download(film);
+    device_counters.download(counters);
+    device_generation_status.download(generation_status);
+    device_shading_status.download(shading_status);
+
+    std::uint64_t surface_errors = compare_restir_gbuffer_host(
+        host_scene, options.width, options.height, 0u, options.seed,
+        surfaces);
+    std::uint64_t reservoir_errors = 0u;
+    std::uint64_t film_errors = 0u;
+    std::uint64_t status_errors = 0u;
+    std::uint64_t host_candidates = 0u;
+    std::uint64_t host_visibility = 0u;
+    for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
+        restir::RestirSurface host_surface;
+        (void)restir::build_primary_surface_core(
+            host_scene, options.width, options.height, pixel, 0u,
+            options.seed, host_surface);
+        restir::RestirGIReservoir host_reservoir;
+        restir::RestirGICandidateStats host_stats;
+        const restir::RestirGIStatus generation =
+            restir::generate_initial_gi_reservoir(
+                host_scene, host_surface, options.width, options.height,
+                pixel, 0u, options.seed, kCandidates, transport,
+                host_reservoir, host_stats);
+        host_candidates += host_stats.attempted;
+        Float3 host_radiance{};
+        std::uint32_t visibility_rays = 0u;
+        restir::RestirGIShiftFailure failure;
+        const restir::RestirGIStatus shading =
+            restir::shade_gi_reservoir(
+                host_scene, host_surface, host_reservoir, options.width,
+                options.height, pixel, 0u, options.seed, host_radiance,
+                visibility_rays, failure);
+        host_visibility += visibility_rays;
+        reservoir_errors +=
+            compare_gi_reservoir(reservoirs[pixel], host_reservoir)
+                ? 0u
+                : 1u;
+        status_errors +=
+            generation_status[pixel] ==
+                    static_cast<std::uint32_t>(generation) &&
+                    shading_status[pixel] ==
+                        static_cast<std::uint32_t>(shading)
+                ? 0u
+                : 1u;
+        const cuda_backend::CudaFilmPixel &device = film[pixel];
+        film_errors +=
+            device.sample_count == 1u &&
+                    near(device.radiance.x, host_radiance.x, 2e-4f) &&
+                    near(device.radiance.y, host_radiance.y, 2e-4f) &&
+                    near(device.radiance.z, host_radiance.z, 2e-4f)
+                ? 0u
+                : 1u;
+    }
+    const bool counter_match = counters.size() == 1u &&
+                               counters[0].gi_initial_candidates ==
+                                   host_candidates &&
+                               counters[0].gi_visibility_rays ==
+                                   host_visibility;
+    const bool exercised = counters.size() == 1u &&
+                           counters[0].gi_valid_reservoirs != 0u &&
+                           counters[0].gi_visibility_rays != 0u;
+    const bool passed = surface_errors == 0u && reservoir_errors == 0u &&
+                        film_errors == 0u && status_errors == 0u &&
+                        counter_match && exercised;
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=gi"
+              << " pixels=" << pixel_count
+              << " surface_errors=" << surface_errors
+              << " reservoir_errors=" << reservoir_errors
+              << " film_errors=" << film_errors
+              << " status_errors=" << status_errors
+              << " candidates=" << counters[0].gi_initial_candidates
+              << " valid=" << counters[0].gi_valid_reservoirs
+              << " visibility_rays=" << counters[0].gi_visibility_rays
+              << " counter_match=" << (counter_match ? 1 : 0)
               << " result=" << (passed ? "pass" : "fail") << '\n';
     return passed;
 }
@@ -727,11 +902,13 @@ int main(int argc, char **argv) {
                 ? check_reservoir()
                 : (options.mode == "gbuffer"
                        ? check_gbuffer(options)
+                       : (options.mode == "gi"
+                              ? check_initial_gi(options)
                        : (options.mode == "spatial"
                               ? check_spatial(options)
                               : (options.mode == "temporal"
                                      ? check_temporal(options)
-                                     : check_statistics(options))));
+                                     : check_statistics(options)))));
         return passed
                    ? 0
                    : 1;

@@ -3,6 +3,7 @@
 #include "restir_history.h"
 #include "restir_di_core.h"
 #include "restir_gi_reservoir_core.h"
+#include "restir_gi_core.h"
 #include "restir_spatial_core.h"
 #include "restir_spatial_pairwise_core.h"
 #include "restir_reprojection_core.h"
@@ -84,6 +85,74 @@ TEST_CASE(restir_gi_sample_and_reservoir_abi_is_stable) {
     restir::reset_reservoir(reservoir);
     REQUIRE(!restir::reservoir_has_sample(reservoir));
     REQUIRE(reservoir.M == 0u);
+}
+
+TEST_CASE(restir_gi_area_measure_and_diffuse_reconnection_are_analytic) {
+    float pdf_area = 0.0f;
+    REQUIRE(restir::solid_angle_pdf_to_area(0.25f, 4.0f, 1.0f,
+                                             pdf_area));
+    REQUIRE_NEAR(pdf_area, 0.0625f, 1e-7f);
+    REQUIRE(!restir::solid_angle_pdf_to_area(0.25f, 4.0f, 0.0f,
+                                              pdf_area));
+
+    restir::RestirDIPixelContext destination;
+    destination.surface.position = {0.0f, 0.0f, 0.0f};
+    destination.material.frame.normal = {0.0f, 0.0f, 1.0f};
+    destination.material.frame.tangent = {1.0f, 0.0f, 0.0f};
+    destination.material.geometry_normal = {0.0f, 0.0f, 1.0f};
+    destination.material.closure_count = 1u;
+    destination.material.closures[0].type =
+        PackedClosureType::Lambertian;
+    destination.material.closures[0].parameters =
+        {0.8f, 0.6f, 0.4f, 0.0f};
+    destination.material.closures[0].contribution_weight = 1.0f;
+    destination.material.closures[0].sample_weight = 1.0f;
+    destination.wo = {0.0f, 0.0f, 1.0f};
+    REQUIRE(restir::is_diffuse_reconnectable(destination.material));
+
+    restir::RestirGISample sample;
+    sample.position = {0.0f, 0.0f, 2.0f};
+    sample.source_pdf_area = 0.0625f;
+    sample.suffix_radiance = {2.0f, 4.0f, 6.0f};
+    sample.geometric_normal =
+        restir::pack_octahedral_normal({0.0f, 0.0f, -1.0f});
+    sample.material_id = 3u;
+    sample.instance_id = 4u;
+    sample.primitive_id = 5u;
+    sample.source_pixel = 6u;
+    restir::RestirGIReconnectResult result;
+    REQUIRE(restir::evaluate_diffuse_reconnection(
+                destination, sample, result) ==
+            restir::RestirGIStatus::Success);
+    REQUIRE(result.failure == restir::RestirGIShiftFailure::None);
+    const float scale = 1.0f / (4.0f * packed_bsdf::kPi);
+    REQUIRE_NEAR(result.integrand_area.x, 0.8f * 2.0f * scale, 1e-6f);
+    REQUIRE_NEAR(result.integrand_area.y, 0.6f * 4.0f * scale, 1e-6f);
+    REQUIRE_NEAR(result.integrand_area.z, 0.4f * 6.0f * scale, 1e-6f);
+    REQUIRE(result.target > 0.0f);
+
+    sample.geometric_normal =
+        restir::pack_octahedral_normal({0.0f, 0.0f, 1.0f});
+    REQUIRE(restir::evaluate_diffuse_reconnection(
+                destination, sample, result) ==
+            restir::RestirGIStatus::Success);
+    REQUIRE(result.failure ==
+            restir::RestirGIShiftFailure::BackfacingSecondary);
+    REQUIRE_NEAR(result.target, 0.0f, 0.0f);
+}
+
+TEST_CASE(restir_gi_rejects_mixed_and_delta_material_domains) {
+    PackedMaterialOutput material;
+    material.closure_count = 1u;
+    material.closures[0].type = PackedClosureType::Mirror;
+    material.closures[0].parameters = {1.0f, 1.0f, 1.0f, 0.0f};
+    material.closures[0].contribution_weight = 1.0f;
+    material.closures[0].sample_weight = 1.0f;
+    REQUIRE(!restir::is_diffuse_reconnectable(material));
+    material.closures[0].type = PackedClosureType::Lambertian;
+    material.closure_count = 2u;
+    material.closures[1] = material.closures[0];
+    REQUIRE(!restir::is_diffuse_reconnectable(material));
 }
 
 TEST_CASE(restir_di_reservoir_tracks_literal_and_effective_candidate_mass) {
