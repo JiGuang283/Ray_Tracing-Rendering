@@ -392,6 +392,11 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 buffers.indirect_film.data(), buffers.counters.data(),
                 settings.block_size);
         }
+        launch_restir_fallback_shading(
+            scene, settings.reference_transport,
+            buffers.gbuffer[write_gbuffer].data(), width, height, iteration,
+            settings.frame.render.seed, buffers.direct_film.data(),
+            buffers.counters.data(), settings.block_size);
 
         if (settings.generate_reference) {
             launch_restir_reference_shading(

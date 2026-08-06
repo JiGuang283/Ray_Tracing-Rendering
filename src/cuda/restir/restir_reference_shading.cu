@@ -60,6 +60,43 @@ __global__ void reference_shading_kernel(
     ++pixel_output.sample_count;
 }
 
+__global__ void fallback_shading_kernel(
+    DeviceSceneView scene, PackedTransportSettings transport,
+    const restir::RestirSurface *surfaces, std::uint32_t width,
+    std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
+    CudaFilmPixel *film, DeviceRestirCounters *counters) {
+    const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
+    const std::uint32_t pixel_count = width * height;
+    if (pixel >= pixel_count) {
+        return;
+    }
+    const restir::RestirSurface &surface = surfaces[pixel];
+    constexpr std::uint32_t kFallbackMask =
+        restir::RESTIR_SURFACE_DELTA_ONLY |
+        restir::RESTIR_SURFACE_UNSUPPORTED_DOMAIN;
+    if (!surface.valid() || (surface.flags & kFallbackMask) == 0u) {
+        return;
+    }
+
+    RNG rng(packed_transport::packed_camera_sample_seed(seed, pixel,
+                                                        iteration));
+    const PackedRay ray = packed_transport::generate_packed_camera_ray_core(
+        scene.scene.camera, pixel % width, pixel / width, width, height,
+        rng);
+    const PackedTransportResult traced =
+        packed_transport::trace_packed_path_core(scene.scene, ray, transport,
+                                                 rng);
+    Float3 radiance = traced.radiance;
+    if (traced.status != PackedTransportStatus::Success ||
+        !packed_transport::math::finite(radiance)) {
+        radiance = {};
+        atomicAdd(&counters->gi_invalid_samples, 1ull);
+    }
+    film[pixel].radiance = packed_transport::math::add(
+        film[pixel].radiance, radiance);
+    atomicAdd(&counters->gi_fallbacks, 1ull);
+}
+
 } // namespace
 
 void launch_restir_reference_shading(
@@ -73,6 +110,21 @@ void launch_restir_reference_shading(
         (pixel_count + block_size - 1u) / block_size;
     reference_shading_kernel<<<grid, block_size>>>(
         scene, transport, width, height, iteration, seed, sample_clamp, film,
+        counters);
+    RT_CUDA_CHECK(cudaGetLastError());
+}
+
+void launch_restir_fallback_shading(
+    DeviceSceneView scene, PackedTransportSettings transport,
+    const restir::RestirSurface *surfaces, std::uint32_t width,
+    std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
+    CudaFilmPixel *film, DeviceRestirCounters *counters,
+    std::uint32_t block_size) {
+    const std::uint32_t pixel_count = width * height;
+    const std::uint32_t grid =
+        (pixel_count + block_size - 1u) / block_size;
+    fallback_shading_kernel<<<grid, block_size>>>(
+        scene, transport, surfaces, width, height, iteration, seed, film,
         counters);
     RT_CUDA_CHECK(cudaGetLastError());
 }

@@ -74,6 +74,12 @@ __global__ void shade_initial_di_kernel(
               static_cast<unsigned long long>(visibility_rays));
 
     atomicAdd(&counters->di_shading_status[status_index(status)], 1ull);
+    constexpr std::uint32_t kFallbackMask =
+        restir::RESTIR_SURFACE_DELTA_ONLY |
+        restir::RESTIR_SURFACE_UNSUPPORTED_DOMAIN;
+    if ((surfaces[pixel].flags & kFallbackMask) != 0u) {
+        radiance = {};
+    }
     const bool expected_empty =
         status == restir::RestirDIStatus::NoSurface ||
         status == restir::RestirDIStatus::UnsupportedSurface ||

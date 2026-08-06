@@ -32,6 +32,7 @@ RestirDIHostCheckResult compare_restir_initial_di_host(
     const CompiledSceneView &scene, std::uint32_t width,
     std::uint32_t height, std::uint32_t iterations,
     std::uint32_t candidate_count, std::uint32_t seed,
+    const PackedTransportSettings &fallback_transport,
     const std::vector<restir::RestirSurface> &device_surfaces,
     const std::vector<restir::RestirDIReservoir> &device_reservoirs,
     const std::vector<cuda_backend::CudaFilmPixel> &device_film);

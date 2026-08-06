@@ -287,7 +287,8 @@ bool check_gbuffer(const Options &options) {
         compare_restir_initial_di_host(
             host_scene, options.width, options.height, options.spp,
             settings.frame.render.restir.initial_light_candidates,
-            options.seed, skeleton.gbuffer, skeleton.di_reservoirs,
+            options.seed, settings.reference_transport, skeleton.gbuffer,
+            skeleton.di_reservoirs,
             skeleton.direct_film);
     const bool di_stats_match =
         skeleton.stats.initial_candidates ==

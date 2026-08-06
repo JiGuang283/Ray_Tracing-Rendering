@@ -190,6 +190,7 @@ RestirDIHostCheckResult compare_restir_initial_di_host(
     const CompiledSceneView &scene, std::uint32_t width,
     std::uint32_t height, std::uint32_t iterations,
     std::uint32_t candidate_count, std::uint32_t seed,
+    const PackedTransportSettings &fallback_transport,
     const std::vector<restir::RestirSurface> &device_surfaces,
     const std::vector<restir::RestirDIReservoir> &device_reservoirs,
     const std::vector<cuda_backend::CudaFilmPixel> &device_film) {
@@ -234,6 +235,23 @@ RestirDIHostCheckResult compare_restir_initial_di_host(
                 ++result.shading_status[shading_index];
             }
             result.visibility_rays += visibility_rays;
+            constexpr std::uint32_t kFallbackMask =
+                restir::RESTIR_SURFACE_DELTA_ONLY |
+                restir::RESTIR_SURFACE_UNSUPPORTED_DOMAIN;
+            if ((surface.flags & kFallbackMask) != 0u) {
+                RNG rng(packed_transport::packed_camera_sample_seed(
+                    seed, pixel, iteration));
+                const PackedRay ray =
+                    packed_transport::generate_packed_camera_ray_core(
+                        scene.camera, pixel % width, pixel / width, width,
+                        height, rng);
+                const PackedTransportResult traced =
+                    packed_transport::trace_packed_path_core(
+                        scene, ray, fallback_transport, rng);
+                radiance = traced.status == PackedTransportStatus::Success
+                               ? traced.radiance
+                               : Float3{};
+            }
             host_film[pixel].radiance = packed_transport::math::add(
                 host_film[pixel].radiance, radiance);
             ++host_film[pixel].sample_count;
