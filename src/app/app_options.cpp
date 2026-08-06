@@ -58,6 +58,7 @@ void print_usage() {
         << "  --sample-clamp N     Clamp camera-sample luminance (0 disables)\n"
         << "  --cuda-batch-size N  Override CUDA active-path batch size\n"
         << "  --restir-light-candidates N  Initial DI candidates per pixel\n"
+        << "  --restir-gi-candidates N     Initial GI paths per pixel\n"
         << "  --restir-spatial-neighbors N Spatial neighbors (max 64)\n"
         << "  --restir-spatial-passes N    Spatial reuse pass count\n"
         << "  --restir-history-length N    Maximum temporal reservoir age\n"
@@ -177,6 +178,14 @@ AppOptions parse_options(int argc, char *args[]) {
                 break;
             }
             options.render.restir.initial_light_candidates =
+                static_cast<std::uint32_t>(value);
+        } else if (arg == "--restir-gi-candidates" && i + 1 < argc) {
+            int value = 0;
+            if (!parse_int_arg(args[++i], value) || value <= 0) {
+                fail("--restir-gi-candidates expects a positive integer.");
+                break;
+            }
+            options.render.restir.initial_gi_candidates =
                 static_cast<std::uint32_t>(value);
         } else if (arg == "--restir-spatial-neighbors" && i + 1 < argc) {
             int value = 0;

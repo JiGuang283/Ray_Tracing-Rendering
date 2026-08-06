@@ -25,7 +25,8 @@ std::uint32_t float_bits(float value) noexcept {
 
 void validate_restir_settings(const RestirSettings &settings) {
     if (settings.initial_light_candidates == 0u &&
-        settings.initial_bsdf_candidates == 0u) {
+        settings.initial_bsdf_candidates == 0u &&
+        settings.initial_gi_candidates == 0u) {
         throw std::invalid_argument(
             "ReSTIR requires at least one initial candidate");
     }
@@ -72,6 +73,7 @@ std::uint64_t restir_settings_fingerprint(
     std::uint64_t hash = 1469598103934665603ull;
     hash_u32(hash, settings.initial_light_candidates);
     hash_u32(hash, settings.initial_bsdf_candidates);
+    hash_u32(hash, settings.initial_gi_candidates);
     hash_u32(hash, settings.spatial_neighbors);
     hash_u32(hash, settings.spatial_passes);
     hash_u32(hash, settings.max_history_length);

@@ -175,7 +175,7 @@ TEST_CASE(restir_settings_and_frame_camera_are_validated_at_api_boundary) {
 
     const std::uint64_t fingerprint =
         restir_settings_fingerprint(request.restir);
-    request.restir.spatial_neighbors += 1u;
+    request.restir.initial_gi_candidates += 1u;
     REQUIRE(restir_settings_fingerprint(request.restir) != fingerprint);
 
     RenderFrameRequest frame;

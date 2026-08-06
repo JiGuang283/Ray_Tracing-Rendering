@@ -19,6 +19,7 @@ enum class RestirHistoryMode : std::uint32_t {
 struct RestirSettings {
     std::uint32_t initial_light_candidates = 8;
     std::uint32_t initial_bsdf_candidates = 0;
+    std::uint32_t initial_gi_candidates = 1;
     std::uint32_t spatial_neighbors = 5;
     std::uint32_t spatial_passes = 1;
     std::uint32_t max_history_length = 20;
@@ -49,6 +50,14 @@ struct RestirStats {
     std::uint64_t history_resets = 0;
     std::uint64_t invalid_reservoirs = 0;
     std::uint64_t shift_success = 0;
+    std::uint64_t gi_initial_candidates = 0;
+    std::uint64_t gi_temporal_candidates = 0;
+    std::uint64_t gi_temporal_accepted = 0;
+    std::uint64_t gi_spatial_candidates = 0;
+    std::uint64_t gi_spatial_accepted = 0;
+    std::uint64_t gi_visibility_rays = 0;
+    std::uint64_t gi_fallbacks = 0;
+    std::uint64_t gi_invalid_reservoirs = 0;
     std::array<std::uint64_t, kRestirShiftFailureBuckets> shift_failures{};
     std::array<std::uint64_t, kRestirHistoryFailureBuckets>
         history_failures{};

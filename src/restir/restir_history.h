@@ -11,6 +11,7 @@ namespace restir {
 constexpr std::uint32_t kInvalidHistoryBuffer = 0xffffffffu;
 constexpr std::uint32_t kRestirGBufferCount = 2u;
 constexpr std::uint32_t kRestirDIReservoirBufferCount = 3u;
+constexpr std::uint32_t kRestirGIReservoirBufferCount = 3u;
 
 enum class RestirHistoryResetReason : std::uint32_t {
     None = 0,
@@ -44,8 +45,11 @@ struct alignas(16) RestirFrameState {
     std::uint64_t last_frame_index = 0;
     std::uint32_t committed_gbuffer = 0;
     std::uint32_t committed_di_reservoir = 0;
+    std::uint32_t committed_gi_reservoir = 0;
     std::uint32_t history_valid = 0;
-    std::uint32_t reserved = 0;
+    std::uint32_t di_history_valid = 0;
+    std::uint32_t gi_history_valid = 0;
+    std::uint32_t reserved[3]{};
 };
 
 struct RestirFramePreparation {
@@ -55,10 +59,18 @@ struct RestirFramePreparation {
     std::uint32_t write_gbuffer = 0;
     std::uint32_t read_di_reservoir = kInvalidHistoryBuffer;
     std::uint32_t write_di_reservoir = 0;
+    std::uint32_t read_gi_reservoir = kInvalidHistoryBuffer;
+    std::uint32_t write_gi_reservoir = 0;
 
     bool reset() const noexcept {
         return reset_reason != RestirHistoryResetReason::None;
     }
+};
+
+struct RestirHistoryCommit {
+    std::uint32_t gbuffer = kInvalidHistoryBuffer;
+    std::uint32_t di_reservoir = kInvalidHistoryBuffer;
+    std::uint32_t gi_reservoir = kInvalidHistoryBuffer;
 };
 
 RestirHistoryKey make_restir_history_key(
@@ -72,8 +84,13 @@ void commit_restir_iteration(RestirFrameState &state,
                              std::uint32_t gbuffer_buffer,
                              std::uint32_t di_reservoir_buffer,
                              std::uint64_t frame_index);
+void commit_restir_iteration(RestirFrameState &state,
+                             const RestirHistoryCommit &commit,
+                             std::uint64_t frame_index);
 void reset_restir_history(RestirFrameState &state) noexcept;
 std::uint32_t next_di_reservoir_buffer(
+    std::uint32_t committed_buffer) noexcept;
+std::uint32_t next_gi_reservoir_buffer(
     std::uint32_t committed_buffer) noexcept;
 const char *restir_history_reset_reason_name(
     RestirHistoryResetReason reason) noexcept;

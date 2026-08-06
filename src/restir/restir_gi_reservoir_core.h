@@ -1,33 +1,33 @@
-#ifndef RESTIR_DI_RESERVOIR_CORE_H
-#define RESTIR_DI_RESERVOIR_CORE_H
+#ifndef RESTIR_GI_RESERVOIR_CORE_H
+#define RESTIR_GI_RESERVOIR_CORE_H
 
-#include "restir_di_types.h"
+#include "restir_gi_types.h"
 #include "restir_specialized_reservoir_core.h"
 
 namespace restir {
 
 RT_HOST_DEVICE RT_FORCE_INLINE void
-reset_reservoir(RestirDIReservoir &reservoir) noexcept {
+reset_reservoir(RestirGIReservoir &reservoir) noexcept {
     specialized_reservoir::reset(reservoir);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE bool
-reservoir_has_sample(const RestirDIReservoir &reservoir) noexcept {
+reservoir_has_sample(const RestirGIReservoir &reservoir) noexcept {
     return specialized_reservoir::has_sample(reservoir);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE bool
-reservoir_is_finalized(const RestirDIReservoir &reservoir) noexcept {
+reservoir_is_finalized(const RestirGIReservoir &reservoir) noexcept {
     return specialized_reservoir::is_finalized(reservoir);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE bool
-reservoir_is_usable(const RestirDIReservoir &reservoir) noexcept {
+reservoir_is_usable(const RestirGIReservoir &reservoir) noexcept {
     return specialized_reservoir::is_usable(reservoir);
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_di_weight(
-    RestirDIReservoir &reservoir, const RestirLightSample &sample,
+RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_gi_weight(
+    RestirGIReservoir &reservoir, const RestirGISample &sample,
     float selected_target, float weight, std::uint32_t represented_count,
     float effective_count, float random) noexcept {
     return specialized_reservoir::stream_weight(
@@ -36,7 +36,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_di_weight(
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult
-represent_di_candidates(RestirDIReservoir &reservoir,
+represent_gi_candidates(RestirGIReservoir &reservoir,
                         std::uint32_t represented_count,
                         float effective_count) noexcept {
     return specialized_reservoir::represent_candidates(
@@ -44,22 +44,22 @@ represent_di_candidates(RestirDIReservoir &reservoir,
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_candidate(
-    RestirDIReservoir &reservoir, const RestirDICandidate &candidate,
+    RestirGIReservoir &reservoir, const RestirGICandidate &candidate,
     float random) noexcept {
     return specialized_reservoir::stream_candidate(reservoir, candidate,
                                                     random);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult
-finalize_di_reservoir(RestirDIReservoir &reservoir,
+finalize_gi_reservoir(RestirGIReservoir &reservoir,
                       float normalization_denominator) noexcept {
     return specialized_reservoir::finalize(reservoir,
                                            normalization_denominator);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult
-finalize_reservoir(RestirDIReservoir &reservoir) noexcept {
-    return finalize_di_reservoir(reservoir, reservoir.effective_M);
+finalize_reservoir(RestirGIReservoir &reservoir) noexcept {
+    return finalize_gi_reservoir(reservoir, reservoir.effective_M);
 }
 
 } // namespace restir

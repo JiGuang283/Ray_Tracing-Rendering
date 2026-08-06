@@ -88,12 +88,19 @@ RestirFramePreparation prepare_restir_frame(
     preparation.write_gbuffer = state.history_valid != 0u
                                     ? state.committed_gbuffer ^ 1u
                                     : 0u;
-    preparation.read_di_reservoir = state.history_valid != 0u
+    preparation.read_di_reservoir = state.di_history_valid != 0u
                                         ? state.committed_di_reservoir
                                         : kInvalidHistoryBuffer;
-    preparation.write_di_reservoir = state.history_valid != 0u
+    preparation.write_di_reservoir = state.di_history_valid != 0u
                                          ? next_di_reservoir_buffer(
                                                state.committed_di_reservoir)
+                                         : 0u;
+    preparation.read_gi_reservoir = state.gi_history_valid != 0u
+                                        ? state.committed_gi_reservoir
+                                        : kInvalidHistoryBuffer;
+    preparation.write_gi_reservoir = state.gi_history_valid != 0u
+                                         ? next_gi_reservoir_buffer(
+                                               state.committed_gi_reservoir)
                                          : 0u;
     return preparation;
 }
@@ -102,16 +109,45 @@ void commit_restir_iteration(RestirFrameState &state,
                              std::uint32_t gbuffer_buffer,
                              std::uint32_t di_reservoir_buffer,
                              std::uint64_t frame_index) {
-    if (gbuffer_buffer >= kRestirGBufferCount ||
-        di_reservoir_buffer >= kRestirDIReservoirBufferCount) {
+    RestirHistoryCommit commit;
+    commit.gbuffer = gbuffer_buffer;
+    commit.di_reservoir = di_reservoir_buffer;
+    commit_restir_iteration(state, commit, frame_index);
+}
+
+void commit_restir_iteration(RestirFrameState &state,
+                             const RestirHistoryCommit &commit,
+                             std::uint64_t frame_index) {
+    if (commit.gbuffer >= kRestirGBufferCount ||
+        (commit.di_reservoir != kInvalidHistoryBuffer &&
+         commit.di_reservoir >= kRestirDIReservoirBufferCount) ||
+        (commit.gi_reservoir != kInvalidHistoryBuffer &&
+         commit.gi_reservoir >= kRestirGIReservoirBufferCount) ||
+        (commit.di_reservoir == kInvalidHistoryBuffer &&
+         commit.gi_reservoir == kInvalidHistoryBuffer)) {
         throw std::invalid_argument(
             "ReSTIR history buffer index is outside its buffer set");
     }
-    state.committed_gbuffer = gbuffer_buffer;
-    state.committed_di_reservoir = di_reservoir_buffer;
+    state.committed_gbuffer = commit.gbuffer;
+    if (commit.di_reservoir != kInvalidHistoryBuffer) {
+        state.committed_di_reservoir = commit.di_reservoir;
+        state.di_history_valid = 1u;
+    }
+    if (commit.gi_reservoir != kInvalidHistoryBuffer) {
+        state.committed_gi_reservoir = commit.gi_reservoir;
+        state.gi_history_valid = 1u;
+    }
     state.history_valid = 1u;
     ++state.completed_iterations;
     state.last_frame_index = frame_index;
+}
+
+std::uint32_t next_gi_reservoir_buffer(
+    std::uint32_t committed_buffer) noexcept {
+    return committed_buffer < kRestirGIReservoirBufferCount
+               ? (committed_buffer + 1u) %
+                     kRestirGIReservoirBufferCount
+               : 0u;
 }
 
 std::uint32_t next_di_reservoir_buffer(

@@ -105,7 +105,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     const std::uint32_t height = settings.frame.render.extent.height;
     const std::uint32_t pixel_count = width * height;
     CudaRestirWorkspace::Impl &buffers = *workspace.m_impl;
-    buffers.ensure_capacity(pixel_count);
+    buffers.ensure_capacity(pixel_count, RestirWorkspaceMode::DI);
     RT_CUDA_CHECK(cudaMemset(
         buffers.film.data(), 0,
         static_cast<std::size_t>(pixel_count) * sizeof(CudaFilmPixel)));

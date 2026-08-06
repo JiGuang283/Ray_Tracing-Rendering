@@ -12,6 +12,12 @@
 
 namespace cuda_backend {
 
+enum class RestirWorkspaceMode : std::uint32_t {
+    DI = 0,
+    GI = 1,
+    PT = 2,
+};
+
 struct CudaRestirWorkspaceInfo {
     std::size_t bytes = 0;
     std::uint64_t allocation_generation = 0;
@@ -20,12 +26,17 @@ struct CudaRestirWorkspaceInfo {
     std::uint32_t pixel_capacity = 0;
     std::uint32_t committed_gbuffer = 0;
     std::uint32_t committed_di_reservoir = 0;
+    std::uint32_t committed_gi_reservoir = 0;
+    RestirWorkspaceMode mode = RestirWorkspaceMode::DI;
     bool history_valid = false;
     std::uintptr_t gbuffer_addresses[2]{};
     std::uintptr_t reservoir_addresses[
         restir::kRestirDIReservoirBufferCount]{};
+    std::uintptr_t gi_reservoir_addresses[
+        restir::kRestirGIReservoirBufferCount]{};
     std::uintptr_t film_address = 0;
     std::uintptr_t direct_film_address = 0;
+    std::uintptr_t indirect_film_address = 0;
 };
 
 struct CudaRestirSkeletonSettings;

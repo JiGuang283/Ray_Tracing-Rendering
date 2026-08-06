@@ -2,6 +2,7 @@
 
 #include "restir_history.h"
 #include "restir_di_core.h"
+#include "restir_gi_reservoir_core.h"
 #include "restir_spatial_core.h"
 #include "restir_spatial_pairwise_core.h"
 #include "restir_reprojection_core.h"
@@ -74,6 +75,15 @@ TEST_CASE(restir_di_sample_and_reservoir_abi_is_stable) {
     REQUIRE(!restir::reservoir_has_sample(reservoir));
     REQUIRE(reservoir.M == 0u);
     REQUIRE_NEAR(reservoir.effective_M, 0.0f, 0.0f);
+}
+
+TEST_CASE(restir_gi_sample_and_reservoir_abi_is_stable) {
+    REQUIRE(sizeof(restir::RestirGISample) == 48u);
+    REQUIRE(sizeof(restir::RestirGIReservoir) == 80u);
+    restir::RestirGIReservoir reservoir;
+    restir::reset_reservoir(reservoir);
+    REQUIRE(!restir::reservoir_has_sample(reservoir));
+    REQUIRE(reservoir.M == 0u);
 }
 
 TEST_CASE(restir_di_reservoir_tracks_literal_and_effective_candidate_mass) {
@@ -350,6 +360,33 @@ TEST_CASE(restir_history_tracks_gbuffer_and_di_reservoir_independently) {
     REQUIRE(next.write_gbuffer == 1u);
     REQUIRE(next.read_di_reservoir == 1u);
     REQUIRE(next.write_di_reservoir == 2u);
+}
+
+TEST_CASE(restir_history_commits_gi_without_aliasing_di_history) {
+    restir::RestirFrameState state;
+    RenderFrameRequest request = frame_request(6u);
+    request.render.integrator = IntegratorKind::ReSTIRGI;
+    const restir::RestirFramePreparation initial =
+        restir::prepare_restir_frame(state, request);
+    REQUIRE(initial.read_di_reservoir == restir::kInvalidHistoryBuffer);
+    REQUIRE(initial.read_gi_reservoir == restir::kInvalidHistoryBuffer);
+
+    restir::RestirHistoryCommit commit;
+    commit.gbuffer = initial.write_gbuffer;
+    commit.gi_reservoir = initial.write_gi_reservoir;
+    restir::commit_restir_iteration(state, commit, request.frame_index);
+    REQUIRE(state.history_valid == 1u);
+    REQUIRE(state.di_history_valid == 0u);
+    REQUIRE(state.gi_history_valid == 1u);
+    REQUIRE(state.committed_gi_reservoir == 0u);
+
+    request.frame_index = 7u;
+    const restir::RestirFramePreparation next =
+        restir::prepare_restir_frame(state, request);
+    REQUIRE(next.read_di_reservoir == restir::kInvalidHistoryBuffer);
+    REQUIRE(next.write_di_reservoir == 0u);
+    REQUIRE(next.read_gi_reservoir == 0u);
+    REQUIRE(next.write_gi_reservoir == 1u);
 }
 
 TEST_CASE(restir_history_classifies_incompatible_keys) {
