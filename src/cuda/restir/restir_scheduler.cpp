@@ -83,9 +83,11 @@ void validate_settings(const CudaRestirSkeletonSettings &settings) {
     }
     if (gi_mode &&
         settings.frame.render.restir.bias_correction !=
-            RestirBiasCorrection::Basic) {
+            RestirBiasCorrection::Basic &&
+        settings.frame.render.restir.bias_correction !=
+            RestirBiasCorrection::Pairwise) {
         throw std::invalid_argument(
-            "diffuse ReSTIR GI currently requires basic correction");
+            "ReSTIR GI supports basic or pairwise correction");
     }
     if ((settings.frame.render.restir.spatial_reuse ||
          settings.frame.render.restir.temporal_reuse) &&
@@ -332,7 +334,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 const std::uint32_t previous_reservoir =
                     history_available ? protected_gi_reservoir
                                       : final_gi_reservoir;
-                launch_restir_temporal_gi_basic(
+                launch_restir_temporal_gi(
                     scene, buffers.gbuffer[write_gbuffer].data(),
                     buffers.gi_reservoir[final_gi_reservoir].data(),
                     buffers.gbuffer[previous_gbuffer].data(),
@@ -344,6 +346,8 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                     settings.frame.render.restir.max_reservoir_candidates,
                     settings.frame.render.restir.normal_threshold,
                     settings.frame.render.restir.depth_threshold,
+                    settings.frame.render.restir.bias_correction ==
+                        RestirBiasCorrection::Pairwise,
                     buffers.counters.data(), settings.block_size);
                 final_gi_reservoir = destination;
                 if (cancel_at_pass_boundary()) {
@@ -356,7 +360,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                      ++pass) {
                     const std::uint32_t destination = select_gi_scratch(
                         final_gi_reservoir, protected_gi_reservoir);
-                    launch_restir_spatial_gi_basic(
+                    launch_restir_spatial_gi(
                         scene, buffers.gbuffer[write_gbuffer].data(),
                         buffers.gi_reservoir[final_gi_reservoir].data(),
                         buffers.gi_reservoir[destination].data(), width,
@@ -366,6 +370,8 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                         settings.frame.render.restir.max_reservoir_candidates,
                         settings.frame.render.restir.normal_threshold,
                         settings.frame.render.restir.depth_threshold,
+                        settings.frame.render.restir.bias_correction ==
+                            RestirBiasCorrection::Pairwise,
                         buffers.counters.data(), settings.block_size);
                     final_gi_reservoir = destination;
                     if (cancel_at_pass_boundary()) {
@@ -538,8 +544,12 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     output.stats.gi_rejected_candidates = counter.gi_rejected_candidates;
     output.stats.gi_spatial_candidates = counter.gi_spatial_candidates;
     output.stats.gi_spatial_accepted = counter.gi_spatial_accepted;
+    output.stats.gi_spatial_pairwise_fallbacks =
+        counter.gi_spatial_pairwise_fallbacks;
     output.stats.gi_temporal_candidates = counter.gi_temporal_candidates;
     output.stats.gi_temporal_accepted = counter.gi_temporal_accepted;
+    output.stats.gi_temporal_pairwise_fallbacks =
+        counter.gi_temporal_pairwise_fallbacks;
     output.stats.gi_valid_reservoirs = counter.gi_valid_reservoirs;
     if (counter.gi_valid_reservoirs != 0u) {
         const double inverse_valid =

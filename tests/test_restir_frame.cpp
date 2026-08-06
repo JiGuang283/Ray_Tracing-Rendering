@@ -4,6 +4,7 @@
 #include "restir_di_core.h"
 #include "restir_gi_reservoir_core.h"
 #include "restir_gi_core.h"
+#include "restir_gi_pairwise_core.h"
 #include "restir_spatial_core.h"
 #include "restir_spatial_pairwise_core.h"
 #include "restir_reprojection_core.h"
@@ -296,6 +297,31 @@ TEST_CASE(restir_pairwise_weights_and_effective_mass_are_explicit) {
     REQUIRE(restir::finalize_di_reservoir(reservoir, 2.0f).accepted());
     REQUIRE_NEAR(reservoir.effective_M, 0.5f, 1e-6f);
     REQUIRE_NEAR(reservoir.unbiased_contribution_weight, 2.0f, 1e-6f);
+}
+
+TEST_CASE(restir_gi_pairwise_mass_preserves_candidate_representation) {
+    restir::RestirGIReservoir reservoir;
+    restir::reset_reservoir(reservoir);
+    restir::RestirGISample sample;
+    sample.source_pixel = 7u;
+    bool changed_selection = false;
+    REQUIRE(restir::stream_pairwise_gi_mass(
+                reservoir, sample, 2.0f, 8.0f, 4u, 0.5f, 0.0f, true,
+                changed_selection) == restir::RestirGIStatus::Success);
+    REQUIRE(changed_selection);
+    REQUIRE(reservoir.M == 4u);
+    REQUIRE_NEAR(reservoir.effective_M, 0.5f, 1e-6f);
+    REQUIRE(restir::finalize_gi_reservoir(reservoir, 1.0f).accepted());
+    REQUIRE(restir::reservoir_is_usable(reservoir));
+
+    restir::reset_reservoir(reservoir);
+    REQUIRE(restir::stream_pairwise_gi_mass(
+                reservoir, sample, 0.0f, 0.0f, 3u, 0.25f, 0.0f, false,
+                changed_selection) == restir::RestirGIStatus::Success);
+    REQUIRE(!changed_selection);
+    REQUIRE(reservoir.M == 3u);
+    REQUIRE_NEAR(reservoir.effective_M, 0.25f, 1e-6f);
+    REQUIRE(!restir::reservoir_has_sample(reservoir));
 }
 
 TEST_CASE(restir_reprojection_maps_fixed_camera_samples_to_their_pixel) {

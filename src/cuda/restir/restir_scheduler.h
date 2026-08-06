@@ -64,8 +64,10 @@ struct CudaRestirSchedulerStats {
     std::uint64_t gi_rejected_candidates = 0;
     std::uint64_t gi_spatial_candidates = 0;
     std::uint64_t gi_spatial_accepted = 0;
+    std::uint64_t gi_spatial_pairwise_fallbacks = 0;
     std::uint64_t gi_temporal_candidates = 0;
     std::uint64_t gi_temporal_accepted = 0;
+    std::uint64_t gi_temporal_pairwise_fallbacks = 0;
     std::uint64_t gi_valid_reservoirs = 0;
     double gi_average_represented_M = 0.0;
     double gi_average_effective_M = 0.0;

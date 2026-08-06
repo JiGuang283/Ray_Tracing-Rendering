@@ -560,7 +560,7 @@ bool check_gi_reuse(const Options &options) {
     settings.frame.render.restir.spatial_passes = 1u;
     settings.frame.render.restir.max_reservoir_candidates = 32u;
     settings.frame.render.restir.bias_correction =
-        RestirBiasCorrection::Basic;
+        options.bias;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::MISPath);
@@ -590,7 +590,9 @@ bool check_gi_reuse(const Options &options) {
             settings.frame.render.restir.max_reservoir_candidates,
             settings.frame.render.restir.normal_threshold,
             settings.frame.render.restir.depth_threshold, options.seed,
-            settings.reference_transport, true, true, previous.gbuffer,
+            settings.reference_transport, true, true,
+            options.bias == RestirBiasCorrection::Pairwise,
+            previous.gbuffer,
             previous.gi_reservoirs, current.gbuffer,
             current.gi_reservoirs, current.indirect_film);
 
@@ -603,6 +605,10 @@ bool check_gi_reuse(const Options &options) {
         current.stats.gi_spatial_accepted == host.spatial_accepted &&
         current.stats.gi_temporal_candidates == host.temporal_candidates &&
         current.stats.gi_temporal_accepted == host.temporal_accepted &&
+        current.stats.gi_spatial_pairwise_fallbacks ==
+            host.spatial_pairwise_fallbacks &&
+        current.stats.gi_temporal_pairwise_fallbacks ==
+            host.temporal_pairwise_fallbacks &&
         current.stats.gi_visibility_rays == host.visibility_rays &&
         current.stats.gi_generation_status == host.generation_status &&
         current.stats.gi_spatial_status == host.spatial_status &&
@@ -675,6 +681,10 @@ bool check_gi_reuse(const Options &options) {
                         workspace_reused && cancellation_safe && exercised;
     std::cout << "CUDA_RESTIR_CHECK"
               << " mode=gi-reuse"
+              << " bias="
+              << (options.bias == RestirBiasCorrection::Pairwise
+                      ? "pairwise"
+                      : "basic")
               << " pixels=" << options.width * options.height
               << " reservoir_errors=" << host.reservoir_errors
               << " motion_errors=" << host.motion_errors
@@ -687,6 +697,10 @@ bool check_gi_reuse(const Options &options) {
               << current.stats.gi_spatial_candidates
               << " spatial_accepted="
               << current.stats.gi_spatial_accepted
+              << " spatial_pairwise_fallbacks="
+              << current.stats.gi_spatial_pairwise_fallbacks
+              << " temporal_pairwise_fallbacks="
+              << current.stats.gi_temporal_pairwise_fallbacks
               << " aged=" << aged
               << " age_overflow=" << age_overflow
               << " M_overflow=" << represented_overflow
@@ -721,7 +735,7 @@ bool check_gi_statistics(const Options &options) {
     settings.frame.render.restir.spatial_passes = 1u;
     settings.frame.render.restir.max_reservoir_candidates = 32u;
     settings.frame.render.restir.bias_correction =
-        RestirBiasCorrection::Basic;
+        options.bias;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::MISPath);
@@ -887,9 +901,12 @@ bool check_gi_statistics(const Options &options) {
         (!options.temporal || temporal_accepted != 0u) &&
         (!options.spatial || spatial_accepted != 0u);
     const bool reuse_enabled = options.temporal || options.spatial;
-    const bool statistical_threshold =
-        reuse_enabled ? relative_error <= 0.05
-                      : relative_error <= 0.02 && z_score <= 4.5;
+    const bool pairwise_reuse =
+        reuse_enabled && options.bias == RestirBiasCorrection::Pairwise;
+    const bool statistical_threshold = pairwise_reuse
+        ? relative_error <= 0.02 && z_score <= 4.5
+        : reuse_enabled ? relative_error <= 0.05
+                        : relative_error <= 0.02 && z_score <= 4.5;
     const bool passed = sample_counts_valid && invalid_samples == 0u &&
                         zero_emitter_pdfs == 0u && reuse_exercised &&
                         statistical_threshold &&
@@ -898,10 +915,18 @@ bool check_gi_statistics(const Options &options) {
               << " mode=gi-statistics"
               << " seeds=" << kSeedCount
               << " spp=" << options.spp
+              << " bias="
+              << (options.bias == RestirBiasCorrection::Pairwise
+                      ? "pairwise"
+                      : "basic")
               << " spatial=" << (options.spatial ? 1 : 0)
               << " temporal=" << (options.temporal ? 1 : 0)
               << " correction="
-              << (reuse_enabled ? "basic" : "initial")
+              << (!reuse_enabled
+                      ? "initial"
+                      : options.bias == RestirBiasCorrection::Pairwise
+                            ? "pairwise"
+                            : "basic")
               << " restir_mean=" << restir_mean
               << " direct_mean=" << direct_mean
               << " indirect_mean=" << indirect_mean

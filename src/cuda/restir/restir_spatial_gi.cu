@@ -1,12 +1,12 @@
 #include "restir_spatial_gi.h"
 
 #include "cuda_error.h"
-#include "restir_gi_spatial_core.h"
+#include "restir_gi_spatial_pairwise_core.h"
 
 namespace cuda_backend {
 namespace {
 
-__global__ void spatial_gi_basic_kernel(
+__global__ void spatial_gi_kernel(
     DeviceSceneView scene, const restir::RestirSurface *surfaces,
     const restir::RestirGIReservoir *source,
     restir::RestirGIReservoir *destination,
@@ -14,15 +14,20 @@ __global__ void spatial_gi_basic_kernel(
     std::uint32_t iteration, std::uint32_t pass_index,
     std::uint32_t seed, std::uint32_t neighbor_count,
     std::uint32_t max_candidates, float normal_threshold,
-    float depth_threshold, DeviceRestirCounters *counters,
+    float depth_threshold, bool pairwise,
+    DeviceRestirCounters *counters,
     std::uint32_t *status_output) {
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     if (pixel >= width * height) {
         return;
     }
     restir::RestirGISpatialStats stats;
-    const restir::RestirGIStatus status =
-        restir::spatial_resample_gi_basic(
+    const restir::RestirGIStatus status = pairwise
+        ? restir::spatial_resample_gi_pairwise(
+            scene.scene, surfaces, source, width, height, pixel, iteration,
+            pass_index, seed, neighbor_count, max_candidates,
+            normal_threshold, depth_threshold, destination[pixel], stats)
+        : restir::spatial_resample_gi_basic(
             scene.scene, surfaces, source, width, height, pixel, iteration,
             pass_index, seed, neighbor_count, max_candidates,
             normal_threshold, depth_threshold, destination[pixel], stats);
@@ -36,6 +41,8 @@ __global__ void spatial_gi_basic_kernel(
               static_cast<unsigned long long>(stats.candidates));
     atomicAdd(&counters->gi_spatial_accepted,
               static_cast<unsigned long long>(stats.accepted));
+    atomicAdd(&counters->gi_spatial_pairwise_fallbacks,
+              static_cast<unsigned long long>(stats.pairwise_fallbacks));
     for (std::uint32_t index = 0u;
          index < static_cast<std::uint32_t>(
                      restir::RestirSpatialCompatibility::Count);
@@ -52,7 +59,7 @@ __global__ void spatial_gi_basic_kernel(
 
 } // namespace
 
-void launch_restir_spatial_gi_basic(
+void launch_restir_spatial_gi(
     DeviceSceneView scene, const restir::RestirSurface *surfaces,
     const restir::RestirGIReservoir *source,
     restir::RestirGIReservoir *destination,
@@ -60,15 +67,17 @@ void launch_restir_spatial_gi_basic(
     std::uint32_t iteration, std::uint32_t pass_index,
     std::uint32_t seed, std::uint32_t neighbor_count,
     std::uint32_t max_candidates, float normal_threshold,
-    float depth_threshold, DeviceRestirCounters *counters,
+    float depth_threshold, bool pairwise,
+    DeviceRestirCounters *counters,
     std::uint32_t block_size, std::uint32_t *status_output) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
-    spatial_gi_basic_kernel<<<grid, block_size>>>(
+    spatial_gi_kernel<<<grid, block_size>>>(
         scene, surfaces, source, destination, width, height, iteration,
         pass_index, seed, neighbor_count, max_candidates,
-        normal_threshold, depth_threshold, counters, status_output);
+        normal_threshold, depth_threshold, pairwise, counters,
+        status_output);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 

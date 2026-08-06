@@ -42,8 +42,10 @@ struct DeviceRestirCounters {
     unsigned long long gi_rejected_candidates = 0;
     unsigned long long gi_spatial_candidates = 0;
     unsigned long long gi_spatial_accepted = 0;
+    unsigned long long gi_spatial_pairwise_fallbacks = 0;
     unsigned long long gi_temporal_candidates = 0;
     unsigned long long gi_temporal_accepted = 0;
+    unsigned long long gi_temporal_pairwise_fallbacks = 0;
     unsigned long long gi_valid_reservoirs = 0;
     unsigned long long gi_reservoir_M_sum = 0;
     unsigned long long gi_reservoir_age_sum = 0;

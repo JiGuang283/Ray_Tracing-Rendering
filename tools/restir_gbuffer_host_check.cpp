@@ -4,6 +4,7 @@
 #include "restir_di_core.h"
 #include "restir_gi_core.h"
 #include "restir_gi_spatial_core.h"
+#include "restir_gi_spatial_pairwise_core.h"
 #include "restir_gi_temporal_core.h"
 #include "restir_spatial_core.h"
 #include "restir_spatial_pairwise_core.h"
@@ -473,7 +474,7 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
     std::uint32_t max_history_length, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold, std::uint32_t seed,
     const PackedTransportSettings &transport, bool temporal_reuse,
-    bool spatial_reuse,
+    bool spatial_reuse, bool pairwise,
     const std::vector<restir::RestirSurface> &previous_surfaces,
     const std::vector<restir::RestirGIReservoir> &previous_reservoirs,
     const std::vector<restir::RestirSurface> &device_current_surfaces,
@@ -517,8 +518,15 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
     if (temporal_reuse) {
         for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
             restir::RestirGITemporalStats stats;
-            const restir::RestirGIStatus status =
-                restir::temporal_resample_gi_basic(
+            const restir::RestirGIStatus status = pairwise
+                ? restir::temporal_resample_gi_pairwise(
+                    scene, current_surfaces[pixel], source[pixel],
+                    previous_camera, previous_surfaces.data(),
+                    previous_reservoirs.data(), width, height, pixel,
+                    iteration, seed, max_history_length, max_candidates,
+                    normal_threshold, depth_threshold, destination[pixel],
+                    stats)
+                : restir::temporal_resample_gi_basic(
                     scene, current_surfaces[pixel], source[pixel],
                     previous_camera, previous_surfaces.data(),
                     previous_reservoirs.data(), width, height, pixel,
@@ -532,6 +540,8 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
             }
             result.temporal_candidates += stats.candidates;
             result.temporal_accepted += stats.accepted;
+            result.temporal_pairwise_fallbacks +=
+                stats.pairwise_fallbacks;
         }
         source.swap(destination);
     }
@@ -540,8 +550,13 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
         for (std::uint32_t pass = 0u; pass < pass_count; ++pass) {
             for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
                 restir::RestirGISpatialStats stats;
-                const restir::RestirGIStatus status =
-                    restir::spatial_resample_gi_basic(
+                const restir::RestirGIStatus status = pairwise
+                    ? restir::spatial_resample_gi_pairwise(
+                        scene, current_surfaces.data(), source.data(), width,
+                        height, pixel, iteration, pass, seed,
+                        neighbor_count, max_candidates, normal_threshold,
+                        depth_threshold, destination[pixel], stats)
+                    : restir::spatial_resample_gi_basic(
                         scene, current_surfaces.data(), source.data(), width,
                         height, pixel, iteration, pass, seed,
                         neighbor_count, max_candidates, normal_threshold,
@@ -550,6 +565,8 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
                 result.spatial_candidates += stats.candidates;
                 result.spatial_accepted += stats.accepted;
                 result.spatial_rejected += stats.rejected;
+                result.spatial_pairwise_fallbacks +=
+                    stats.pairwise_fallbacks;
                 for (std::size_t index = 0u;
                      index < result.compatibility.size(); ++index) {
                     result.compatibility[index] +=

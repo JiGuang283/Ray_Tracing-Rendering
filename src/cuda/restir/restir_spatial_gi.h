@@ -10,7 +10,7 @@
 
 namespace cuda_backend {
 
-void launch_restir_spatial_gi_basic(
+void launch_restir_spatial_gi(
     DeviceSceneView scene, const restir::RestirSurface *surfaces,
     const restir::RestirGIReservoir *source,
     restir::RestirGIReservoir *destination,
@@ -18,7 +18,8 @@ void launch_restir_spatial_gi_basic(
     std::uint32_t iteration, std::uint32_t pass_index,
     std::uint32_t seed, std::uint32_t neighbor_count,
     std::uint32_t max_candidates, float normal_threshold,
-    float depth_threshold, DeviceRestirCounters *counters,
+    float depth_threshold, bool pairwise,
+    DeviceRestirCounters *counters,
     std::uint32_t block_size, std::uint32_t *status_output = nullptr);
 
 } // namespace cuda_backend

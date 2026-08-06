@@ -13,6 +13,7 @@ struct RestirGISpatialStats {
     std::uint32_t compatibility[
         static_cast<std::uint32_t>(RestirSpatialCompatibility::Count)]{};
     std::uint32_t shift_failures[kRestirShiftFailureBuckets]{};
+    std::uint32_t pairwise_fallbacks = 0u;
 };
 
 RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus combine_basic_gi_source(

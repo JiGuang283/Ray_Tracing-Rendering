@@ -6,7 +6,7 @@
 namespace cuda_backend {
 namespace {
 
-__global__ void temporal_gi_basic_kernel(
+__global__ void temporal_gi_kernel(
     DeviceSceneView scene, restir::RestirSurface *current_surfaces,
     const restir::RestirGIReservoir *current_reservoirs,
     const restir::RestirSurface *previous_surfaces,
@@ -17,15 +17,25 @@ __global__ void temporal_gi_basic_kernel(
     std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t max_history_length,
     std::uint32_t max_candidates, float normal_threshold,
-    float depth_threshold, DeviceRestirCounters *counters,
+    float depth_threshold, bool pairwise,
+    DeviceRestirCounters *counters,
     std::uint32_t *status_output) {
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     if (pixel >= width * height) {
         return;
     }
     restir::RestirGITemporalStats stats;
-    const restir::RestirGIStatus status =
-        restir::temporal_resample_gi_basic(
+    const restir::RestirGIStatus status = pairwise
+        ? restir::temporal_resample_gi_pairwise(
+            scene.scene, current_surfaces[pixel],
+            current_reservoirs[pixel],
+            history_available ? &previous_camera : nullptr,
+            history_available ? previous_surfaces : nullptr,
+            history_available ? previous_reservoirs : nullptr,
+            width, height, pixel, iteration, seed, max_history_length,
+            max_candidates, normal_threshold, depth_threshold,
+            destination[pixel], stats)
+        : restir::temporal_resample_gi_basic(
             scene.scene, current_surfaces[pixel],
             current_reservoirs[pixel],
             history_available ? &previous_camera : nullptr,
@@ -44,6 +54,8 @@ __global__ void temporal_gi_basic_kernel(
               static_cast<unsigned long long>(stats.candidates));
     atomicAdd(&counters->gi_temporal_accepted,
               static_cast<unsigned long long>(stats.accepted));
+    atomicAdd(&counters->gi_temporal_pairwise_fallbacks,
+              static_cast<unsigned long long>(stats.pairwise_fallbacks));
     const std::uint32_t rejection_index =
         static_cast<std::uint32_t>(stats.rejection);
     if (rejection_index < 16u) {
@@ -59,7 +71,7 @@ __global__ void temporal_gi_basic_kernel(
 
 } // namespace
 
-void launch_restir_temporal_gi_basic(
+void launch_restir_temporal_gi(
     DeviceSceneView scene, restir::RestirSurface *current_surfaces,
     const restir::RestirGIReservoir *current_reservoirs,
     const restir::RestirSurface *previous_surfaces,
@@ -70,16 +82,17 @@ void launch_restir_temporal_gi_basic(
     std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t max_history_length,
     std::uint32_t max_candidates, float normal_threshold,
-    float depth_threshold, DeviceRestirCounters *counters,
+    float depth_threshold, bool pairwise,
+    DeviceRestirCounters *counters,
     std::uint32_t block_size, std::uint32_t *status_output) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
-    temporal_gi_basic_kernel<<<grid, block_size>>>(
+    temporal_gi_kernel<<<grid, block_size>>>(
         scene, current_surfaces, current_reservoirs, previous_surfaces,
         previous_reservoirs, previous_camera, history_available,
         destination, width, height, iteration, seed, max_history_length,
-        max_candidates, normal_threshold, depth_threshold, counters,
+        max_candidates, normal_threshold, depth_threshold, pairwise, counters,
         status_output);
     RT_CUDA_CHECK(cudaGetLastError());
 }

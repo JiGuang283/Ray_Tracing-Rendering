@@ -108,6 +108,8 @@ struct RestirGIReuseHostCheckResult {
     std::uint64_t spatial_rejected = 0;
     std::uint64_t temporal_candidates = 0;
     std::uint64_t temporal_accepted = 0;
+    std::uint64_t spatial_pairwise_fallbacks = 0;
+    std::uint64_t temporal_pairwise_fallbacks = 0;
     std::uint64_t visibility_rays = 0;
     std::array<std::uint64_t, 16> generation_status{};
     std::array<std::uint64_t, 16> spatial_status{};
@@ -126,7 +128,7 @@ RestirGIReuseHostCheckResult compare_restir_gi_reuse_host(
     std::uint32_t max_history_length, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold, std::uint32_t seed,
     const PackedTransportSettings &transport, bool temporal_reuse,
-    bool spatial_reuse,
+    bool spatial_reuse, bool pairwise,
     const std::vector<restir::RestirSurface> &previous_surfaces,
     const std::vector<restir::RestirGIReservoir> &previous_reservoirs,
     const std::vector<restir::RestirSurface> &device_current_surfaces,
