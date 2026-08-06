@@ -1,9 +1,12 @@
 add_library(raytracer_render_api STATIC
     beauty_film.cpp
+    camera_config.cpp
     color_pipeline.cpp
     preview_surface.cpp
     render_buffer.cpp
+    render_session.cpp
     render_types.cpp
+    restir_settings.cpp
 )
 add_library(raytracer::render_api ALIAS raytracer_render_api)
 

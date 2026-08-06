@@ -3,6 +3,7 @@
 
 #include "color_pipeline_settings.h"
 #include "host_device.h"
+#include "restir_settings.h"
 
 #include <array>
 #include <atomic>
@@ -21,7 +22,15 @@ enum class IntegratorKind : std::uint32_t {
     RussianRoulette = 1,
     PBRPath = 2,
     DirectLighting = 3,
-    MISPath = 4
+    MISPath = 4,
+    ReSTIRDI = 5,
+    ReSTIRGI = 6,
+    ReSTIRPT = 7,
+};
+
+enum class IntegratorExecutionModel : std::uint32_t {
+    WavefrontPath = 0,
+    RestirFrame = 1,
 };
 
 enum IntegratorPolicyFlags : std::uint32_t {
@@ -70,6 +79,8 @@ struct IntegratorDescriptor {
     IntegratorPolicy policy;
     bool supports_cpu = true;
     bool supports_cuda = true;
+    IntegratorExecutionModel execution_model =
+        IntegratorExecutionModel::WavefrontPath;
 };
 
 IntegratorKind integrator_kind_from_id(int id);
@@ -98,6 +109,7 @@ struct RenderRequest {
     std::uint32_t cuda_batch_size = 0;
     double sample_clamp = 0.0;
     ColorPipelineSettings color_pipeline;
+    RestirSettings restir;
 };
 
 void validate_render_request(const RenderRequest &request);
@@ -136,6 +148,7 @@ struct RenderStats {
     int batch_size = 0;
     int batch_count = 0;
     std::array<std::uint64_t, 8> status_counts{};
+    RestirStats restir;
     bool cancelled = false;
 };
 

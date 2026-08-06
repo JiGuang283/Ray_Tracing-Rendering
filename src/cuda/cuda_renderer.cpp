@@ -41,6 +41,30 @@ class CudaRenderSession final : public IRenderSession {
     RenderResult render(const RenderRequest &request,
                         const CancellationToken &cancel,
                         PreviewSurface *preview) override {
+        reset_history();
+        return render_with_scene(m_device_scene.view(), request, cancel,
+                                 preview);
+    }
+
+    RenderResult render_frame(const RenderFrameRequest &request,
+                              const CancellationToken &cancel,
+                              PreviewSurface *preview) override {
+        validate_render_frame_request(request);
+        DeviceSceneView scene = m_device_scene.view();
+        scene.scene.camera = compile_packed_camera(
+            request.camera, scene.scene.scene_time0, scene.scene.scene_time1);
+        return render_with_scene(scene, request.render, cancel, preview);
+    }
+
+    void reset_history() override {
+        // ReSTIR history storage is introduced with the frame scheduler.
+    }
+
+  private:
+    RenderResult render_with_scene(DeviceSceneView scene,
+                                   const RenderRequest &request,
+                                   const CancellationToken &cancel,
+                                   PreviewSurface *preview) {
         bool expected = false;
         if (!m_rendering.compare_exchange_strong(expected, true)) {
             throw std::logic_error(
@@ -70,8 +94,7 @@ class CudaRenderSession final : public IRenderSession {
         transport_settings.sample_clamp =
             static_cast<float>(request.sample_clamp);
         const CudaRenderOutput output = render_wavefront_cuda(
-            m_device_scene.view(), transport_settings, m_workspace,
-            cancel.native_flag());
+            scene, transport_settings, m_workspace, cancel.native_flag());
 
         BeautyFilm beauty(request.extent);
         for (std::uint32_t y = 0; y < transport_settings.height; ++y) {
@@ -142,7 +165,6 @@ class CudaRenderSession final : public IRenderSession {
         return result;
     }
 
-  private:
     DeviceSceneStorage m_device_scene;
     CudaRenderWorkspace m_workspace;
     PreparationStats m_preparation;

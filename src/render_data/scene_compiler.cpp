@@ -316,7 +316,8 @@ class SceneCompiler {
         : m_ir(ir), m_resources(m_scene) {
         m_context.source_path = ir.source_path;
         m_context.scene_ir = &ir;
-        m_scene.camera = pack_camera(ir.camera, ir.time0, ir.time1);
+        m_scene.camera =
+            compile_packed_camera(ir.camera, ir.time0, ir.time1);
         m_scene.background = pack_vec3(ir.preset.background);
         m_scene.scene_time0 = checked_float(ir.time0, "scene time0");
         m_scene.scene_time1 = checked_float(ir.time1, "scene time1");
@@ -1465,6 +1466,16 @@ class SceneCompiler {
 };
 
 } // namespace
+
+PackedCamera compile_packed_camera(const CameraConfig &camera, double time0,
+                                   double time1) {
+    validate_camera_config(camera);
+    if (!std::isfinite(time0) || !std::isfinite(time1) || time1 < time0) {
+        throw std::invalid_argument(
+            "camera time interval must be finite and ordered");
+    }
+    return pack_camera(camera, time0, time1);
+}
 
 CompiledScene compile_scene(const SceneIR &ir) {
     CompiledScene scene = SceneCompiler(ir).compile();

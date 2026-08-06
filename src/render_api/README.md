@@ -8,19 +8,27 @@ JSON -> SceneIR
      -> CudaRenderSession -> CompiledScene -> DeviceScene
 ```
 
-`IRenderSession` is synchronous and owns backend preparation state. The
-application may run it on one background thread, but a session rejects
-overlapping `render()` calls. A benchmark creates one session outside its run
-loop, so scene construction, packed compilation, CUDA upload, and reusable
-workspace allocation are not accidentally measured as repeated render work.
+`IRenderSession` is synchronous and owns backend preparation and history
+state. The application may run it on one background thread, but a session
+rejects overlapping calls. `render()` is the independent offline entry point
+and resets history; `render_frame()` carries camera and scene revisions for a
+history-aware sequence. `reset_history()` is explicit so cancellation,
+benchmark runs, and application camera cuts cannot accidentally share state.
+A benchmark creates one session outside its run loop, so scene construction,
+packed compilation, CUDA upload, and reusable workspace allocation are not
+accidentally measured as repeated render work.
 
 ## Request And Result
 
 `RenderRequest` is the validated input contract. It carries image extent,
 integrator kind, sampling limits, seed, thread count, CUDA batch size, sample
-clamp, and color pipeline settings. Integrator IDs 0 through 4 map once to an
-`IntegratorPolicy`; CPU double transport and Packed float transport consume
-that same policy while retaining independent numerical kernels.
+clamp, color pipeline settings, and a separate `RestirSettings` block.
+Integrator IDs 0 through 4 map once to an `IntegratorPolicy`; CPU double
+transport and Packed float transport consume that same policy while retaining
+independent numerical kernels. IDs 5 through 7 use the `RestirFrame` execution
+model and never map to a path policy. Until each ReSTIR pipeline is completed,
+its descriptor reports both backends as unsupported instead of silently
+falling back.
 
 `RenderResult` owns three distinct products:
 

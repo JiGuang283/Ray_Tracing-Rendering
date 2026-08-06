@@ -3,6 +3,7 @@
 #include "cuda_error.h"
 #include "device_buffer.h"
 #include "packed_transport_core.h"
+#include "workspace_memory.h"
 
 #include <cuda_runtime.h>
 
@@ -10,14 +11,12 @@
 #include <array>
 #include <cstdint>
 #include <limits>
-#include <sstream>
 #include <stdexcept>
 
 namespace cuda_backend {
 namespace {
 
 constexpr std::uint32_t kDefaultBatchSize = 256u * 1024u;
-constexpr std::size_t kMemoryReserve = 64ull * 1024ull * 1024ull;
 
 struct alignas(16) DeviceRenderCounters {
     unsigned long long traversal_steps = 0;
@@ -190,22 +189,6 @@ std::size_t workspace_bytes(std::uint32_t pixel_count,
            2 * sizeof(std::uint32_t) + sizeof(DeviceRenderCounters);
 }
 
-void ensure_workspace_fits(std::size_t bytes, std::size_t current_bytes) {
-    const DeviceMemoryInfo memory = query_device_memory();
-    const std::size_t available = memory.free_bytes + current_bytes;
-    const std::size_t usable = available > kMemoryReserve
-                                   ? available - kMemoryReserve
-                                   : 0;
-    if (bytes <= usable) {
-        return;
-    }
-    std::ostringstream message;
-    message << "CUDA render workspace requires " << bytes
-            << " bytes, but only " << memory.free_bytes
-            << " device bytes are free";
-    throw std::runtime_error(message.str());
-}
-
 } // namespace
 
 struct CudaRenderWorkspace::Impl {
@@ -234,7 +217,8 @@ struct CudaRenderWorkspace::Impl {
             workspace_bytes(pixel_capacity, path_capacity);
         const std::size_t current = allocated_bytes();
         if (required > current) {
-            ensure_workspace_fits(required, current);
+            ensure_cuda_workspace_fits(required, current,
+                                       "CUDA render workspace");
         }
 
         bool changed = false;

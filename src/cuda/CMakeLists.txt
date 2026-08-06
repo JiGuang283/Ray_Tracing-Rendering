@@ -5,6 +5,7 @@ add_library(raytracer_cuda STATIC
     light_kernels.cu
     shading_kernels.cu
     wavefront_renderer.cu
+    workspace_memory.cu
 )
 add_library(raytracer::cuda ALIAS raytracer_cuda)
 
@@ -15,6 +16,7 @@ target_link_libraries(raytracer_cuda PUBLIC
     raytracer::build_config
     raytracer::render_data
     raytracer::render_api
+    raytracer::restir
     CUDA::cudart
 )
 set_target_properties(raytracer_cuda PROPERTIES

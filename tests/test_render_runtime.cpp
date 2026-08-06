@@ -6,6 +6,7 @@
 #include "hittable_list.h"
 #include "material_programs.h"
 #include "preview_surface.h"
+#include "render_session.h"
 #include "renderer.h"
 #include "sphere.h"
 
@@ -90,7 +91,7 @@ TEST_CASE(render_request_rejects_invalid_dimensions_and_integrators) {
 
     bool rejected_integrator = false;
     try {
-        (void)integrator_kind_from_id(5);
+        (void)integrator_kind_from_id(8);
     } catch (const std::invalid_argument &) {
         rejected_integrator = true;
     }
@@ -134,6 +135,64 @@ TEST_CASE(integrator_ids_map_to_shared_transport_policies) {
                 .uses_direct_lighting());
     REQUIRE(!integrator_policy(IntegratorKind::DirectLighting).uses_mis());
     REQUIRE(integrator_policy(IntegratorKind::MISPath).uses_mis());
+}
+
+TEST_CASE(restir_integrator_descriptors_do_not_fallback_to_path_policies) {
+    for (int id = 5; id <= 7; ++id) {
+        const IntegratorKind kind = integrator_kind_from_id(id);
+        const IntegratorDescriptor &descriptor = integrator_descriptor(kind);
+        REQUIRE(descriptor.id == id);
+        REQUIRE(descriptor.execution_model ==
+                IntegratorExecutionModel::RestirFrame);
+        REQUIRE(!integrator_supported(kind, RenderBackend::CPU));
+        REQUIRE(!integrator_supported(kind, RenderBackend::CUDA));
+        REQUIRE(!valid_integrator_policy(descriptor.policy));
+        bool rejected_policy = false;
+        try {
+            (void)integrator_policy(kind);
+        } catch (const std::invalid_argument &) {
+            rejected_policy = true;
+        }
+        REQUIRE(rejected_policy);
+    }
+}
+
+TEST_CASE(restir_settings_and_frame_camera_are_validated_at_api_boundary) {
+    RenderRequest request = test_request(1);
+    request.integrator = IntegratorKind::ReSTIRDI;
+    validate_render_request(request);
+
+    request.restir.bias_correction = RestirBiasCorrection::Unbiased;
+    bool rejected_cap = false;
+    try {
+        validate_render_request(request);
+    } catch (const std::invalid_argument &) {
+        rejected_cap = true;
+    }
+    REQUIRE(rejected_cap);
+    request.restir.max_reservoir_candidates = 0u;
+    validate_render_request(request);
+
+    const std::uint64_t fingerprint =
+        restir_settings_fingerprint(request.restir);
+    request.restir.spatial_neighbors += 1u;
+    REQUIRE(restir_settings_fingerprint(request.restir) != fingerprint);
+
+    RenderFrameRequest frame;
+    frame.render = test_request(1);
+    frame.camera.lookfrom = point3(0, 0, 2);
+    frame.camera.lookat = point3(0, 0, -1);
+    frame.camera.vup = vec3(0, 1, 0);
+    frame.camera.aspect_ratio = 16.0 / 9.0;
+    validate_render_frame_request(frame);
+    frame.camera.lookat = frame.camera.lookfrom;
+    bool rejected_camera = false;
+    try {
+        validate_render_frame_request(frame);
+    } catch (const std::invalid_argument &) {
+        rejected_camera = true;
+    }
+    REQUIRE(rejected_camera);
 }
 
 TEST_CASE(preview_surface_supports_concurrent_publish_and_snapshot) {
