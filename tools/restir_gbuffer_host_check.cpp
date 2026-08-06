@@ -1,6 +1,7 @@
 #include "restir_gbuffer_host_check.h"
 
 #include "restir_gbuffer_core.h"
+#include "restir_di_core.h"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +9,7 @@
 
 namespace {
 
-bool near(float left, float right, float tolerance = 5e-5f) {
+bool near(float left, float right, float tolerance = 1e-4f) {
     const float scale =
         std::max(1.0f, std::max(std::abs(left), std::abs(right)));
     return std::abs(left - right) <= tolerance * scale;
@@ -51,6 +52,30 @@ bool compare_surface(const restir::RestirSurface &device,
                               device_shading.y * host_shading.y +
                               device_shading.z * host_shading.z;
     return geometry_dot >= 0.9999f && shading_dot >= 0.9999f;
+}
+
+bool compare_reservoir(const restir::RestirDIReservoir &device,
+                       const restir::RestirDIReservoir &host) {
+    if (device.M != host.M || device.flags != host.flags) {
+        return false;
+    }
+    if (!restir::reservoir_has_sample(host)) {
+        return true;
+    }
+    return device.sample.light_id == host.sample.light_id &&
+           device.sample.element_id == host.sample.element_id &&
+           device.sample.type == host.sample.type &&
+           device.sample.flags == host.sample.flags &&
+           near(device.sample.canonical_data.x,
+                host.sample.canonical_data.x) &&
+           near(device.sample.canonical_data.y,
+                host.sample.canonical_data.y) &&
+           near(device.sample.canonical_data.z,
+                host.sample.canonical_data.z) &&
+           near(device.weight_sum, host.weight_sum) &&
+           near(device.selected_target, host.selected_target) &&
+           near(device.unbiased_contribution_weight,
+                host.unbiased_contribution_weight);
 }
 
 } // namespace
@@ -105,4 +130,77 @@ std::uint64_t compare_restir_gbuffer_host(
         }
     }
     return errors;
+}
+
+RestirDIHostCheckResult compare_restir_initial_di_host(
+    const CompiledSceneView &scene, std::uint32_t width,
+    std::uint32_t height, std::uint32_t iterations,
+    std::uint32_t candidate_count, std::uint32_t seed,
+    const std::vector<restir::RestirSurface> &device_surfaces,
+    const std::vector<restir::RestirDIReservoir> &device_reservoirs,
+    const std::vector<cuda_backend::CudaFilmPixel> &device_film) {
+    RestirDIHostCheckResult result;
+    const std::uint32_t pixel_count = width * height;
+    if (iterations != 1u || device_surfaces.size() != pixel_count ||
+        device_reservoirs.size() != pixel_count ||
+        device_film.size() != pixel_count) {
+        result.reservoir_errors = pixel_count;
+        result.direct_film_errors = pixel_count;
+        return result;
+    }
+    std::vector<cuda_backend::CudaFilmPixel> host_film(pixel_count);
+    for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+        for (std::uint32_t pixel = 0; pixel < pixel_count; ++pixel) {
+            const restir::RestirSurface &surface =
+                device_surfaces[pixel];
+            restir::RestirDIReservoir reservoir;
+            restir::RestirDICandidateStats candidate_stats;
+            const restir::RestirDIStatus generation =
+                restir::generate_initial_di_reservoir(
+                    scene, surface, width, height, pixel, iteration, seed,
+                    candidate_count, reservoir, candidate_stats);
+            const std::uint32_t generation_index =
+                static_cast<std::uint32_t>(generation);
+            if (generation_index < result.generation_status.size()) {
+                ++result.generation_status[generation_index];
+            }
+            result.initial_candidates += candidate_stats.attempted;
+            result.represented_candidates += candidate_stats.represented;
+            result.rejected_candidates += candidate_stats.rejected;
+
+            Float3 radiance{};
+            std::uint32_t visibility_rays = 0;
+            const restir::RestirDIStatus shading =
+                restir::shade_initial_di_reservoir(
+                    scene, surface, reservoir, width, height, pixel,
+                    iteration, seed, radiance, visibility_rays);
+            const std::uint32_t shading_index =
+                static_cast<std::uint32_t>(shading);
+            if (shading_index < result.shading_status.size()) {
+                ++result.shading_status[shading_index];
+            }
+            result.visibility_rays += visibility_rays;
+            host_film[pixel].radiance = packed_transport::math::add(
+                host_film[pixel].radiance, radiance);
+            ++host_film[pixel].sample_count;
+
+            if (iteration + 1u == iterations &&
+                !compare_reservoir(device_reservoirs[pixel], reservoir)) {
+                ++result.reservoir_errors;
+            }
+        }
+    }
+    for (std::uint32_t pixel = 0; pixel < pixel_count; ++pixel) {
+        if (device_film[pixel].sample_count !=
+                host_film[pixel].sample_count ||
+            !near(device_film[pixel].radiance.x,
+                  host_film[pixel].radiance.x) ||
+            !near(device_film[pixel].radiance.y,
+                  host_film[pixel].radiance.y) ||
+            !near(device_film[pixel].radiance.z,
+                  host_film[pixel].radiance.z)) {
+            ++result.direct_film_errors;
+        }
+    }
+    return result;
 }

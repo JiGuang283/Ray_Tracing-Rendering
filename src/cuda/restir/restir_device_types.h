@@ -8,6 +8,14 @@ namespace cuda_backend {
 struct DeviceRestirCounters {
     unsigned long long gbuffer_status[7]{};
     unsigned long long transport_status[8]{};
+    unsigned long long di_generation_status[11]{};
+    unsigned long long di_shading_status[11]{};
+    unsigned long long initial_candidates = 0;
+    unsigned long long represented_candidates = 0;
+    unsigned long long rejected_candidates = 0;
+    unsigned long long visibility_rays = 0;
+    unsigned long long di_clamped_samples = 0;
+    unsigned long long di_invalid_samples = 0;
     unsigned long long traversal_steps = 0;
     unsigned long long shadow_rays = 0;
     unsigned long long clamped_samples = 0;

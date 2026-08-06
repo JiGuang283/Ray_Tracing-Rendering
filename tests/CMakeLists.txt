@@ -56,7 +56,32 @@ if(RAYTRACER_ENABLE_CUDA)
     )
     add_test(NAME cuda_restir_gbuffer_check
         COMMAND cuda_restir_check --mode gbuffer --width 32 --height 18
-                --spp 2 --max-depth 6 --seed 123
+                --spp 1 --max-depth 6 --seed 123
+    )
+    add_test(NAME cuda_restir_quad_check
+        COMMAND cuda_restir_check --mode gbuffer
+                --scene-file assets/scenes/scene_065_restir_many_light.json
+                --width 32 --height 18 --spp 1 --max-depth 4 --seed 123
+    )
+    add_test(NAME cuda_restir_environment_check
+        COMMAND cuda_restir_check --mode gbuffer
+                --scene-file assets/scenes/scene_019_environment_light_scene.json
+                --width 32 --height 18 --spp 1 --max-depth 4 --seed 123
+    )
+    add_test(NAME cuda_restir_sphere_mesh_check
+        COMMAND cuda_restir_check --mode gbuffer
+                --scene-file assets/scenes/scene_005_simple_light.json
+                --width 32 --height 18 --spp 1 --max-depth 4 --seed 123
+    )
+    add_test(NAME cuda_restir_delta_only_check
+        COMMAND cuda_restir_check --mode gbuffer
+                --scene-file assets/scenes/scene_015_point_light_scene.json
+                --width 32 --height 18 --spp 1 --max-depth 4 --seed 123
+    )
+    add_test(NAME cuda_restir_initial_di_statistics
+        COMMAND cuda_restir_check --mode statistics
+                --scene-file assets/scenes/scene_065_restir_many_light.json
+                --width 32 --height 18 --spp 64 --max-depth 1 --seed 123
     )
     add_test(
         NAME cuda_scene_check
@@ -91,6 +116,11 @@ if(RAYTRACER_ENABLE_CUDA)
         cuda_transport_policy_4
         cuda_restir_reservoir_check
         cuda_restir_gbuffer_check
+        cuda_restir_quad_check
+        cuda_restir_environment_check
+        cuda_restir_sphere_mesh_check
+        cuda_restir_delta_only_check
+        cuda_restir_initial_di_statistics
         PROPERTIES
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             SKIP_RETURN_CODE 77

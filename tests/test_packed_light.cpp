@@ -1,6 +1,7 @@
 #include "test_harness.h"
 
 #include "packed_light.h"
+#include "restir_light_core.h"
 #include "scene_compiler.h"
 
 #include <cmath>
@@ -357,5 +358,148 @@ TEST_CASE(packed_non_delta_selection_matches_compiled_probabilities) {
                      0.015);
         REQUIRE(scene.light_selection_probabilities[index] >=
                 0.05f / counts.size());
+    }
+}
+
+TEST_CASE(restir_canonical_quad_reconstructs_at_multiple_origins) {
+    CompiledScene scene;
+    scene.aggregates.push_back({});
+    PackedLight light;
+    light.type = PackedLightType::Quad;
+    light.data0 = {-1.0f, -1.0f, 2.0f, 1.0f};
+    light.data1 = {2.0f, 0.0f, 0.0f, 0.0f};
+    light.data2 = {0.5f, 2.0f, 0.0f, 0.0f};
+    light.radiance = {3.0f, 2.0f, 1.0f, 0.0f};
+    scene.lights.push_back(light);
+    const CompiledSceneView view = make_scene_view(scene);
+
+    restir::RestirLightSample canonical;
+    canonical.light_id = 0;
+    canonical.type = static_cast<std::uint32_t>(PackedLightType::Quad);
+    canonical.canonical_data = {0.37f, 0.61f, 0.0f, 0.0f};
+    for (const Float3 origin : {Float3{0, 0, 4}, Float3{2, 1, 5}}) {
+        PackedLightSample expected;
+        PackedLightSample reconstructed;
+        REQUIRE(sample_packed_light(view, 0, origin, {0.37f, 0.61f},
+                                    expected) ==
+                PackedLightStatus::Success);
+        REQUIRE(restir::evaluate_restir_light_sample_core(
+                    view, canonical, origin, reconstructed) ==
+                PackedLightStatus::Success);
+        REQUIRE(nearly_equal(expected.wi, reconstructed.wi, 1e-6f));
+        REQUIRE(nearly_equal(expected.radiance, reconstructed.radiance,
+                             1e-6f));
+        REQUIRE_NEAR(expected.pdf, reconstructed.pdf, 1e-6);
+    }
+}
+
+TEST_CASE(restir_canonical_sphere_and_mesh_preserve_sample_identity) {
+    const CompiledScene scene = compile_scene(make_light_scene());
+    const CompiledSceneView view = make_scene_view(scene);
+    const Float3 origin{0, 1, 5};
+
+    const std::uint32_t sphere_id =
+        find_light(scene, PackedLightType::SphereEmitter);
+    const Float2 sphere_random{0.23f, 0.71f};
+    const Float3 sphere_normal =
+        packed_light::sphere_sample_normal(sphere_random);
+    restir::RestirLightSample sphere_canonical;
+    sphere_canonical.light_id = sphere_id;
+    sphere_canonical.element_id = scene.lights[sphere_id].instance_id;
+    sphere_canonical.type =
+        static_cast<std::uint32_t>(PackedLightType::SphereEmitter);
+    sphere_canonical.canonical_data = {
+        sphere_normal.x, sphere_normal.y, sphere_normal.z, 0.0f};
+    PackedLightSample sphere_expected;
+    PackedLightSample sphere_reconstructed;
+    REQUIRE(sample_packed_light(view, sphere_id, origin, sphere_random,
+                                sphere_expected) ==
+            PackedLightStatus::Success);
+    REQUIRE(restir::evaluate_restir_light_sample_core(
+                view, sphere_canonical, origin, sphere_reconstructed) ==
+            PackedLightStatus::Success);
+    REQUIRE(nearly_equal(sphere_expected.wi, sphere_reconstructed.wi,
+                         1e-6f));
+    REQUIRE_NEAR(sphere_expected.pdf, sphere_reconstructed.pdf, 1e-5);
+
+    const std::uint32_t mesh_id =
+        find_light(scene, PackedLightType::MeshEmitter);
+    const PackedLight &mesh = scene.lights[mesh_id];
+    std::uint32_t element_index = 0;
+    float local_random = 0.0f;
+    float element_probability = 0.0f;
+    const Float2 mesh_random{0.4f, 0.7f};
+    REQUIRE(packed_light::choose_mesh_element(
+        view, mesh, mesh_random.x, element_index, local_random,
+        element_probability));
+    const float root = std::sqrt(local_random);
+    const float b0 = 1.0f - root;
+    const float b1 = mesh_random.y * root;
+    const float b2 = 1.0f - b0 - b1;
+    restir::RestirLightSample mesh_canonical;
+    mesh_canonical.light_id = mesh_id;
+    mesh_canonical.element_id = scene.light_element_indices[
+        mesh.element_indices.offset + element_index];
+    mesh_canonical.type =
+        static_cast<std::uint32_t>(PackedLightType::MeshEmitter);
+    mesh_canonical.canonical_data = {b0, b1, b2, 0.0f};
+    PackedLightSample mesh_expected;
+    PackedLightSample mesh_reconstructed;
+    REQUIRE(sample_packed_light(view, mesh_id, origin, mesh_random,
+                                mesh_expected) ==
+            PackedLightStatus::Success);
+    REQUIRE(restir::evaluate_restir_light_sample_core(
+                view, mesh_canonical, origin, mesh_reconstructed) ==
+            PackedLightStatus::Success);
+    REQUIRE(mesh_reconstructed.element_id == mesh_canonical.element_id);
+    REQUIRE(nearly_equal(mesh_expected.wi, mesh_reconstructed.wi, 1e-6f));
+    REQUIRE_NEAR(mesh_expected.pdf, mesh_reconstructed.pdf, 1e-5);
+}
+
+TEST_CASE(restir_canonical_environment_preserves_direction_and_pdf) {
+    const CompiledScene scene = make_constant_environment();
+    const CompiledSceneView view = make_scene_view(scene);
+    restir::RestirLightSample canonical;
+    float selection_probability = 0.0f;
+    REQUIRE(restir::generate_restir_light_sample_core(
+                view, 0.4f, {0.23f, 0.67f}, canonical,
+                selection_probability) == PackedLightStatus::Success);
+    REQUIRE(canonical.type ==
+            static_cast<std::uint32_t>(PackedLightType::Environment));
+    REQUIRE_NEAR(selection_probability, 1.0f, 1e-6);
+    PackedLightSample reconstructed;
+    REQUIRE(restir::evaluate_restir_light_sample_core(
+                view, canonical, {3, 2, 1}, reconstructed) ==
+            PackedLightStatus::Success);
+    REQUIRE(nearly_equal(
+        reconstructed.wi,
+        {canonical.canonical_data.x, canonical.canonical_data.y,
+         canonical.canonical_data.z},
+        1e-6f));
+    float pdf = 0.0f;
+    REQUIRE(evaluate_packed_light_pdf(view, 0, {3, 2, 1},
+                                      reconstructed.wi, pdf) ==
+            PackedLightStatus::Success);
+    REQUIRE_NEAR(pdf, reconstructed.pdf, 2e-5);
+}
+
+TEST_CASE(restir_initial_candidates_exclude_all_delta_lights) {
+    const CompiledScene scene = compile_scene(make_light_scene());
+    const CompiledSceneView view = make_scene_view(scene);
+    RNG rng(9876);
+    for (int index = 0; index < 1000; ++index) {
+        restir::RestirLightSample canonical;
+        PackedLightSample evaluated;
+        float selection_probability = 0.0f;
+        const PackedLightStatus status =
+            restir::sample_restir_non_delta_light_core(
+                view, {0, 1, 5}, rng, canonical, evaluated,
+                selection_probability);
+        REQUIRE(status == PackedLightStatus::Success ||
+                status == PackedLightStatus::NoSample);
+        REQUIRE(canonical.light_id < scene.lights.size());
+        REQUIRE((scene.lights[canonical.light_id].flags &
+                 PACKED_LIGHT_DELTA) == 0u);
+        REQUIRE(selection_probability > 0.0f);
     }
 }

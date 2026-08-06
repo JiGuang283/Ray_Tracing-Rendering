@@ -1,6 +1,7 @@
 #include "test_harness.h"
 
 #include "restir_history.h"
+#include "restir_di_core.h"
 #include "restir_surface.h"
 
 #include <array>
@@ -58,6 +59,15 @@ TEST_CASE(restir_surface_has_stable_layout_and_hit_reconstruction) {
     REQUIRE(hit.flags == (PACKED_HIT_TRIANGLE | PACKED_HIT_FRONT_FACE));
     REQUIRE(surface.valid());
     REQUIRE(surface.delta_only());
+}
+
+TEST_CASE(restir_di_sample_and_reservoir_abi_is_stable) {
+    REQUIRE(sizeof(restir::RestirLightSample) == 32u);
+    REQUIRE(sizeof(restir::RestirDIReservoir) == 64u);
+    restir::RestirDIReservoir reservoir;
+    restir::reset_reservoir(reservoir);
+    REQUIRE(!restir::reservoir_has_sample(reservoir));
+    REQUIRE(reservoir.M == 0u);
 }
 
 TEST_CASE(restir_octahedral_normals_round_trip_both_hemispheres) {

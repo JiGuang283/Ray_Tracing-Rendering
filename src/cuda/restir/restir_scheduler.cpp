@@ -2,6 +2,7 @@
 
 #include "cuda_error.h"
 #include "restir_gbuffer.h"
+#include "restir_initial_di.h"
 #include "restir_reference_shading.h"
 #include "restir_workspace_internal.h"
 
@@ -55,6 +56,14 @@ void validate_settings(const CudaRestirSkeletonSettings &settings) {
         throw std::invalid_argument(
             "ReSTIR block size must be in the range 1..1024");
     }
+    if (settings.frame.render.restir.initial_light_candidates == 0u) {
+        throw std::invalid_argument(
+            "initial ReSTIR DI requires nonzero light candidates");
+    }
+    if (settings.frame.render.restir.initial_bsdf_candidates != 0u) {
+        throw std::invalid_argument(
+            "BSDF-generated ReSTIR DI candidates are not implemented");
+    }
     if (!std::isfinite(settings.frame.render.sample_clamp) ||
         settings.frame.render.sample_clamp < 0.0) {
         throw std::invalid_argument("invalid ReSTIR sample clamp");
@@ -78,6 +87,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     buffers.ensure_capacity(pixel_count);
     RT_CUDA_CHECK(cudaMemset(
         buffers.film.data(), 0,
+        static_cast<std::size_t>(pixel_count) * sizeof(CudaFilmPixel)));
+    RT_CUDA_CHECK(cudaMemset(
+        buffers.direct_film.data(), 0,
         static_cast<std::size_t>(pixel_count) * sizeof(CudaFilmPixel)));
     RT_CUDA_CHECK(cudaMemset(buffers.counters.data(), 0,
                              sizeof(DeviceRestirCounters)));
@@ -114,13 +126,20 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             scene, width, height, iteration, settings.frame.render.seed,
             buffers.gbuffer[write_buffer].data(), buffers.counters.data(),
             settings.block_size);
+        launch_restir_initial_di_candidates(
+            scene, buffers.gbuffer[write_buffer].data(), width, height,
+            iteration, settings.frame.render.seed,
+            settings.frame.render.restir.initial_light_candidates,
+            buffers.di_reservoir[write_buffer].data(),
+            buffers.counters.data(), settings.block_size);
+        launch_restir_initial_di_shading(
+            scene, buffers.gbuffer[write_buffer].data(),
+            buffers.di_reservoir[write_buffer].data(), width, height,
+            iteration, settings.frame.render.seed,
+            static_cast<float>(settings.frame.render.sample_clamp),
+            buffers.direct_film.data(), buffers.counters.data(),
+            settings.block_size);
 
-        if (cancel != nullptr &&
-            cancel->load(std::memory_order_relaxed)) {
-            RT_CUDA_CHECK(cudaStreamSynchronize(nullptr));
-            cancelled = true;
-            break;
-        }
         launch_restir_reference_shading(
             scene, settings.reference_transport, width, height, iteration,
             settings.frame.render.seed,
@@ -137,9 +156,12 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
 
     CudaRestirSchedulerOutput output;
     buffers.film.download_prefix(output.film, pixel_count);
+    buffers.direct_film.download_prefix(output.direct_film, pixel_count);
     if (buffers.frame_state.history_valid != 0u) {
         buffers.gbuffer[buffers.frame_state.committed_buffer]
             .download_prefix(output.gbuffer, pixel_count);
+        buffers.di_reservoir[buffers.frame_state.committed_buffer]
+            .download_prefix(output.di_reservoirs, pixel_count);
     }
     std::vector<DeviceRestirCounters> counters;
     buffers.counters.download_prefix(counters, 1u);
@@ -163,6 +185,20 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
         output.stats.transport_status[index] =
             counter.transport_status[index];
     }
+    for (std::size_t index = 0;
+         index < output.stats.di_generation_status.size(); ++index) {
+        output.stats.di_generation_status[index] =
+            counter.di_generation_status[index];
+        output.stats.di_shading_status[index] =
+            counter.di_shading_status[index];
+    }
+    output.stats.initial_candidates = counter.initial_candidates;
+    output.stats.represented_candidates =
+        counter.represented_candidates;
+    output.stats.rejected_candidates = counter.rejected_candidates;
+    output.stats.visibility_rays = counter.visibility_rays;
+    output.stats.di_clamped_samples = counter.di_clamped_samples;
+    output.stats.di_invalid_samples = counter.di_invalid_samples;
     output.stats.history_reset_reason = reset_reason;
     output.stats.workspace = workspace.info();
     output.stats.cancelled =

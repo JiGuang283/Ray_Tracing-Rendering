@@ -2,6 +2,7 @@
 #define CUDA_RESTIR_SCHEDULER_H
 
 #include "restir_workspace.h"
+#include "restir_di_types.h"
 
 #include <array>
 #include <atomic>
@@ -26,6 +27,14 @@ struct CudaRestirSchedulerStats {
     std::uint64_t invalid_samples = 0;
     std::array<std::uint64_t, 7> gbuffer_status{};
     std::array<std::uint64_t, 8> transport_status{};
+    std::array<std::uint64_t, 11> di_generation_status{};
+    std::array<std::uint64_t, 11> di_shading_status{};
+    std::uint64_t initial_candidates = 0;
+    std::uint64_t represented_candidates = 0;
+    std::uint64_t rejected_candidates = 0;
+    std::uint64_t visibility_rays = 0;
+    std::uint64_t di_clamped_samples = 0;
+    std::uint64_t di_invalid_samples = 0;
     restir::RestirHistoryResetReason history_reset_reason =
         restir::RestirHistoryResetReason::None;
     CudaRestirWorkspaceInfo workspace;
@@ -34,7 +43,9 @@ struct CudaRestirSchedulerStats {
 
 struct CudaRestirSchedulerOutput {
     std::vector<CudaFilmPixel> film;
+    std::vector<CudaFilmPixel> direct_film;
     std::vector<restir::RestirSurface> gbuffer;
+    std::vector<restir::RestirDIReservoir> di_reservoirs;
     CudaRestirSchedulerStats stats;
 };
 

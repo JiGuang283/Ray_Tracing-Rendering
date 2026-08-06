@@ -17,6 +17,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -59,7 +60,8 @@ Options parse_options(int argc, char **argv) {
             options.seed = static_cast<std::uint32_t>(std::stoul(value()));
         } else if (argument == "--help" || argument == "-h") {
             std::cout
-                << "Usage: cuda_restir_check [--mode reservoir|gbuffer] "
+                << "Usage: cuda_restir_check "
+                   "[--mode reservoir|gbuffer|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
                    "[--spp N] [--max-depth N] [--seed N]\n";
             std::exit(0);
@@ -67,12 +69,44 @@ Options parse_options(int argc, char **argv) {
             throw std::runtime_error("unknown option: " + argument);
         }
     }
-    if ((options.mode != "reservoir" && options.mode != "gbuffer") ||
+    if ((options.mode != "reservoir" && options.mode != "gbuffer" &&
+         options.mode != "statistics") ||
         options.width < 2u || options.height < 2u || options.spp == 0u ||
-        options.max_depth == 0u) {
+        options.max_depth == 0u ||
+        (options.mode == "gbuffer" && options.spp != 1u)) {
         throw std::runtime_error("invalid CUDA ReSTIR check settings");
     }
     return options;
+}
+
+double image_mean_luminance(
+    const std::vector<cuda_backend::CudaFilmPixel> &film) {
+    double total = 0.0;
+    std::uint64_t samples = 0;
+    for (const cuda_backend::CudaFilmPixel &pixel : film) {
+        total += 0.2126 * pixel.radiance.x +
+                 0.7152 * pixel.radiance.y +
+                 0.0722 * pixel.radiance.z;
+        samples += pixel.sample_count;
+    }
+    return samples != 0u ? total / static_cast<double>(samples) : 0.0;
+}
+
+double sample_variance(const std::vector<double> &values) {
+    if (values.size() < 2u) {
+        return 0.0;
+    }
+    double mean = 0.0;
+    for (double value : values) {
+        mean += value;
+    }
+    mean /= static_cast<double>(values.size());
+    double variance = 0.0;
+    for (double value : values) {
+        const double difference = value - mean;
+        variance += difference * difference;
+    }
+    return variance / static_cast<double>(values.size() - 1u);
 }
 
 bool near(float left, float right, float tolerance = 2e-5f) {
@@ -113,6 +147,7 @@ bool check_gbuffer(const Options &options) {
     settings.frame.render.seed = options.seed;
     settings.frame.render.sample_clamp = 0.0;
     settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
+    settings.frame.render.restir.initial_bsdf_candidates = 0u;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::MISPath);
@@ -153,6 +188,23 @@ bool check_gbuffer(const Options &options) {
     const std::uint64_t surface_errors = compare_restir_gbuffer_host(
         host_scene, options.width, options.height, final_iteration,
         options.seed, skeleton.gbuffer);
+    const RestirDIHostCheckResult di_check =
+        compare_restir_initial_di_host(
+            host_scene, options.width, options.height, options.spp,
+            settings.frame.render.restir.initial_light_candidates,
+            options.seed, skeleton.gbuffer, skeleton.di_reservoirs,
+            skeleton.direct_film);
+    const bool di_stats_match =
+        skeleton.stats.initial_candidates ==
+            di_check.initial_candidates &&
+        skeleton.stats.represented_candidates ==
+            di_check.represented_candidates &&
+        skeleton.stats.rejected_candidates ==
+            di_check.rejected_candidates &&
+        skeleton.stats.visibility_rays == di_check.visibility_rays &&
+        skeleton.stats.di_generation_status ==
+            di_check.generation_status &&
+        skeleton.stats.di_shading_status == di_check.shading_status;
 
     std::uint64_t gbuffer_failures = 0;
     for (std::size_t index = 2;
@@ -190,7 +242,13 @@ bool check_gbuffer(const Options &options) {
             first_info.gbuffer_addresses[0] &&
         continued_info.gbuffer_addresses[1] ==
             first_info.gbuffer_addresses[1] &&
-        continued_info.film_address == first_info.film_address;
+        continued_info.reservoir_addresses[0] ==
+            first_info.reservoir_addresses[0] &&
+        continued_info.reservoir_addresses[1] ==
+            first_info.reservoir_addresses[1] &&
+        continued_info.film_address == first_info.film_address &&
+        continued_info.direct_film_address ==
+            first_info.direct_film_address;
 
     std::atomic<bool> cancel{true};
     settings.frame.frame_index = 2u;
@@ -208,6 +266,9 @@ bool check_gbuffer(const Options &options) {
         cancelled_info.committed_buffer == committed_before_cancel;
 
     const bool passed = film_errors == 0u && surface_errors == 0u &&
+                        di_check.reservoir_errors == 0u &&
+                        di_check.direct_film_errors == 0u &&
+                        di_stats_match &&
                         gbuffer_failures == 0u && counter_match &&
                         initial_history && reused && cancellation_safe;
     std::cout << "CUDA_RESTIR_CHECK"
@@ -216,12 +277,105 @@ bool check_gbuffer(const Options &options) {
               << " spp=" << options.spp
               << " film_errors=" << film_errors
               << " surface_errors=" << surface_errors
+              << " reservoir_errors=" << di_check.reservoir_errors
+              << " direct_errors=" << di_check.direct_film_errors
+              << " di_stats=" << (di_stats_match ? "pass" : "fail")
+              << " candidates=" << skeleton.stats.initial_candidates
+              << " visibility_rays=" << skeleton.stats.visibility_rays
               << " gbuffer_failures=" << gbuffer_failures
               << " counter_match=" << (counter_match ? 1 : 0)
               << " history=" << (initial_history ? "pass" : "fail")
               << " reused=" << (reused ? 1 : 0)
               << " cancellation=" << (cancellation_safe ? 1 : 0)
               << " workspace_bytes=" << first_info.bytes
+              << " result=" << (passed ? "pass" : "fail") << '\n';
+    return passed;
+}
+
+bool check_statistics(const Options &options) {
+    const SceneIR ir = load_scene_ir_file(options.scene_file.string());
+    const CompiledScene compiled = compile_scene(ir);
+    cuda_backend::DeviceSceneStorage device_scene;
+    device_scene.upload(compiled);
+
+    cuda_backend::CudaRestirSkeletonSettings settings;
+    settings.frame.render.extent =
+        make_image_extent(static_cast<int>(options.width),
+                          static_cast<int>(options.height));
+    settings.frame.render.integrator = IntegratorKind::ReSTIRDI;
+    settings.frame.render.samples_per_pixel = options.spp;
+    settings.frame.render.max_depth = 1u;
+    settings.frame.render.sample_clamp = 0.0;
+    settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
+    settings.frame.render.restir.initial_bsdf_candidates = 0u;
+    settings.frame.camera = ir.camera;
+    settings.reference_transport.policy =
+        integrator_policy(IntegratorKind::DirectLighting);
+    settings.reference_transport.max_depth = 1u;
+
+    cuda_backend::CudaRenderSettings nee_settings;
+    nee_settings.transport = settings.reference_transport;
+    nee_settings.width = options.width;
+    nee_settings.height = options.height;
+    nee_settings.samples_per_pixel = options.spp;
+    nee_settings.batch_size = options.width * options.height;
+
+    cuda_backend::CudaRestirWorkspace restir_workspace;
+    cuda_backend::CudaRenderWorkspace nee_workspace;
+    std::vector<double> restir_means;
+    std::vector<double> nee_means;
+    std::uint64_t restir_visibility = 0;
+    std::uint64_t nee_visibility = 0;
+    std::uint64_t initial_candidates = 0;
+    constexpr std::uint32_t kSeedCount = 8u;
+    for (std::uint32_t sequence = 0; sequence < kSeedCount; ++sequence) {
+        const std::uint32_t seed = options.seed + sequence * 977u;
+        settings.frame.render.seed = seed;
+        settings.frame.frame_index = sequence;
+        const cuda_backend::CudaRestirSchedulerOutput restir_output =
+            cuda_backend::render_restir_skeleton_cuda(
+                device_scene.view(), settings, restir_workspace);
+        nee_settings.seed = seed;
+        const cuda_backend::CudaRenderOutput nee_output =
+            cuda_backend::render_wavefront_cuda(
+                device_scene.view(), nee_settings, nee_workspace);
+        restir_means.push_back(
+            image_mean_luminance(restir_output.direct_film));
+        nee_means.push_back(image_mean_luminance(nee_output.film));
+        restir_visibility += restir_output.stats.visibility_rays;
+        nee_visibility += nee_output.stats.shadow_rays;
+        initial_candidates += restir_output.stats.initial_candidates;
+    }
+
+    double restir_mean = 0.0;
+    double nee_mean = 0.0;
+    for (std::size_t index = 0; index < restir_means.size(); ++index) {
+        restir_mean += restir_means[index];
+        nee_mean += nee_means[index];
+    }
+    restir_mean /= restir_means.size();
+    nee_mean /= nee_means.size();
+    const double relative_error =
+        std::abs(restir_mean - nee_mean) / std::max(1e-6, nee_mean);
+    const double restir_variance = sample_variance(restir_means);
+    const double nee_variance = sample_variance(nee_means);
+    const bool passed = relative_error <= 0.08 &&
+                        restir_variance <= nee_variance * 1.25 &&
+                        restir_visibility <=
+                            static_cast<double>(nee_visibility) * 1.25 &&
+                        restir_visibility < initial_candidates;
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=statistics"
+              << " seeds=" << kSeedCount
+              << " spp=" << options.spp
+              << " restir_mean=" << restir_mean
+              << " nee_mean=" << nee_mean
+              << " relative_error=" << relative_error
+              << " restir_variance=" << restir_variance
+              << " nee_variance=" << nee_variance
+              << " restir_visibility=" << restir_visibility
+              << " nee_visibility=" << nee_visibility
+              << " initial_candidates=" << initial_candidates
               << " result=" << (passed ? "pass" : "fail") << '\n';
     return passed;
 }
@@ -236,8 +390,12 @@ int main(int argc, char **argv) {
             return 77;
         }
         const Options options = parse_options(argc, argv);
-        return (options.mode == "reservoir" ? check_reservoir()
-                                             : check_gbuffer(options))
+        const bool passed = options.mode == "reservoir"
+                                ? check_reservoir()
+                                : (options.mode == "gbuffer"
+                                       ? check_gbuffer(options)
+                                       : check_statistics(options));
+        return passed
                    ? 0
                    : 1;
     } catch (const std::exception &error) {
