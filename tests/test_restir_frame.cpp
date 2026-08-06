@@ -2,6 +2,7 @@
 
 #include "restir_history.h"
 #include "restir_di_core.h"
+#include "restir_spatial_core.h"
 #include "restir_surface.h"
 
 #include <array>
@@ -104,6 +105,59 @@ TEST_CASE(restir_di_initial_candidates_keep_effective_mass_equal_to_count) {
     REQUIRE_NEAR(reservoir.effective_M, 2.0f, 1e-6f);
     REQUIRE(restir::finalize_reservoir(reservoir).accepted());
     REQUIRE_NEAR(reservoir.unbiased_contribution_weight, 2.0f, 1e-6f);
+}
+
+TEST_CASE(restir_spatial_neighbors_are_deterministic_unique_and_not_self) {
+    constexpr std::uint32_t width = 64u;
+    constexpr std::uint32_t height = 64u;
+    constexpr std::uint32_t center = 32u * width + 32u;
+    std::array<std::uint32_t, 64> pixels{};
+    for (std::uint32_t index = 0; index < pixels.size(); ++index) {
+        const auto first = restir::restir_spatial_neighbor(
+            center, index, width, height, 7u, 2u, 123u);
+        const auto second = restir::restir_spatial_neighbor(
+            center, index, width, height, 7u, 2u, 123u);
+        REQUIRE(first.valid == 1u);
+        REQUIRE(first.pixel == second.pixel);
+        REQUIRE(first.pixel != center);
+        pixels[index] = first.pixel;
+        for (std::uint32_t previous = 0; previous < index; ++previous) {
+            REQUIRE(pixels[previous] != pixels[index]);
+        }
+    }
+    const auto outside = restir::restir_spatial_neighbor(
+        0u, 0u, width, height, 7u, 2u, 123u);
+    REQUIRE(outside.valid == 0u || outside.pixel != 0u);
+}
+
+TEST_CASE(restir_spatial_compatibility_rejects_surface_discontinuities) {
+    restir::RestirSurface center;
+    center.flags = restir::RESTIR_SURFACE_VALID;
+    center.material_id = 2u;
+    center.view_depth = 10.0f;
+    center.shading_normal =
+        restir::pack_octahedral_normal({0.0f, 1.0f, 0.0f});
+    restir::RestirSurface neighbor = center;
+    neighbor.view_depth = 10.5f;
+    REQUIRE(restir::restir_spatial_compatibility(center, neighbor, 0.9f,
+                                                  0.1f) ==
+            restir::RestirSpatialCompatibility::Compatible);
+
+    neighbor.material_id = 3u;
+    REQUIRE(restir::restir_spatial_compatibility(center, neighbor, 0.9f,
+                                                  0.1f) ==
+            restir::RestirSpatialCompatibility::MaterialMismatch);
+    neighbor = center;
+    neighbor.view_depth = 12.0f;
+    REQUIRE(restir::restir_spatial_compatibility(center, neighbor, 0.9f,
+                                                  0.1f) ==
+            restir::RestirSpatialCompatibility::DepthMismatch);
+    neighbor = center;
+    neighbor.shading_normal =
+        restir::pack_octahedral_normal({0.0f, -1.0f, 0.0f});
+    REQUIRE(restir::restir_spatial_compatibility(center, neighbor, 0.9f,
+                                                  0.1f) ==
+            restir::RestirSpatialCompatibility::NormalMismatch);
 }
 
 TEST_CASE(restir_octahedral_normals_round_trip_both_hemispheres) {

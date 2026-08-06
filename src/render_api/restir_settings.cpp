@@ -35,6 +35,10 @@ void validate_restir_settings(const RestirSettings &settings) {
         throw std::invalid_argument(
             "ReSTIR spatial reuse requires neighbors and passes");
     }
+    if (settings.spatial_neighbors > 64u) {
+        throw std::invalid_argument(
+            "ReSTIR spatial reuse supports at most 64 unique neighbors");
+    }
     if (settings.temporal_reuse && settings.max_history_length == 0u) {
         throw std::invalid_argument(
             "ReSTIR temporal reuse requires nonzero history length");
