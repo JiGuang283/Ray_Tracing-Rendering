@@ -141,6 +141,29 @@ TEST_CASE(restir_gi_area_measure_and_diffuse_reconnection_are_analytic) {
     REQUIRE_NEAR(result.target, 0.0f, 0.0f);
 }
 
+TEST_CASE(restir_gi_visibility_segment_is_scale_relative) {
+    PackedSurfaceInteraction source;
+    source.position = {0.0f, 0.0f, 0.0f};
+    source.geometric_normal = {0.0f, 0.0f, 1.0f};
+    PackedRay ray;
+
+    REQUIRE(restir::make_gi_visibility_ray(
+        source, {0.0f, 0.0f, 0.0005f}, {0.0f, 0.0f, -1.0f},
+        {0.0f, 0.0f, 1.0f}, 0.0005f, 0.25f, ray));
+    REQUIRE(ray.t_min == 0.0f);
+    REQUIRE(ray.t_max > 0.0f);
+    REQUIRE(ray.t_max < 0.0005f);
+    REQUIRE_NEAR(ray.origin.z, 0.0001f, 1e-8f);
+    REQUIRE_NEAR(ray.direction.z, 1.0f, 1e-6f);
+    REQUIRE_NEAR(ray.time, 0.25f, 1e-7f);
+
+    REQUIRE(restir::make_gi_visibility_ray(
+        source, {0.0f, 0.0f, 100.0f}, {0.0f, 0.0f, -1.0f},
+        {0.0f, 0.0f, 1.0f}, 100.0f, 0.0f, ray));
+    REQUIRE_NEAR(ray.origin.z, 1e-4f, 1e-8f);
+    REQUIRE(ray.t_max > 99.0f);
+}
+
 TEST_CASE(restir_gi_rejects_mixed_and_delta_material_domains) {
     PackedMaterialOutput material;
     material.closure_count = 1u;

@@ -64,6 +64,59 @@ struct RestirGIReconnectResult {
     RestirGIShiftFailure failure = RestirGIShiftFailure::None;
 };
 
+RT_HOST_DEVICE RT_FORCE_INLINE bool make_gi_visibility_ray(
+    const PackedSurfaceInteraction &source, Float3 target_position,
+    Float3 target_normal, Float3 direction, float distance, float time,
+    PackedRay &ray) noexcept {
+    if (!(distance > 0.0f) || !packed_transport::math::finite(distance) ||
+        !packed_transport::math::finite(target_position) ||
+        !packed_transport::math::finite(target_normal) ||
+        !packed_transport::math::finite(direction)) {
+        return false;
+    }
+    const float offset = distance * 0.25f < 1e-4f
+                             ? distance * 0.25f
+                             : 1e-4f;
+    const float source_side =
+        packed_transport::math::dot(direction,
+                                    source.geometric_normal) >= 0.0f
+            ? 1.0f
+            : -1.0f;
+    const float target_side =
+        packed_transport::math::dot(
+            packed_transport::math::multiply(direction, -1.0f),
+            target_normal) >= 0.0f
+            ? 1.0f
+            : -1.0f;
+    const Float3 origin = packed_transport::math::add(
+        source.position,
+        packed_transport::math::multiply(source.geometric_normal,
+                                         source_side * offset));
+    const Float3 target = packed_transport::math::add(
+        target_position,
+        packed_transport::math::multiply(target_normal,
+                                         target_side * offset));
+    const Float3 segment = packed_transport::math::add(
+        target, packed_transport::math::multiply(origin, -1.0f));
+    const float segment_length_squared =
+        packed_transport::math::length_squared(segment);
+    if (!(segment_length_squared > 0.0f) ||
+        !packed_transport::math::finite(segment_length_squared)) {
+        return false;
+    }
+    const float segment_length = ::sqrtf(segment_length_squared);
+    ray = {};
+    ray.origin = origin;
+    ray.direction = packed_transport::math::multiply(
+        segment, 1.0f / segment_length);
+    ray.t_min = 0.0f;
+    ray.t_max = segment_length * (1.0f - 1e-5f);
+    ray.time = time;
+    return ray.t_max > ray.t_min &&
+           packed_transport::math::finite(ray.direction) &&
+           packed_transport::math::finite(ray.t_max);
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE bool is_diffuse_reconnectable(
     const PackedMaterialOutput &material) noexcept {
     if (material.closure_count != 1u ||
@@ -479,14 +532,16 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus shade_gi_reservoir(
     constexpr std::uint32_t kVisibilityDomain = 0x47495649u;
     RNG visibility_rng(
         restir_random_seed(seed, pixel, iteration, kVisibilityDomain));
-    const float maximum_distance = reconnect.distance - 0.001f;
-    if (!(maximum_distance > 0.001f)) {
+    const Float3 secondary_normal =
+        unpack_octahedral_normal(reservoir.sample.geometric_normal);
+    PackedRay shadow;
+    if (!make_gi_visibility_ray(
+            primary.surface, reservoir.sample.position, secondary_normal,
+            reconnect.direction, reconnect.distance, stored.ray_time,
+            shadow)) {
         failure = RestirGIShiftFailure::DegenerateDistance;
         return RestirGIStatus::VisibilityFailure;
     }
-    const PackedRay shadow = packed_transport::spawn_ray(
-        primary.surface, reconnect.direction, stored.ray_time,
-        maximum_distance);
     PackedHit blocker{};
     const PackedTraversalStatus visibility =
         packed_intersector::intersect_compiled_scene_core(
