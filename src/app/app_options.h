@@ -18,6 +18,7 @@ struct RenderOptions {
     double sample_clamp_override = -1.0;
     RenderBackend backend = RenderBackend::CPU;
     unsigned cuda_batch_size = 0;
+    RestirSettings restir;
 };
 
 struct BenchmarkOptions {

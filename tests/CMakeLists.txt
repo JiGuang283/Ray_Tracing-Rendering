@@ -51,6 +51,17 @@ set_tests_properties(packed_transport_check PROPERTIES
 )
 
 if(RAYTRACER_ENABLE_CUDA)
+    if(TARGET CGAssignment4)
+        add_test(NAME cuda_restir_di_session
+            COMMAND $<TARGET_FILE:CGAssignment4> 65 5 --bench
+                    --backend cuda --width 32 --spp 2 --max-depth 4
+                    --seed 123 --runs 1
+        )
+        set_tests_properties(cuda_restir_di_session PROPERTIES
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            SKIP_REGULAR_EXPRESSION "CUDA backend unavailable"
+        )
+    endif()
     add_test(NAME cuda_restir_reservoir_check
         COMMAND cuda_restir_check --mode reservoir
     )
@@ -101,6 +112,12 @@ if(RAYTRACER_ENABLE_CUDA)
                 --width 32 --height 18 --spp 64 --max-depth 1 --seed 123
                 --bias pairwise
     )
+    add_test(NAME cuda_restir_spatiotemporal_di_statistics
+        COMMAND cuda_restir_check --mode statistics --spatial --temporal
+                --scene-file assets/scenes/scene_065_restir_many_light.json
+                --width 32 --height 18 --spp 64 --max-depth 1 --seed 123
+                --bias pairwise
+    )
     add_test(NAME cuda_restir_spatial_basic_check
         COMMAND cuda_restir_check --mode spatial
                 --scene-file assets/scenes/scene_065_restir_many_light.json
@@ -146,6 +163,7 @@ if(RAYTRACER_ENABLE_CUDA)
         cuda_restir_delta_only_check
         cuda_restir_initial_di_statistics
         cuda_restir_spatial_di_statistics
+        cuda_restir_spatiotemporal_di_statistics
         cuda_restir_spatial_basic_check
         cuda_restir_spatial_pairwise_check
         cuda_restir_temporal_pairwise_check

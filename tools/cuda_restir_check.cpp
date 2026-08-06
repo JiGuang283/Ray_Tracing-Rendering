@@ -33,6 +33,7 @@ struct Options {
     std::uint32_t seed = 123;
     RestirBiasCorrection bias = RestirBiasCorrection::Pairwise;
     bool spatial = false;
+    bool temporal = false;
 };
 
 Options parse_options(int argc, char **argv) {
@@ -72,13 +73,15 @@ Options parse_options(int argc, char **argv) {
             }
         } else if (argument == "--spatial") {
             options.spatial = true;
+        } else if (argument == "--temporal") {
+            options.temporal = true;
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
                    "[--mode reservoir|gbuffer|spatial|temporal|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
                    "[--spp N] [--max-depth N] [--seed N] "
-                   "[--bias basic|pairwise] [--spatial]\n";
+                   "[--bias basic|pairwise] [--spatial] [--temporal]\n";
             std::exit(0);
         } else {
             throw std::runtime_error("unknown option: " + argument);
@@ -337,7 +340,7 @@ bool check_statistics(const Options &options) {
     settings.frame.render.sample_clamp = 0.0;
     settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
     settings.frame.render.restir.initial_bsdf_candidates = 0u;
-    settings.frame.render.restir.temporal_reuse = false;
+    settings.frame.render.restir.temporal_reuse = options.temporal;
     settings.frame.render.restir.spatial_reuse = options.spatial;
     settings.frame.render.restir.bias_correction = options.bias;
     settings.frame.camera = ir.camera;
@@ -359,6 +362,9 @@ bool check_statistics(const Options &options) {
     std::uint64_t restir_visibility = 0;
     std::uint64_t nee_visibility = 0;
     std::uint64_t initial_candidates = 0;
+    std::uint64_t temporal_candidates = 0;
+    std::uint64_t temporal_accepted = 0;
+    double average_age_sum = 0.0;
     constexpr std::uint32_t kSeedCount = 8u;
     for (std::uint32_t sequence = 0; sequence < kSeedCount; ++sequence) {
         const std::uint32_t seed = options.seed + sequence * 977u;
@@ -377,6 +383,9 @@ bool check_statistics(const Options &options) {
         restir_visibility += restir_output.stats.visibility_rays;
         nee_visibility += nee_output.stats.shadow_rays;
         initial_candidates += restir_output.stats.initial_candidates;
+        temporal_candidates += restir_output.stats.temporal_candidates;
+        temporal_accepted += restir_output.stats.temporal_accepted;
+        average_age_sum += restir_output.stats.average_age;
     }
 
     double restir_mean = 0.0;
@@ -391,14 +400,20 @@ bool check_statistics(const Options &options) {
         std::abs(restir_mean - nee_mean) / std::max(1e-6, nee_mean);
     const double restir_variance = sample_variance(restir_means);
     const double nee_variance = sample_variance(nee_means);
+    const bool temporal_exercised =
+        !options.temporal ||
+        (temporal_candidates != 0u && temporal_accepted != 0u &&
+         average_age_sum > 0.0);
     const bool passed = relative_error <= 0.08 &&
                         restir_variance <= nee_variance * 1.25 &&
                         restir_visibility <=
                             static_cast<double>(nee_visibility) * 1.25 &&
-                        restir_visibility < initial_candidates;
+                        restir_visibility < initial_candidates &&
+                        temporal_exercised;
     std::cout << "CUDA_RESTIR_CHECK"
               << " mode=statistics"
               << " spatial=" << (options.spatial ? 1 : 0)
+              << " temporal=" << (options.temporal ? 1 : 0)
               << " bias="
               << (options.bias == RestirBiasCorrection::Pairwise
                       ? "pairwise"
@@ -413,6 +428,10 @@ bool check_statistics(const Options &options) {
               << " restir_visibility=" << restir_visibility
               << " nee_visibility=" << nee_visibility
               << " initial_candidates=" << initial_candidates
+              << " temporal_candidates=" << temporal_candidates
+              << " temporal_accepted=" << temporal_accepted
+              << " average_age=" << average_age_sum / kSeedCount
+              << " temporal_exercised=" << (temporal_exercised ? 1 : 0)
               << " result=" << (passed ? "pass" : "fail") << '\n';
     return passed;
 }

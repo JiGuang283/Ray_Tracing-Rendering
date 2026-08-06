@@ -49,8 +49,9 @@ void validate_settings(const CudaRestirSkeletonSettings &settings) {
         throw std::invalid_argument(
             "ReSTIR scheduler requires a RestirFrame integrator");
     }
-    if (!valid_integrator_policy(settings.reference_transport.policy) ||
-        settings.reference_transport.max_depth == 0u) {
+    if (settings.generate_reference &&
+        (!valid_integrator_policy(settings.reference_transport.policy) ||
+         settings.reference_transport.max_depth == 0u)) {
         throw std::invalid_argument(
             "invalid ReSTIR skeleton reference transport policy");
     }
@@ -262,12 +263,14 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             buffers.direct_film.data(), buffers.counters.data(),
             settings.block_size);
 
-        launch_restir_reference_shading(
-            scene, settings.reference_transport, width, height, iteration,
-            settings.frame.render.seed,
-            static_cast<float>(settings.frame.render.sample_clamp),
-            buffers.film.data(), buffers.counters.data(),
-            settings.block_size);
+        if (settings.generate_reference) {
+            launch_restir_reference_shading(
+                scene, settings.reference_transport, width, height,
+                iteration, settings.frame.render.seed,
+                static_cast<float>(settings.frame.render.sample_clamp),
+                buffers.film.data(), buffers.counters.data(),
+                settings.block_size);
+        }
         RT_CUDA_CHECK(cudaStreamSynchronize(nullptr));
         restir::commit_restir_iteration(
             buffers.frame_state, write_gbuffer, final_reservoir,
@@ -280,7 +283,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     RT_CUDA_CHECK(cudaEventSynchronize(end));
 
     CudaRestirSchedulerOutput output;
-    buffers.film.download_prefix(output.film, pixel_count);
+    if (settings.generate_reference) {
+        buffers.film.download_prefix(output.film, pixel_count);
+    }
     buffers.direct_film.download_prefix(output.direct_film, pixel_count);
     if (buffers.frame_state.history_valid != 0u) {
         buffers.gbuffer[buffers.frame_state.committed_gbuffer]

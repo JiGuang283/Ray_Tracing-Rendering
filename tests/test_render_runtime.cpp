@@ -145,7 +145,7 @@ TEST_CASE(restir_integrator_descriptors_do_not_fallback_to_path_policies) {
         REQUIRE(descriptor.execution_model ==
                 IntegratorExecutionModel::RestirFrame);
         REQUIRE(!integrator_supported(kind, RenderBackend::CPU));
-        REQUIRE(!integrator_supported(kind, RenderBackend::CUDA));
+        REQUIRE(integrator_supported(kind, RenderBackend::CUDA) == (id == 5));
         REQUIRE(!valid_integrator_policy(descriptor.policy));
         bool rejected_policy = false;
         try {

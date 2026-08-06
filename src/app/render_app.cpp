@@ -102,6 +102,7 @@ RenderRequest make_render_request(const CameraConfig &camera,
     request.cuda_batch_size = options.render.cuda_batch_size;
     request.sample_clamp = preset.sample_clamp;
     request.color_pipeline = preset.color_pipeline;
+    request.restir = options.render.restir;
     validate_render_request(request);
     return request;
 }
@@ -172,6 +173,7 @@ int run_benchmark(const AppOptions &options) {
     RenderStats last_stats;
     long long clamped_samples = 0;
     long long invalid_samples = 0;
+    RestirStats restir_totals;
     RenderResult saved_result;
     bool has_saved_result = false;
 
@@ -191,6 +193,24 @@ int run_benchmark(const AppOptions &options) {
         device_seconds.push_back(last_stats.device_seconds);
         clamped_samples += last_stats.clamped_samples;
         invalid_samples += last_stats.invalid_samples;
+        restir_totals.iterations += last_stats.restir.iterations;
+        restir_totals.initial_candidates +=
+            last_stats.restir.initial_candidates;
+        restir_totals.temporal_candidates +=
+            last_stats.restir.temporal_candidates;
+        restir_totals.temporal_accepted +=
+            last_stats.restir.temporal_accepted;
+        restir_totals.spatial_candidates +=
+            last_stats.restir.spatial_candidates;
+        restir_totals.spatial_accepted +=
+            last_stats.restir.spatial_accepted;
+        restir_totals.visibility_rays +=
+            last_stats.restir.visibility_rays;
+        restir_totals.history_resets += last_stats.restir.history_resets;
+        restir_totals.invalid_reservoirs +=
+            last_stats.restir.invalid_reservoirs;
+        restir_totals.average_M += last_stats.restir.average_M;
+        restir_totals.average_age += last_stats.restir.average_age;
         saved_result = std::move(result);
         has_saved_result = true;
 
@@ -229,6 +249,26 @@ int run_benchmark(const AppOptions &options) {
                   << " shadow_rays=" << last_stats.shadow_rays
                   << " clamped_samples=" << last_stats.clamped_samples
                   << " invalid_samples=" << last_stats.invalid_samples
+                  << " restir_iterations=" << last_stats.restir.iterations
+                  << " restir_initial_candidates="
+                  << last_stats.restir.initial_candidates
+                  << " restir_temporal_candidates="
+                  << last_stats.restir.temporal_candidates
+                  << " restir_temporal_accepted="
+                  << last_stats.restir.temporal_accepted
+                  << " restir_spatial_candidates="
+                  << last_stats.restir.spatial_candidates
+                  << " restir_spatial_accepted="
+                  << last_stats.restir.spatial_accepted
+                  << " restir_visibility_rays="
+                  << last_stats.restir.visibility_rays
+                  << " restir_history_resets="
+                  << last_stats.restir.history_resets
+                  << " restir_invalid_reservoirs="
+                  << last_stats.restir.invalid_reservoirs
+                  << " restir_average_M=" << last_stats.restir.average_M
+                  << " restir_average_age="
+                  << last_stats.restir.average_age
                   << " cancelled=" << (last_stats.cancelled ? 1 : 0)
                   << std::endl;
     }
@@ -268,7 +308,29 @@ int run_benchmark(const AppOptions &options) {
               << " batch_size=" << last_stats.batch_size
               << " batch_count=" << last_stats.batch_count
               << " clamped_samples=" << clamped_samples
-              << " invalid_samples=" << invalid_samples << std::endl;
+              << " invalid_samples=" << invalid_samples
+              << " restir_iterations=" << restir_totals.iterations
+              << " restir_initial_candidates="
+              << restir_totals.initial_candidates
+              << " restir_temporal_candidates="
+              << restir_totals.temporal_candidates
+              << " restir_temporal_accepted="
+              << restir_totals.temporal_accepted
+              << " restir_spatial_candidates="
+              << restir_totals.spatial_candidates
+              << " restir_spatial_accepted="
+              << restir_totals.spatial_accepted
+              << " restir_visibility_rays="
+              << restir_totals.visibility_rays
+              << " restir_history_resets="
+              << restir_totals.history_resets
+              << " restir_invalid_reservoirs="
+              << restir_totals.invalid_reservoirs
+              << " restir_average_M="
+              << restir_totals.average_M / options.benchmark.runs
+              << " restir_average_age="
+              << restir_totals.average_age / options.benchmark.runs
+              << std::endl;
 
     if (options.benchmark.save && has_saved_result) {
         save_rendered_image(saved_result.display, options.scene_id,

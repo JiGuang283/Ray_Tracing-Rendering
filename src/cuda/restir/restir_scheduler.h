@@ -15,6 +15,7 @@ struct CudaRestirSkeletonSettings {
     RenderFrameRequest frame;
     PackedTransportSettings reference_transport;
     std::uint32_t block_size = 128;
+    bool generate_reference = true;
 };
 
 struct CudaRestirSchedulerStats {

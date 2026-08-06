@@ -67,7 +67,7 @@ const IntegratorDescriptor &integrator_descriptor(IntegratorKind kind) {
          "restir_di",
          {IntegratorKind::ReSTIRDI, INTEGRATOR_POLICY_NONE, 0, 0.0f},
          false,
-         false,
+         true,
          IntegratorExecutionModel::RestirFrame},
         {IntegratorKind::ReSTIRGI,
          6,

@@ -57,6 +57,17 @@ void print_usage() {
         << "  --threads N          Set render worker count (default hardware)\n"
         << "  --sample-clamp N     Clamp camera-sample luminance (0 disables)\n"
         << "  --cuda-batch-size N  Override CUDA active-path batch size\n"
+        << "  --restir-light-candidates N  Initial DI candidates per pixel\n"
+        << "  --restir-spatial-neighbors N Spatial neighbors (max 64)\n"
+        << "  --restir-spatial-passes N    Spatial reuse pass count\n"
+        << "  --restir-history-length N    Maximum temporal reservoir age\n"
+        << "  --restir-max-candidates N    Reservoir M cap (0 is unlimited)\n"
+        << "  --restir-normal-threshold N  Temporal/spatial normal threshold\n"
+        << "  --restir-depth-threshold N   Temporal/spatial depth threshold\n"
+        << "  --restir-bias basic|pairwise Bias correction mode\n"
+        << "  --restir-no-temporal         Disable temporal reuse\n"
+        << "  --restir-no-spatial          Disable spatial reuse\n"
+        << "  --restir-history MODE        reset, continue, or auto\n"
         << "  --save               Save final rendered image\n"
         << "  --save-image PATH    Save benchmark display image to PATH\n"
         << "  --save-linear PATH   Save benchmark linear RGB film as PFM\n";
@@ -85,8 +96,8 @@ AppOptions parse_options(int argc, char *args[]) {
             options.scene_file = args[++i];
         } else if (arg == "--integrator" && i + 1 < argc) {
             if (!parse_int_arg(args[++i], options.integrator_id) ||
-                options.integrator_id < 0 || options.integrator_id > 4) {
-                fail("--integrator expects an integer in the range 0..4.");
+                options.integrator_id < 0 || options.integrator_id > 7) {
+                fail("--integrator expects an integer in the range 0..7.");
                 break;
             }
         } else if (arg == "--backend" && i + 1 < argc) {
@@ -159,6 +170,92 @@ AppOptions parse_options(int argc, char *args[]) {
             }
             options.render.cuda_batch_size =
                 static_cast<unsigned>(batch_size);
+        } else if (arg == "--restir-light-candidates" && i + 1 < argc) {
+            int value = 0;
+            if (!parse_int_arg(args[++i], value) || value <= 0) {
+                fail("--restir-light-candidates expects a positive integer.");
+                break;
+            }
+            options.render.restir.initial_light_candidates =
+                static_cast<std::uint32_t>(value);
+        } else if (arg == "--restir-spatial-neighbors" && i + 1 < argc) {
+            int value = 0;
+            if (!parse_int_arg(args[++i], value) || value <= 0 || value > 64) {
+                fail("--restir-spatial-neighbors expects an integer in 1..64.");
+                break;
+            }
+            options.render.restir.spatial_neighbors =
+                static_cast<std::uint32_t>(value);
+        } else if (arg == "--restir-spatial-passes" && i + 1 < argc) {
+            int value = 0;
+            if (!parse_int_arg(args[++i], value) || value <= 0) {
+                fail("--restir-spatial-passes expects a positive integer.");
+                break;
+            }
+            options.render.restir.spatial_passes =
+                static_cast<std::uint32_t>(value);
+        } else if (arg == "--restir-history-length" && i + 1 < argc) {
+            int value = 0;
+            if (!parse_int_arg(args[++i], value) || value <= 0) {
+                fail("--restir-history-length expects a positive integer.");
+                break;
+            }
+            options.render.restir.max_history_length =
+                static_cast<std::uint32_t>(value);
+        } else if (arg == "--restir-max-candidates" && i + 1 < argc) {
+            int value = 0;
+            if (!parse_int_arg(args[++i], value) || value < 0) {
+                fail("--restir-max-candidates expects a non-negative integer.");
+                break;
+            }
+            options.render.restir.max_reservoir_candidates =
+                static_cast<std::uint32_t>(value);
+        } else if (arg == "--restir-normal-threshold" && i + 1 < argc) {
+            double value = 0.0;
+            if (!parse_double_arg(args[++i], value) || value < -1.0 ||
+                value > 1.0) {
+                fail("--restir-normal-threshold expects a number in [-1,1].");
+                break;
+            }
+            options.render.restir.normal_threshold =
+                static_cast<float>(value);
+        } else if (arg == "--restir-depth-threshold" && i + 1 < argc) {
+            double value = 0.0;
+            if (!parse_double_arg(args[++i], value) || value < 0.0) {
+                fail("--restir-depth-threshold expects a non-negative number.");
+                break;
+            }
+            options.render.restir.depth_threshold =
+                static_cast<float>(value);
+        } else if (arg == "--restir-bias" && i + 1 < argc) {
+            const std::string value = args[++i];
+            if (value == "basic") {
+                options.render.restir.bias_correction =
+                    RestirBiasCorrection::Basic;
+            } else if (value == "pairwise") {
+                options.render.restir.bias_correction =
+                    RestirBiasCorrection::Pairwise;
+            } else {
+                fail("--restir-bias expects 'basic' or 'pairwise'.");
+                break;
+            }
+        } else if (arg == "--restir-no-temporal") {
+            options.render.restir.temporal_reuse = false;
+        } else if (arg == "--restir-no-spatial") {
+            options.render.restir.spatial_reuse = false;
+        } else if (arg == "--restir-history" && i + 1 < argc) {
+            const std::string value = args[++i];
+            if (value == "reset") {
+                options.render.restir.history_mode = RestirHistoryMode::Reset;
+            } else if (value == "continue") {
+                options.render.restir.history_mode =
+                    RestirHistoryMode::Continue;
+            } else if (value == "auto") {
+                options.render.restir.history_mode = RestirHistoryMode::Auto;
+            } else {
+                fail("--restir-history expects reset, continue, or auto.");
+                break;
+            }
         } else if (!arg.empty() && arg[0] == '-') {
             fail("Unknown option '" + arg + "'.");
             break;
@@ -189,8 +286,8 @@ AppOptions parse_options(int argc, char *args[]) {
     }
     if (positional.size() > 1) {
         if (!parse_int_arg(positional[1].c_str(), options.integrator_id) ||
-            options.integrator_id < 0 || options.integrator_id > 4) {
-            fail("integrator id expects an integer in the range 0..4.");
+            options.integrator_id < 0 || options.integrator_id > 7) {
+            fail("integrator id expects an integer in the range 0..7.");
             return options;
         }
     }

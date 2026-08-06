@@ -18,7 +18,7 @@ enum class RestirHistoryMode : std::uint32_t {
 
 struct RestirSettings {
     std::uint32_t initial_light_candidates = 8;
-    std::uint32_t initial_bsdf_candidates = 1;
+    std::uint32_t initial_bsdf_candidates = 0;
     std::uint32_t spatial_neighbors = 5;
     std::uint32_t spatial_passes = 1;
     std::uint32_t max_history_length = 20;

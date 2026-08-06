@@ -286,12 +286,17 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus spatial_resample_di_basic(
 
     ++stats.candidates;
     bool accepted = false;
+    bool changed_selection = false;
     RestirDIStatus status = combine_basic_di_source(
         scene, destination, source_reservoirs[pixel], max_candidates,
-        static_cast<float>(rng.next()), output, accepted);
+        static_cast<float>(rng.next()), output, accepted,
+        &changed_selection);
     if (status != RestirDIStatus::Success) {
         ++stats.rejected;
         return status;
+    }
+    if (changed_selection) {
+        output.age = source_reservoirs[pixel].age;
     }
     stats.accepted += accepted ? 1u : 0u;
 
@@ -315,13 +320,17 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus spatial_resample_di_basic(
             continue;
         }
         accepted = false;
+        changed_selection = false;
         status = combine_basic_di_source(
             scene, destination, source_reservoirs[neighbor.pixel],
             max_candidates, static_cast<float>(rng.next()), output,
-            accepted);
+            accepted, &changed_selection);
         if (status != RestirDIStatus::Success) {
             ++stats.rejected;
             return status;
+        }
+        if (changed_selection) {
+            output.age = source_reservoirs[neighbor.pixel].age;
         }
         stats.accepted += accepted ? 1u : 0u;
     }

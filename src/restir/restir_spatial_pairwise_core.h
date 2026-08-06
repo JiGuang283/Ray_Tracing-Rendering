@@ -33,7 +33,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus stream_pairwise_di_mass(
     RestirDIReservoir &output, const RestirLightSample &sample,
     float destination_target, float weight,
     std::uint32_t represented_count, float effective_count, float random,
-    bool sample_valid) noexcept {
+    bool sample_valid, bool &changed_selection) noexcept {
+    changed_selection = false;
     if (!sample_valid || !(destination_target > 0.0f) || !(weight > 0.0f)) {
         const ReservoirOperationResult represented =
             represent_di_candidates(output, represented_count,
@@ -47,6 +48,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus stream_pairwise_di_mass(
     const ReservoirOperationResult streamed = stream_di_weight(
         output, sample, destination_target, weight, represented_count,
         effective_count, random);
+    changed_selection = streamed.changed_selection();
     return streamed.accepted() ? RestirDIStatus::Success
                                : RestirDIStatus::ReservoirFailure;
 }
@@ -224,14 +226,18 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus spatial_resample_di_pairwise(
         const float weight =
             neighbor_at_center * neighbor_reservoir.unbiased_contribution_weight *
             w0;
+        bool changed_selection = false;
         const RestirDIStatus stream_status = stream_pairwise_di_mass(
             output, neighbor_reservoir.sample, neighbor_at_center, weight,
             represented_count, adjusted_effective_M,
             static_cast<float>(rng.next()),
-            reservoir_is_usable(neighbor_reservoir));
+            reservoir_is_usable(neighbor_reservoir), changed_selection);
         if (stream_status != RestirDIStatus::Success) {
             ++stats.rejected;
             return stream_status;
+        }
+        if (changed_selection) {
+            output.age = neighbor_reservoir.age;
         }
         ++stats.accepted;
     }
@@ -251,13 +257,17 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus spatial_resample_di_pairwise(
     const float canonical_mass = canonical_target *
                                  canonical.unbiased_contribution_weight *
                                  canonical_weight;
+    bool changed_selection = false;
     const RestirDIStatus canonical_stream_status = stream_pairwise_di_mass(
         output, canonical.sample, canonical_target, canonical_mass,
         canonical_count, canonical_effective_M,
-        static_cast<float>(rng.next()), true);
+        static_cast<float>(rng.next()), true, changed_selection);
     if (canonical_stream_status != RestirDIStatus::Success) {
         ++stats.rejected;
         return canonical_stream_status;
+    }
+    if (changed_selection) {
+        output.age = canonical.age;
     }
     ++stats.accepted;
 
