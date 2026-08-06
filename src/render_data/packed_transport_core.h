@@ -553,7 +553,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedRay generate_packed_camera_ray_core(
                     denominator_x;
     const float v = (static_cast<float>(pixel_y) + jitter_y) /
                     denominator_y;
-    const Float2 disk = random_in_unit_disk(rng);
+    const Float2 disk = packed_transport::random_in_unit_disk(rng);
     const Float3 camera_u = math::normalize(camera.horizontal);
     const Float3 camera_v = math::normalize(camera.vertical);
     const Float3 offset = math::add(

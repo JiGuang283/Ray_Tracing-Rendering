@@ -466,7 +466,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus sample_closure(
             return PackedBSDFStatus::NoSample;
         }
         sample.wi = math::normalize(
-            frame_to_world(frame, random_cosine_direction(rng)));
+            frame_to_world(frame,
+                           packed_bsdf::random_cosine_direction(rng)));
         sample.f = math::multiply(parameters, kInvPi);
         sample.pdf =
             math::maximum(math::dot(frame.normal, sample.wi), 0.0f) *
@@ -553,7 +554,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus sample_closure(
         break;
     }
     case PackedClosureType::IsotropicPhase:
-        sample.wi = random_unit_vector(rng);
+        sample.wi = packed_bsdf::random_unit_vector(rng);
         sample.f = math::multiply(parameters, kInvFourPi);
         sample.pdf = kInvFourPi;
         sample.flags = PACKED_BSDF_PHASE;
