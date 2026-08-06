@@ -57,7 +57,15 @@ if(RAYTRACER_ENABLE_CUDA)
                     --backend cuda --width 32 --spp 2 --max-depth 4
                     --seed 123 --runs 1
         )
-        set_tests_properties(cuda_restir_di_session PROPERTIES
+        add_test(NAME cuda_restir_gi_session
+            COMMAND $<TARGET_FILE:CGAssignment4> 68 6 --bench
+                    --backend cuda --width 32 --spp 2 --max-depth 4
+                    --seed 123 --runs 1
+        )
+        set_tests_properties(
+            cuda_restir_di_session
+            cuda_restir_gi_session
+            PROPERTIES
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             SKIP_REGULAR_EXPRESSION "CUDA backend unavailable"
         )

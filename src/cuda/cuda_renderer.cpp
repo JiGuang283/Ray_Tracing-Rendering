@@ -213,15 +213,32 @@ class CudaRenderSession final : public IRenderSession {
                 scene, settings, m_restir_workspace, cancel.native_flag());
 
         BeautyFilm beauty(frame.render.extent);
+        const bool gi_mode =
+            frame.render.integrator == IntegratorKind::ReSTIRGI;
         for (std::uint32_t y = 0; y < frame.render.extent.height; ++y) {
             for (std::uint32_t x = 0; x < frame.render.extent.width; ++x) {
-                const CudaFilmPixel &pixel =
+                const std::uint32_t index =
+                    y * frame.render.extent.width + x;
+                const CudaFilmPixel &direct =
                     output.direct_film[y * frame.render.extent.width + x];
+                Float3 radiance = direct.radiance;
+                if (gi_mode) {
+                    const CudaFilmPixel &indirect =
+                        output.indirect_film[index];
+                    if (indirect.sample_count != direct.sample_count) {
+                        throw std::runtime_error(
+                            "ReSTIR direct and indirect Film sample counts differ");
+                    }
+                    radiance = {
+                        radiance.x + indirect.radiance.x,
+                        radiance.y + indirect.radiance.y,
+                        radiance.z + indirect.radiance.z,
+                    };
+                }
                 beauty.set_pixel(
                     static_cast<int>(x), static_cast<int>(y),
-                    color(pixel.radiance.x, pixel.radiance.y,
-                          pixel.radiance.z),
-                    pixel.sample_count);
+                    color(radiance.x, radiance.y, radiance.z),
+                    direct.sample_count);
             }
         }
         const auto resolve_begin = std::chrono::steady_clock::now();
@@ -253,7 +270,8 @@ class CudaRenderSession final : public IRenderSession {
         stats.sample_count = output.stats.sample_count;
         stats.seed = frame.render.seed;
         stats.clamped_samples = output.stats.di_clamped_samples;
-        stats.invalid_samples = output.stats.di_invalid_samples;
+        stats.invalid_samples = output.stats.di_invalid_samples +
+                                output.stats.gi_invalid_samples;
         stats.backend = "cuda";
         stats.device_name = m_device_name;
         stats.scene_bytes = m_preparation.scene_bytes;
@@ -262,7 +280,9 @@ class CudaRenderSession final : public IRenderSession {
             output.stats.workspace.allocation_generation;
         stats.workspace_pixel_capacity =
             output.stats.workspace.pixel_capacity;
-        stats.shadow_rays = output.stats.visibility_rays;
+        stats.shadow_rays = output.stats.visibility_rays +
+                            output.stats.gi_visibility_rays +
+                            output.stats.gi_suffix_shadow_rays;
         stats.restir.iterations = output.stats.completed_iterations;
         stats.restir.initial_candidates = output.stats.initial_candidates;
         stats.restir.temporal_candidates = output.stats.temporal_candidates;
@@ -279,8 +299,31 @@ class CudaRenderSession final : public IRenderSession {
             output.stats.di_invalid_samples;
         stats.restir.shift_success = output.stats.temporal_accepted +
                                      output.stats.spatial_accepted;
+        stats.restir.gi_initial_candidates =
+            output.stats.gi_initial_candidates;
+        stats.restir.gi_temporal_candidates =
+            output.stats.gi_temporal_candidates;
+        stats.restir.gi_temporal_accepted =
+            output.stats.gi_temporal_accepted;
+        stats.restir.gi_spatial_candidates =
+            output.stats.gi_spatial_candidates;
+        stats.restir.gi_spatial_accepted =
+            output.stats.gi_spatial_accepted;
+        stats.restir.gi_visibility_rays =
+            output.stats.gi_visibility_rays;
+        stats.restir.gi_fallbacks = output.stats.gi_fallbacks;
+        stats.restir.gi_invalid_reservoirs =
+            output.stats.gi_invalid_samples;
         stats.restir.average_M = output.stats.average_effective_M;
         stats.restir.average_age = output.stats.average_age;
+        stats.restir.gi_average_M =
+            output.stats.gi_average_effective_M;
+        stats.restir.gi_average_age = output.stats.gi_average_age;
+        for (std::size_t index = 0;
+             index < stats.restir.shift_failures.size(); ++index) {
+            stats.restir.shift_failures[index] =
+                output.stats.gi_shift_failures[index];
+        }
         for (std::size_t index = 0;
              index < stats.restir.history_failures.size(); ++index) {
             stats.restir.history_failures[index] =

@@ -58,6 +58,8 @@ struct RestirStats {
     std::uint64_t gi_visibility_rays = 0;
     std::uint64_t gi_fallbacks = 0;
     std::uint64_t gi_invalid_reservoirs = 0;
+    double gi_average_M = 0.0;
+    double gi_average_age = 0.0;
     std::array<std::uint64_t, kRestirShiftFailureBuckets> shift_failures{};
     std::array<std::uint64_t, kRestirHistoryFailureBuckets>
         history_failures{};

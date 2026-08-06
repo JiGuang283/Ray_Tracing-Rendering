@@ -209,8 +209,26 @@ int run_benchmark(const AppOptions &options) {
         restir_totals.history_resets += last_stats.restir.history_resets;
         restir_totals.invalid_reservoirs +=
             last_stats.restir.invalid_reservoirs;
+        restir_totals.gi_initial_candidates +=
+            last_stats.restir.gi_initial_candidates;
+        restir_totals.gi_temporal_candidates +=
+            last_stats.restir.gi_temporal_candidates;
+        restir_totals.gi_temporal_accepted +=
+            last_stats.restir.gi_temporal_accepted;
+        restir_totals.gi_spatial_candidates +=
+            last_stats.restir.gi_spatial_candidates;
+        restir_totals.gi_spatial_accepted +=
+            last_stats.restir.gi_spatial_accepted;
+        restir_totals.gi_visibility_rays +=
+            last_stats.restir.gi_visibility_rays;
+        restir_totals.gi_fallbacks += last_stats.restir.gi_fallbacks;
+        restir_totals.gi_invalid_reservoirs +=
+            last_stats.restir.gi_invalid_reservoirs;
         restir_totals.average_M += last_stats.restir.average_M;
         restir_totals.average_age += last_stats.restir.average_age;
+        restir_totals.gi_average_M += last_stats.restir.gi_average_M;
+        restir_totals.gi_average_age +=
+            last_stats.restir.gi_average_age;
         saved_result = std::move(result);
         has_saved_result = true;
 
@@ -266,9 +284,29 @@ int run_benchmark(const AppOptions &options) {
                   << last_stats.restir.history_resets
                   << " restir_invalid_reservoirs="
                   << last_stats.restir.invalid_reservoirs
+                  << " restir_gi_initial_candidates="
+                  << last_stats.restir.gi_initial_candidates
+                  << " restir_gi_temporal_candidates="
+                  << last_stats.restir.gi_temporal_candidates
+                  << " restir_gi_temporal_accepted="
+                  << last_stats.restir.gi_temporal_accepted
+                  << " restir_gi_spatial_candidates="
+                  << last_stats.restir.gi_spatial_candidates
+                  << " restir_gi_spatial_accepted="
+                  << last_stats.restir.gi_spatial_accepted
+                  << " restir_gi_visibility_rays="
+                  << last_stats.restir.gi_visibility_rays
+                  << " restir_gi_fallbacks="
+                  << last_stats.restir.gi_fallbacks
+                  << " restir_gi_invalid_reservoirs="
+                  << last_stats.restir.gi_invalid_reservoirs
                   << " restir_average_M=" << last_stats.restir.average_M
                   << " restir_average_age="
                   << last_stats.restir.average_age
+                  << " restir_gi_average_M="
+                  << last_stats.restir.gi_average_M
+                  << " restir_gi_average_age="
+                  << last_stats.restir.gi_average_age
                   << " cancelled=" << (last_stats.cancelled ? 1 : 0)
                   << std::endl;
     }
@@ -326,10 +364,30 @@ int run_benchmark(const AppOptions &options) {
               << restir_totals.history_resets
               << " restir_invalid_reservoirs="
               << restir_totals.invalid_reservoirs
+              << " restir_gi_initial_candidates="
+              << restir_totals.gi_initial_candidates
+              << " restir_gi_temporal_candidates="
+              << restir_totals.gi_temporal_candidates
+              << " restir_gi_temporal_accepted="
+              << restir_totals.gi_temporal_accepted
+              << " restir_gi_spatial_candidates="
+              << restir_totals.gi_spatial_candidates
+              << " restir_gi_spatial_accepted="
+              << restir_totals.gi_spatial_accepted
+              << " restir_gi_visibility_rays="
+              << restir_totals.gi_visibility_rays
+              << " restir_gi_fallbacks="
+              << restir_totals.gi_fallbacks
+              << " restir_gi_invalid_reservoirs="
+              << restir_totals.gi_invalid_reservoirs
               << " restir_average_M="
               << restir_totals.average_M / options.benchmark.runs
               << " restir_average_age="
               << restir_totals.average_age / options.benchmark.runs
+              << " restir_gi_average_M="
+              << restir_totals.gi_average_M / options.benchmark.runs
+              << " restir_gi_average_age="
+              << restir_totals.gi_average_age / options.benchmark.runs
               << std::endl;
 
     if (options.benchmark.save && has_saved_result) {
