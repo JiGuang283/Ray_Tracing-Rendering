@@ -56,7 +56,8 @@ bool compare_surface(const restir::RestirSurface &device,
 
 bool compare_reservoir(const restir::RestirDIReservoir &device,
                        const restir::RestirDIReservoir &host) {
-    if (device.M != host.M || device.flags != host.flags) {
+    if (device.M != host.M || device.flags != host.flags ||
+        device.age != host.age) {
         return false;
     }
     if (!restir::reservoir_has_sample(host)) {
@@ -73,6 +74,7 @@ bool compare_reservoir(const restir::RestirDIReservoir &device,
            near(device.sample.canonical_data.z,
                 host.sample.canonical_data.z) &&
            near(device.weight_sum, host.weight_sum) &&
+           near(device.effective_M, host.effective_M) &&
            near(device.selected_target, host.selected_target) &&
            near(device.unbiased_contribution_weight,
                 host.unbiased_contribution_weight);

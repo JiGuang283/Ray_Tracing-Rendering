@@ -22,7 +22,22 @@ struct alignas(16) RestirLightSample {
 };
 
 using RestirDICandidate = ReservoirCandidate<RestirLightSample, float>;
-using RestirDIReservoir = Reservoir<RestirLightSample, float>;
+
+struct alignas(16) RestirDIReservoir {
+    RestirLightSample sample{};
+    // Raw resampling mass is retained after finalization for diagnostics and
+    // later resampling. effective_M may be fractional under pairwise MIS.
+    float weight_sum = 0.0f;
+    float selected_target = 0.0f;
+    float unbiased_contribution_weight = 0.0f;
+    float effective_M = 0.0f;
+    // Integer proposal count is kept separately from effective_M so statistics
+    // retain their literal meaning.
+    std::uint32_t M = 0;
+    std::uint32_t flags = RESERVOIR_FLAG_NONE;
+    std::uint32_t age = 0;
+    std::uint32_t reserved = 0;
+};
 
 static_assert(sizeof(RestirLightSample) == 32,
               "canonical ReSTIR light samples must remain 32 bytes");

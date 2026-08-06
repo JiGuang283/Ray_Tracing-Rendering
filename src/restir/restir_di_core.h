@@ -3,7 +3,7 @@
 
 #include "packed_bsdf_core.h"
 #include "packed_transport_core.h"
-#include "reservoir_core.h"
+#include "restir_di_reservoir_core.h"
 #include "restir_gbuffer_core.h"
 #include "restir_light_core.h"
 

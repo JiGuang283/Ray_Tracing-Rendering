@@ -68,6 +68,42 @@ TEST_CASE(restir_di_sample_and_reservoir_abi_is_stable) {
     restir::reset_reservoir(reservoir);
     REQUIRE(!restir::reservoir_has_sample(reservoir));
     REQUIRE(reservoir.M == 0u);
+    REQUIRE_NEAR(reservoir.effective_M, 0.0f, 0.0f);
+}
+
+TEST_CASE(restir_di_reservoir_tracks_literal_and_effective_candidate_mass) {
+    restir::RestirDIReservoir reservoir;
+    restir::reset_reservoir(reservoir);
+    restir::RestirLightSample sample;
+    sample.light_id = 3u;
+
+    const auto first = restir::stream_di_weight(
+        reservoir, sample, 2.0f, 6.0f, 4u, 1.5f, 0.25f);
+    REQUIRE(first.accepted());
+    REQUIRE(first.changed_selection());
+    REQUIRE(reservoir.M == 4u);
+    REQUIRE_NEAR(reservoir.effective_M, 1.5f, 1e-6f);
+
+    const auto finalized = restir::finalize_reservoir(reservoir);
+    REQUIRE(finalized.accepted());
+    REQUIRE(restir::reservoir_is_usable(reservoir));
+    REQUIRE_NEAR(reservoir.unbiased_contribution_weight, 2.0f, 1e-6f);
+}
+
+TEST_CASE(restir_di_initial_candidates_keep_effective_mass_equal_to_count) {
+    restir::RestirDIReservoir reservoir;
+    restir::reset_reservoir(reservoir);
+    restir::RestirLightSample sample;
+    sample.light_id = 5u;
+    const auto candidate = restir::make_candidate(
+        sample, 3.0f, 0.5f, true, true);
+
+    REQUIRE(restir::stream_candidate(reservoir, candidate, 0.1f).accepted());
+    REQUIRE(restir::stream_candidate(reservoir, candidate, 0.9f).accepted());
+    REQUIRE(reservoir.M == 2u);
+    REQUIRE_NEAR(reservoir.effective_M, 2.0f, 1e-6f);
+    REQUIRE(restir::finalize_reservoir(reservoir).accepted());
+    REQUIRE_NEAR(reservoir.unbiased_contribution_weight, 2.0f, 1e-6f);
 }
 
 TEST_CASE(restir_octahedral_normals_round_trip_both_hemispheres) {
