@@ -117,7 +117,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool make_gi_visibility_ray(
            packed_transport::math::finite(ray.t_max);
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE bool is_diffuse_reconnectable(
+RT_HOST_DEVICE RT_FORCE_INLINE bool is_diffuse_secondary(
     const PackedMaterialOutput &material) noexcept {
     if (material.closure_count != 1u ||
         packed_transport::math::black(
@@ -132,6 +132,32 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool is_diffuse_reconnectable(
            closure.sample_weight > 0.0f &&
            packed_transport::math::finite(closure.contribution_weight) &&
            packed_transport::math::finite(closure.sample_weight);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool is_gi_primary_reconnectable(
+    const PackedMaterialOutput &material) noexcept {
+    bool has_continuous_surface = false;
+    for (std::uint32_t index = 0u; index < material.closure_count; ++index) {
+        const PackedClosure &closure = material.closures[index];
+        if (!(closure.contribution_weight > 0.0f) ||
+            !(closure.sample_weight > 0.0f) ||
+            !packed_transport::math::finite(closure.contribution_weight) ||
+            !packed_transport::math::finite(closure.sample_weight)) {
+            continue;
+        }
+        switch (closure.type) {
+        case PackedClosureType::Lambertian:
+        case PackedClosureType::GGXReflection:
+        case PackedClosureType::ClearcoatGGX:
+            has_continuous_surface = true;
+            break;
+        case PackedClosureType::Mirror:
+        case PackedClosureType::Dielectric:
+        case PackedClosureType::IsotropicPhase:
+            break;
+        }
+    }
+    return has_continuous_surface;
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE bool solid_angle_pdf_to_area(
@@ -159,7 +185,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus reconstruct_restir_gi_context(
         context);
     switch (status) {
     case RestirDIStatus::Success:
-        return is_diffuse_reconnectable(context.material)
+        return is_gi_primary_reconnectable(context.material)
                    ? RestirGIStatus::Success
                    : RestirGIStatus::UnsupportedPrimary;
     case RestirDIStatus::NoSurface:
@@ -197,7 +223,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_suffix(
     radiance = {};
     shadow_rays = 0u;
     traversal_steps = 0u;
-    if (!is_diffuse_reconnectable(secondary_material)) {
+    if (!is_diffuse_secondary(secondary_material)) {
         return RestirGIStatus::UnsupportedSecondary;
     }
     if (transport.max_depth < 2u ||
@@ -281,7 +307,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_reconnection(
         result.failure = RestirGIShiftFailure::InvalidSample;
         return RestirGIStatus::ReservoirFailure;
     }
-    if (!is_diffuse_reconnectable(destination.material)) {
+    if (!is_gi_primary_reconnectable(destination.material)) {
         result.failure = RestirGIShiftFailure::UnsupportedPrimary;
         return RestirGIStatus::UnsupportedPrimary;
     }
@@ -374,9 +400,17 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
             stats.represented += represented.represented_candidates;
             continue;
         }
-        if (bsdf_status != PackedBSDFStatus::Success ||
-            primary_sample.is_delta() ||
-            !(primary_sample.pdf >= 1e-8f)) {
+        if (bsdf_status != PackedBSDFStatus::Success) {
+            ++stats.rejected;
+            return RestirGIStatus::BSDFFailure;
+        }
+        if (primary_sample.is_delta()) {
+            const ReservoirOperationResult represented =
+                represent_gi_candidates(reservoir, 1u, 1.0f);
+            stats.represented += represented.represented_candidates;
+            continue;
+        }
+        if (!(primary_sample.pdf >= 1e-8f)) {
             ++stats.rejected;
             return RestirGIStatus::BSDFFailure;
         }
@@ -421,7 +455,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
             stats.represented += represented.represented_candidates;
             continue;
         }
-        if (!is_diffuse_reconnectable(secondary_material)) {
+        if (!is_diffuse_secondary(secondary_material)) {
             ++stats.rejected;
             return RestirGIStatus::UnsupportedSecondary;
         }

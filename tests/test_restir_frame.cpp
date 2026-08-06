@@ -108,7 +108,8 @@ TEST_CASE(restir_gi_area_measure_and_diffuse_reconnection_are_analytic) {
     destination.material.closures[0].contribution_weight = 1.0f;
     destination.material.closures[0].sample_weight = 1.0f;
     destination.wo = {0.0f, 0.0f, 1.0f};
-    REQUIRE(restir::is_diffuse_reconnectable(destination.material));
+    REQUIRE(restir::is_gi_primary_reconnectable(destination.material));
+    REQUIRE(restir::is_diffuse_secondary(destination.material));
 
     restir::RestirGISample sample;
     sample.position = {0.0f, 0.0f, 2.0f};
@@ -164,18 +165,28 @@ TEST_CASE(restir_gi_visibility_segment_is_scale_relative) {
     REQUIRE(ray.t_max > 99.0f);
 }
 
-TEST_CASE(restir_gi_rejects_mixed_and_delta_material_domains) {
+TEST_CASE(restir_gi_separates_primary_and_secondary_material_domains) {
     PackedMaterialOutput material;
     material.closure_count = 1u;
     material.closures[0].type = PackedClosureType::Mirror;
     material.closures[0].parameters = {1.0f, 1.0f, 1.0f, 0.0f};
     material.closures[0].contribution_weight = 1.0f;
     material.closures[0].sample_weight = 1.0f;
-    REQUIRE(!restir::is_diffuse_reconnectable(material));
+    REQUIRE(!restir::is_gi_primary_reconnectable(material));
+    REQUIRE(!restir::is_diffuse_secondary(material));
+
+    material.closures[0].type = PackedClosureType::GGXReflection;
+    REQUIRE(restir::is_gi_primary_reconnectable(material));
+    REQUIRE(!restir::is_diffuse_secondary(material));
+
     material.closures[0].type = PackedClosureType::Lambertian;
+    REQUIRE(restir::is_gi_primary_reconnectable(material));
+    REQUIRE(restir::is_diffuse_secondary(material));
     material.closure_count = 2u;
     material.closures[1] = material.closures[0];
-    REQUIRE(!restir::is_diffuse_reconnectable(material));
+    material.closures[1].type = PackedClosureType::GGXReflection;
+    REQUIRE(restir::is_gi_primary_reconnectable(material));
+    REQUIRE(!restir::is_diffuse_secondary(material));
 }
 
 TEST_CASE(restir_di_reservoir_tracks_literal_and_effective_candidate_mass) {
