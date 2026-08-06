@@ -1,0 +1,247 @@
+#include "cuda_restir_device_checks.h"
+
+#include "compiled_scene.h"
+#include "device_scene.h"
+#include "restir/restir_scheduler.h"
+#include "restir_gbuffer_host_check.h"
+#include "scene_compiler.h"
+#include "scene_ir.h"
+#include "wavefront_renderer.h"
+
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+struct Options {
+    std::string mode = "reservoir";
+    std::filesystem::path scene_file =
+        "assets/scenes/scene_023_mis_comparison_scene.json";
+    std::uint32_t width = 32;
+    std::uint32_t height = 18;
+    std::uint32_t spp = 2;
+    std::uint32_t max_depth = 6;
+    std::uint32_t seed = 123;
+};
+
+Options parse_options(int argc, char **argv) {
+    Options options;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        auto value = [&]() -> std::string {
+            if (++index >= argc) {
+                throw std::runtime_error(argument + " requires a value");
+            }
+            return argv[index];
+        };
+        if (argument == "--mode") {
+            options.mode = value();
+        } else if (argument == "--scene-file") {
+            options.scene_file = value();
+        } else if (argument == "--width") {
+            options.width = static_cast<std::uint32_t>(std::stoul(value()));
+        } else if (argument == "--height") {
+            options.height =
+                static_cast<std::uint32_t>(std::stoul(value()));
+        } else if (argument == "--spp") {
+            options.spp = static_cast<std::uint32_t>(std::stoul(value()));
+        } else if (argument == "--max-depth") {
+            options.max_depth =
+                static_cast<std::uint32_t>(std::stoul(value()));
+        } else if (argument == "--seed") {
+            options.seed = static_cast<std::uint32_t>(std::stoul(value()));
+        } else if (argument == "--help" || argument == "-h") {
+            std::cout
+                << "Usage: cuda_restir_check [--mode reservoir|gbuffer] "
+                   "[--scene-file PATH] [--width N] [--height N] "
+                   "[--spp N] [--max-depth N] [--seed N]\n";
+            std::exit(0);
+        } else {
+            throw std::runtime_error("unknown option: " + argument);
+        }
+    }
+    if ((options.mode != "reservoir" && options.mode != "gbuffer") ||
+        options.width < 2u || options.height < 2u || options.spp == 0u ||
+        options.max_depth == 0u) {
+        throw std::runtime_error("invalid CUDA ReSTIR check settings");
+    }
+    return options;
+}
+
+bool near(float left, float right, float tolerance = 2e-5f) {
+    const float scale =
+        std::max(1.0f, std::max(std::abs(left), std::abs(right)));
+    return std::abs(left - right) <= tolerance * scale;
+}
+
+bool check_reservoir() {
+    const CudaReservoirDeviceCheckResult result =
+        run_cuda_reservoir_device_check();
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=reservoir"
+              << " trials=" << result.trials
+              << " heavy_observed=" << result.heavy_observed
+              << " tolerance=" << result.tolerance
+              << " failures=" << result.failures
+              << " algebra=" << (result.algebra_pass ? "pass" : "fail")
+              << " result=" << (result.passed() ? "pass" : "fail")
+              << '\n';
+    return result.passed();
+}
+
+bool check_gbuffer(const Options &options) {
+    const SceneIR ir = load_scene_ir_file(options.scene_file.string());
+    const CompiledScene compiled = compile_scene(ir);
+    const CompiledSceneView host_scene = make_scene_view(compiled);
+    cuda_backend::DeviceSceneStorage device_scene;
+    device_scene.upload(compiled);
+
+    cuda_backend::CudaRestirSkeletonSettings settings;
+    settings.frame.render.extent =
+        make_image_extent(static_cast<int>(options.width),
+                          static_cast<int>(options.height));
+    settings.frame.render.integrator = IntegratorKind::ReSTIRDI;
+    settings.frame.render.samples_per_pixel = options.spp;
+    settings.frame.render.max_depth = options.max_depth;
+    settings.frame.render.seed = options.seed;
+    settings.frame.render.sample_clamp = 0.0;
+    settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
+    settings.frame.camera = ir.camera;
+    settings.reference_transport.policy =
+        integrator_policy(IntegratorKind::MISPath);
+    settings.reference_transport.max_depth = options.max_depth;
+
+    cuda_backend::CudaRestirWorkspace workspace;
+    const cuda_backend::CudaRestirSchedulerOutput skeleton =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace);
+    const cuda_backend::CudaRestirWorkspaceInfo first_info =
+        workspace.info();
+
+    cuda_backend::CudaRenderSettings wavefront_settings;
+    wavefront_settings.transport = settings.reference_transport;
+    wavefront_settings.width = options.width;
+    wavefront_settings.height = options.height;
+    wavefront_settings.samples_per_pixel = options.spp;
+    wavefront_settings.seed = options.seed;
+    wavefront_settings.batch_size = 17u;
+    cuda_backend::CudaRenderWorkspace wavefront_workspace;
+    const cuda_backend::CudaRenderOutput wavefront =
+        cuda_backend::render_wavefront_cuda(
+            device_scene.view(), wavefront_settings, wavefront_workspace);
+
+    std::uint64_t film_errors = 0;
+    for (std::size_t index = 0; index < skeleton.film.size(); ++index) {
+        const cuda_backend::CudaFilmPixel &left = skeleton.film[index];
+        const cuda_backend::CudaFilmPixel &right = wavefront.film[index];
+        if (left.sample_count != right.sample_count ||
+            !near(left.radiance.x, right.radiance.x) ||
+            !near(left.radiance.y, right.radiance.y) ||
+            !near(left.radiance.z, right.radiance.z)) {
+            ++film_errors;
+        }
+    }
+
+    const std::uint32_t final_iteration = options.spp - 1u;
+    const std::uint64_t surface_errors = compare_restir_gbuffer_host(
+        host_scene, options.width, options.height, final_iteration,
+        options.seed, skeleton.gbuffer);
+
+    std::uint64_t gbuffer_failures = 0;
+    for (std::size_t index = 2;
+         index < skeleton.stats.gbuffer_status.size(); ++index) {
+        gbuffer_failures += skeleton.stats.gbuffer_status[index];
+    }
+    const bool counter_match =
+        skeleton.stats.transport_status == wavefront.stats.status_counts &&
+        skeleton.stats.traversal_steps == wavefront.stats.traversal_steps &&
+        skeleton.stats.shadow_rays == wavefront.stats.shadow_rays &&
+        skeleton.stats.invalid_samples == wavefront.stats.invalid_samples;
+    const bool initial_history =
+        skeleton.stats.history_reset_reason ==
+            restir::RestirHistoryResetReason::Explicit &&
+        first_info.history_valid &&
+        first_info.completed_history_iterations == options.spp &&
+        first_info.committed_buffer == ((options.spp - 1u) & 1u);
+
+    settings.frame.render.samples_per_pixel = 1u;
+    settings.frame.render.restir.history_mode =
+        RestirHistoryMode::Continue;
+    settings.frame.frame_index = 1u;
+    const cuda_backend::CudaRestirSchedulerOutput continued =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace);
+    const cuda_backend::CudaRestirWorkspaceInfo continued_info =
+        workspace.info();
+    const bool reused =
+        continued.stats.history_reset_reason ==
+            restir::RestirHistoryResetReason::None &&
+        continued_info.allocation_generation ==
+            first_info.allocation_generation &&
+        continued_info.completed_history_iterations == options.spp + 1u &&
+        continued_info.gbuffer_addresses[0] ==
+            first_info.gbuffer_addresses[0] &&
+        continued_info.gbuffer_addresses[1] ==
+            first_info.gbuffer_addresses[1] &&
+        continued_info.film_address == first_info.film_address;
+
+    std::atomic<bool> cancel{true};
+    settings.frame.frame_index = 2u;
+    const std::uint32_t committed_before_cancel =
+        continued_info.committed_buffer;
+    const cuda_backend::CudaRestirSchedulerOutput cancelled =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace, &cancel);
+    const cuda_backend::CudaRestirWorkspaceInfo cancelled_info =
+        workspace.info();
+    const bool cancellation_safe =
+        cancelled.stats.cancelled &&
+        cancelled.stats.completed_iterations == 0u &&
+        cancelled_info.completed_history_iterations == options.spp + 1u &&
+        cancelled_info.committed_buffer == committed_before_cancel;
+
+    const bool passed = film_errors == 0u && surface_errors == 0u &&
+                        gbuffer_failures == 0u && counter_match &&
+                        initial_history && reused && cancellation_safe;
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=gbuffer"
+              << " pixels=" << options.width * options.height
+              << " spp=" << options.spp
+              << " film_errors=" << film_errors
+              << " surface_errors=" << surface_errors
+              << " gbuffer_failures=" << gbuffer_failures
+              << " counter_match=" << (counter_match ? 1 : 0)
+              << " history=" << (initial_history ? "pass" : "fail")
+              << " reused=" << (reused ? 1 : 0)
+              << " cancellation=" << (cancellation_safe ? 1 : 0)
+              << " workspace_bytes=" << first_info.bytes
+              << " result=" << (passed ? "pass" : "fail") << '\n';
+    return passed;
+}
+
+} // namespace
+
+int main(int argc, char **argv) {
+    try {
+        std::string reason;
+        if (!cuda_backend::cuda_device_available(&reason)) {
+            std::cout << "CUDA_RESTIR_SKIP reason=" << reason << '\n';
+            return 77;
+        }
+        const Options options = parse_options(argc, argv);
+        return (options.mode == "reservoir" ? check_reservoir()
+                                             : check_gbuffer(options))
+                   ? 0
+                   : 1;
+    } catch (const std::exception &error) {
+        std::cerr << "CUDA_RESTIR_ERROR message=" << error.what() << '\n';
+        return 1;
+    }
+}

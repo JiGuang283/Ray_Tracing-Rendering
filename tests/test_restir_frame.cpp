@@ -1,0 +1,165 @@
+#include "test_harness.h"
+
+#include "restir_history.h"
+#include "restir_surface.h"
+
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <string>
+
+namespace {
+
+float dot(Float3 left, Float3 right) {
+    return left.x * right.x + left.y * right.y + left.z * right.z;
+}
+
+Float3 normalized(Float3 value) {
+    const float inverse =
+        1.0f / std::sqrt(value.x * value.x + value.y * value.y +
+                         value.z * value.z);
+    return {value.x * inverse, value.y * inverse, value.z * inverse};
+}
+
+RenderFrameRequest frame_request(std::uint64_t frame_index = 0) {
+    RenderFrameRequest request;
+    request.render.extent = make_image_extent(32, 18);
+    request.render.integrator = IntegratorKind::ReSTIRDI;
+    request.render.samples_per_pixel = 1;
+    request.render.max_depth = 4;
+    request.camera.lookfrom = point3(0, 1, 4);
+    request.camera.lookat = point3(0, 1, 0);
+    request.camera.vup = vec3(0, 1, 0);
+    request.camera.aspect_ratio = 16.0 / 9.0;
+    request.frame_index = frame_index;
+    return request;
+}
+
+} // namespace
+
+TEST_CASE(restir_surface_has_stable_layout_and_hit_reconstruction) {
+    REQUIRE(sizeof(restir::RestirSurface) == 64u);
+    REQUIRE(alignof(restir::RestirSurface) == 16u);
+    restir::RestirSurface surface;
+    surface.hit_t = 3.5f;
+    surface.barycentric_u = 0.2f;
+    surface.barycentric_v = 0.3f;
+    surface.instance_id = 7u;
+    surface.primitive_id = 11u;
+    surface.flags = PACKED_HIT_TRIANGLE | PACKED_HIT_FRONT_FACE |
+                    restir::RESTIR_SURFACE_VALID |
+                    restir::RESTIR_SURFACE_DELTA_ONLY;
+    const PackedHit hit = restir::restir_surface_hit(surface);
+    REQUIRE_NEAR(hit.t, 3.5f, 1e-6);
+    REQUIRE_NEAR(hit.barycentric_u, 0.2f, 1e-6);
+    REQUIRE_NEAR(hit.barycentric_v, 0.3f, 1e-6);
+    REQUIRE(hit.instance_id == 7u);
+    REQUIRE(hit.primitive_id == 11u);
+    REQUIRE(hit.flags == (PACKED_HIT_TRIANGLE | PACKED_HIT_FRONT_FACE));
+    REQUIRE(surface.valid());
+    REQUIRE(surface.delta_only());
+}
+
+TEST_CASE(restir_octahedral_normals_round_trip_both_hemispheres) {
+    const std::array<Float3, 8> normals{{
+        {1.0f, 0.0f, 0.0f},
+        {-1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {0.0f, -1.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, -1.0f},
+        normalized({0.3f, -0.7f, 0.4f}),
+        normalized({-0.6f, 0.2f, -0.9f}),
+    }};
+    for (const Float3 normal : normals) {
+        const Float3 decoded = restir::unpack_octahedral_normal(
+            restir::pack_octahedral_normal(normal));
+        REQUIRE(dot(normal, decoded) >= 0.9999f);
+    }
+}
+
+TEST_CASE(restir_history_only_advances_after_iteration_commit) {
+    restir::RestirFrameState state;
+    RenderFrameRequest request = frame_request(10u);
+    const restir::RestirFramePreparation first =
+        restir::prepare_restir_frame(state, request);
+    REQUIRE(first.reset_reason ==
+            restir::RestirHistoryResetReason::Uninitialized);
+    REQUIRE(first.read_buffer == restir::kInvalidHistoryBuffer);
+    REQUIRE(first.write_buffer == 0u);
+    REQUIRE(state.history_valid == 0u);
+
+    const restir::RestirFramePreparation cancelled =
+        restir::prepare_restir_frame(state, request);
+    REQUIRE(cancelled.reset_reason ==
+            restir::RestirHistoryResetReason::Uninitialized);
+    REQUIRE(cancelled.write_buffer == 0u);
+    REQUIRE(state.completed_iterations == 0u);
+
+    restir::commit_restir_iteration(state, first.write_buffer,
+                                    request.frame_index);
+    REQUIRE(state.history_valid == 1u);
+    REQUIRE(state.committed_buffer == 0u);
+    REQUIRE(state.completed_iterations == 1u);
+
+    request.frame_index = 11u;
+    const restir::RestirFramePreparation second =
+        restir::prepare_restir_frame(state, request);
+    REQUIRE(!second.reset());
+    REQUIRE(second.read_buffer == 0u);
+    REQUIRE(second.write_buffer == 1u);
+    restir::commit_restir_iteration(state, second.write_buffer,
+                                    request.frame_index);
+    REQUIRE(state.committed_buffer == 1u);
+    REQUIRE(state.completed_iterations == 2u);
+}
+
+TEST_CASE(restir_history_classifies_incompatible_keys) {
+    restir::RestirFrameState state;
+    RenderFrameRequest request = frame_request(3u);
+    const auto initial = restir::prepare_restir_frame(state, request);
+    restir::commit_restir_iteration(state, initial.write_buffer,
+                                    request.frame_index);
+    const std::uint64_t generation = state.history_generation;
+
+    request.render.restir.spatial_neighbors += 1u;
+    const auto settings_reset = restir::prepare_restir_frame(state, request);
+    REQUIRE(settings_reset.reset_reason ==
+            restir::RestirHistoryResetReason::SettingsChanged);
+    REQUIRE(state.history_generation == generation + 1u);
+    REQUIRE(state.history_valid == 0u);
+    restir::commit_restir_iteration(state, settings_reset.write_buffer,
+                                    request.frame_index);
+
+    request.revision.camera += 1u;
+    const auto camera_reset = restir::prepare_restir_frame(state, request);
+    REQUIRE(camera_reset.reset_reason ==
+            restir::RestirHistoryResetReason::CameraRevisionChanged);
+    restir::commit_restir_iteration(state, camera_reset.write_buffer,
+                                    request.frame_index);
+
+    request.frame_index = 2u;
+    const auto rewind = restir::prepare_restir_frame(state, request);
+    REQUIRE(rewind.reset_reason ==
+            restir::RestirHistoryResetReason::FrameIndexRewound);
+}
+
+TEST_CASE(restir_explicit_history_reset_clears_committed_state) {
+    restir::RestirFrameState state;
+    RenderFrameRequest request = frame_request();
+    auto preparation = restir::prepare_restir_frame(state, request);
+    restir::commit_restir_iteration(state, preparation.write_buffer, 0u);
+    const std::uint64_t generation = state.history_generation;
+
+    restir::reset_restir_history(state);
+    REQUIRE(state.history_valid == 0u);
+    REQUIRE(state.completed_iterations == 0u);
+    REQUIRE(state.history_generation == generation + 1u);
+
+    request.render.restir.history_mode = RestirHistoryMode::Reset;
+    preparation = restir::prepare_restir_frame(state, request);
+    REQUIRE(preparation.reset_reason ==
+            restir::RestirHistoryResetReason::Explicit);
+    REQUIRE(std::string(restir::restir_history_reset_reason_name(
+                preparation.reset_reason)) == "explicit");
+}

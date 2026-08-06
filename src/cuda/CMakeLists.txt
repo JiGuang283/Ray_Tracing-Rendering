@@ -3,6 +3,10 @@ add_library(raytracer_cuda STATIC
     device_scene.cu
     intersection_kernels.cu
     light_kernels.cu
+    restir/restir_gbuffer.cu
+    restir/restir_reference_shading.cu
+    restir/restir_scheduler.cpp
+    restir/restir_workspace.cpp
     shading_kernels.cu
     wavefront_renderer.cu
     workspace_memory.cu

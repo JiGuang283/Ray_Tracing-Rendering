@@ -3,6 +3,7 @@
 #include "beauty_film.h"
 #include "device_scene.h"
 #include "scene_compiler.h"
+#include "restir/restir_workspace.h"
 #include "wavefront_renderer.h"
 
 #include <atomic>
@@ -57,7 +58,7 @@ class CudaRenderSession final : public IRenderSession {
     }
 
     void reset_history() override {
-        // ReSTIR history storage is introduced with the frame scheduler.
+        m_restir_workspace.reset_history();
     }
 
   private:
@@ -167,6 +168,7 @@ class CudaRenderSession final : public IRenderSession {
 
     DeviceSceneStorage m_device_scene;
     CudaRenderWorkspace m_workspace;
+    CudaRestirWorkspace m_restir_workspace;
     PreparationStats m_preparation;
     std::string m_device_name;
     std::atomic<bool> m_rendering{false};

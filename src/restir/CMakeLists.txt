@@ -1,4 +1,5 @@
 add_library(raytracer_restir STATIC
+    restir_history.cpp
     restir_reference.cpp
     restir_validation.cpp
 )

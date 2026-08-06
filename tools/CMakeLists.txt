@@ -38,7 +38,11 @@ if(RAYTRACER_ENABLE_CUDA)
     raytracer_add_cuda_tool(cuda_shading_check)
     raytracer_add_cuda_tool(cuda_transport_check)
 
-    add_executable(cuda_restir_check cuda_restir_check.cu)
+    add_executable(cuda_restir_check
+        cuda_restir_check.cpp
+        cuda_restir_device_checks.cu
+        restir_gbuffer_host_check.cpp
+    )
     set_target_properties(cuda_restir_check PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
         CUDA_STANDARD 17
@@ -46,8 +50,7 @@ if(RAYTRACER_ENABLE_CUDA)
         CUDA_EXTENSIONS OFF
     )
     target_link_libraries(cuda_restir_check PRIVATE
-        raytracer::restir
-        CUDA::cudart
+        raytracer::cuda
     )
     target_compile_options(cuda_restir_check PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>

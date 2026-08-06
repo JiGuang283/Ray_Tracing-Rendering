@@ -79,6 +79,5 @@ std::uint64_t restir_settings_fingerprint(
     hash_u32(hash, settings.spatial_reuse ? 1u : 0u);
     hash_u32(hash, settings.visibility_reuse ? 1u : 0u);
     hash_u32(hash, static_cast<std::uint32_t>(settings.bias_correction));
-    hash_u32(hash, static_cast<std::uint32_t>(settings.history_mode));
     return hash;
 }
