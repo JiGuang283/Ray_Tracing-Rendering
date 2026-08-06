@@ -199,8 +199,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE void capped_di_source_mass(
 RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus combine_basic_di_source(
     const CompiledSceneView &scene, const RestirDIPixelContext &destination,
     const RestirDIReservoir &source, std::uint32_t max_candidates,
-    float random, RestirDIReservoir &output, bool &accepted) noexcept {
+    float random, RestirDIReservoir &output, bool &accepted,
+    bool *changed_selection = nullptr) noexcept {
     accepted = false;
+    if (changed_selection != nullptr) {
+        *changed_selection = false;
+    }
     std::uint32_t represented_count = 0u;
     float effective_count = 0.0f;
     float mass_fraction = 0.0f;
@@ -247,6 +251,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus combine_basic_di_source(
         return RestirDIStatus::ReservoirFailure;
     }
     accepted = true;
+    if (changed_selection != nullptr) {
+        *changed_selection = combined.changed_selection();
+    }
     return RestirDIStatus::Success;
 }
 

@@ -5,6 +5,7 @@
 #include "restir_initial_di.h"
 #include "restir_reference_shading.h"
 #include "restir_spatial_di.h"
+#include "restir_temporal_di.h"
 #include "restir_workspace_internal.h"
 
 #include <cuda_runtime.h>
@@ -65,11 +66,8 @@ void validate_settings(const CudaRestirSkeletonSettings &settings) {
         throw std::invalid_argument(
             "BSDF-generated ReSTIR DI candidates are not implemented");
     }
-    if (settings.frame.render.restir.temporal_reuse) {
-        throw std::invalid_argument(
-            "ReSTIR DI temporal reuse is not implemented yet");
-    }
-    if (settings.frame.render.restir.spatial_reuse &&
+    if ((settings.frame.render.restir.spatial_reuse ||
+         settings.frame.render.restir.temporal_reuse) &&
         settings.frame.render.restir.bias_correction ==
             RestirBiasCorrection::Unbiased) {
         throw std::invalid_argument(
@@ -128,6 +126,15 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     RT_CUDA_CHECK(cudaEventRecord(begin));
     std::uint64_t completed = 0;
     bool cancelled = false;
+    auto cancel_at_pass_boundary = [&]() {
+        if (cancel == nullptr ||
+            !cancel->load(std::memory_order_relaxed)) {
+            return false;
+        }
+        RT_CUDA_CHECK(cudaStreamSynchronize(nullptr));
+        cancelled = true;
+        return true;
+    };
     for (std::uint32_t local_iteration = 0;
          local_iteration < settings.frame.render.samples_per_pixel;
          ++local_iteration) {
@@ -160,13 +167,51 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             scene, width, height, iteration, settings.frame.render.seed,
             buffers.gbuffer[write_gbuffer].data(), buffers.counters.data(),
             settings.block_size);
+        if (cancel_at_pass_boundary()) {
+            break;
+        }
         launch_restir_initial_di_candidates(
             scene, buffers.gbuffer[write_gbuffer].data(), width, height,
             iteration, settings.frame.render.seed,
             settings.frame.render.restir.initial_light_candidates,
             buffers.di_reservoir[write_reservoir].data(),
             buffers.counters.data(), settings.block_size);
+        if (cancel_at_pass_boundary()) {
+            break;
+        }
         std::uint32_t final_reservoir = write_reservoir;
+        if (settings.frame.render.restir.temporal_reuse) {
+            const bool history_available =
+                protected_reservoir != restir::kInvalidHistoryBuffer &&
+                buffers.committed_camera_valid;
+            const std::uint32_t destination_reservoir =
+                select_di_scratch(final_reservoir, protected_reservoir);
+            const std::uint32_t previous_gbuffer =
+                history_available
+                    ? buffers.frame_state.committed_gbuffer
+                    : write_gbuffer;
+            const std::uint32_t previous_reservoir =
+                history_available ? protected_reservoir : final_reservoir;
+            launch_restir_temporal_di(
+                scene, buffers.gbuffer[write_gbuffer].data(),
+                buffers.di_reservoir[final_reservoir].data(),
+                buffers.gbuffer[previous_gbuffer].data(),
+                buffers.di_reservoir[previous_reservoir].data(),
+                buffers.committed_camera, history_available,
+                buffers.di_reservoir[destination_reservoir].data(), width,
+                height, iteration, settings.frame.render.seed,
+                settings.frame.render.restir.max_history_length,
+                settings.frame.render.restir.max_reservoir_candidates,
+                settings.frame.render.restir.normal_threshold,
+                settings.frame.render.restir.depth_threshold,
+                settings.frame.render.restir.bias_correction ==
+                    RestirBiasCorrection::Pairwise,
+                buffers.counters.data(), settings.block_size);
+            final_reservoir = destination_reservoir;
+            if (cancel_at_pass_boundary()) {
+                break;
+            }
+        }
         if (settings.frame.render.restir.spatial_reuse) {
             for (std::uint32_t pass = 0;
                  pass < settings.frame.render.restir.spatial_passes;
@@ -201,7 +246,13 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                         buffers.counters.data(), settings.block_size);
                 }
                 final_reservoir = destination_reservoir;
+                if (cancel_at_pass_boundary()) {
+                    break;
+                }
             }
+        }
+        if (cancelled) {
+            break;
         }
         launch_restir_initial_di_shading(
             scene, buffers.gbuffer[write_gbuffer].data(),
@@ -268,6 +319,13 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             counter.di_shading_status[index];
         output.stats.di_spatial_status[index] =
             counter.di_spatial_status[index];
+        output.stats.di_temporal_status[index] =
+            counter.di_temporal_status[index];
+    }
+    for (std::size_t index = 0;
+         index < output.stats.temporal_rejection.size(); ++index) {
+        output.stats.temporal_rejection[index] =
+            counter.temporal_rejection[index];
     }
     for (std::size_t index = 0;
          index < output.stats.spatial_compatibility.size(); ++index) {
@@ -282,6 +340,10 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     output.stats.spatial_accepted = counter.spatial_accepted;
     output.stats.spatial_rejected = counter.spatial_rejected;
     output.stats.pairwise_fallbacks = counter.pairwise_fallbacks;
+    output.stats.temporal_candidates = counter.temporal_candidates;
+    output.stats.temporal_accepted = counter.temporal_accepted;
+    output.stats.temporal_pairwise_fallbacks =
+        counter.temporal_pairwise_fallbacks;
     output.stats.valid_reservoirs = counter.valid_reservoirs;
     if (counter.valid_reservoirs != 0u) {
         const double inverse_valid =

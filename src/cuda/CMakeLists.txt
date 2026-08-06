@@ -6,6 +6,7 @@ add_library(raytracer_cuda STATIC
     restir/restir_gbuffer.cu
     restir/restir_initial_di.cu
     restir/restir_spatial_di.cu
+    restir/restir_temporal_di.cu
     restir/restir_reference_shading.cu
     restir/restir_scheduler.cpp
     restir/restir_workspace.cpp

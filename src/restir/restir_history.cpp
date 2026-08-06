@@ -20,6 +20,7 @@ RestirHistoryKey make_restir_history_key(
     key.width = request.render.extent.width;
     key.height = request.render.extent.height;
     key.integrator = request.render.integrator;
+    key.seed = request.render.seed;
     key.settings = restir_settings_fingerprint(request.render.restir);
     key.revision = request.revision;
     return key;
@@ -37,6 +38,9 @@ RestirHistoryResetReason compare_restir_history(
     }
     if (previous.settings != current.settings) {
         return RestirHistoryResetReason::SettingsChanged;
+    }
+    if (previous.seed != current.seed) {
+        return RestirHistoryResetReason::SeedChanged;
     }
     if (previous.revision.camera != current.revision.camera) {
         return RestirHistoryResetReason::CameraRevisionChanged;
@@ -139,6 +143,8 @@ const char *restir_history_reset_reason_name(
         return "integrator_changed";
     case RestirHistoryResetReason::SettingsChanged:
         return "settings_changed";
+    case RestirHistoryResetReason::SeedChanged:
+        return "seed_changed";
     case RestirHistoryResetReason::CameraRevisionChanged:
         return "camera_revision_changed";
     case RestirHistoryResetReason::GeometryRevisionChanged:

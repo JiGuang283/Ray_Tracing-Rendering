@@ -44,8 +44,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE std::uint32_t restir_random_seed(
 
 RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus reconstruct_restir_di_context(
     const CompiledSceneView &scene, const RestirSurface &stored,
-    std::uint32_t width, std::uint32_t height, std::uint32_t pixel,
-    std::uint32_t iteration, std::uint32_t seed,
+    const PackedCamera &camera, std::uint32_t width, std::uint32_t height,
+    std::uint32_t camera_pixel, std::uint32_t iteration,
+    std::uint32_t seed,
     RestirDIPixelContext &context) noexcept {
     context = {};
     if (!stored.valid()) {
@@ -54,10 +55,14 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus reconstruct_restir_di_context(
     if ((stored.flags & RESTIR_SURFACE_UNSUPPORTED_DOMAIN) != 0u) {
         return RestirDIStatus::UnsupportedSurface;
     }
+    if (width < 2u || height < 2u ||
+        camera_pixel >= static_cast<std::uint64_t>(width) * height) {
+        return RestirDIStatus::ReconstructionFailure;
+    }
     RNG camera_rng(packed_transport::packed_camera_sample_seed(
-        seed, pixel, iteration));
+        seed, camera_pixel, iteration));
     context.camera_ray = packed_transport::generate_packed_camera_ray_core(
-        scene.camera, pixel % width, pixel / width, width, height,
+        camera, camera_pixel % width, camera_pixel / width, width, height,
         camera_rng);
     const PackedHit hit = restir_surface_hit(stored);
     const PackedShadingStatus reconstruction =
@@ -83,6 +88,16 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus reconstruct_restir_di_context(
     return packed_transport::math::finite(context.wo)
                ? RestirDIStatus::Success
                : RestirDIStatus::NonFinite;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus reconstruct_restir_di_context(
+    const CompiledSceneView &scene, const RestirSurface &stored,
+    std::uint32_t width, std::uint32_t height, std::uint32_t pixel,
+    std::uint32_t iteration, std::uint32_t seed,
+    RestirDIPixelContext &context) noexcept {
+    return reconstruct_restir_di_context(
+        scene, stored, scene.camera, width, height, pixel, iteration, seed,
+        context);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE RestirDIStatus

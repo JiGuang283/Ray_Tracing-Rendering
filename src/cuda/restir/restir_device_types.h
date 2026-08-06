@@ -11,7 +11,9 @@ struct DeviceRestirCounters {
     unsigned long long di_generation_status[11]{};
     unsigned long long di_shading_status[11]{};
     unsigned long long di_spatial_status[11]{};
+    unsigned long long di_temporal_status[11]{};
     unsigned long long spatial_compatibility[9]{};
+    unsigned long long temporal_rejection[16]{};
     unsigned long long initial_candidates = 0;
     unsigned long long represented_candidates = 0;
     unsigned long long rejected_candidates = 0;
@@ -19,6 +21,9 @@ struct DeviceRestirCounters {
     unsigned long long spatial_accepted = 0;
     unsigned long long spatial_rejected = 0;
     unsigned long long pairwise_fallbacks = 0;
+    unsigned long long temporal_candidates = 0;
+    unsigned long long temporal_accepted = 0;
+    unsigned long long temporal_pairwise_fallbacks = 0;
     unsigned long long valid_reservoirs = 0;
     unsigned long long reservoir_M_sum = 0;
     unsigned long long reservoir_age_sum = 0;

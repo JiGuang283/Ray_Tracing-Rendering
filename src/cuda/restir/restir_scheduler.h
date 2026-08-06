@@ -30,7 +30,9 @@ struct CudaRestirSchedulerStats {
     std::array<std::uint64_t, 11> di_generation_status{};
     std::array<std::uint64_t, 11> di_shading_status{};
     std::array<std::uint64_t, 11> di_spatial_status{};
+    std::array<std::uint64_t, 11> di_temporal_status{};
     std::array<std::uint64_t, 9> spatial_compatibility{};
+    std::array<std::uint64_t, 16> temporal_rejection{};
     std::uint64_t initial_candidates = 0;
     std::uint64_t represented_candidates = 0;
     std::uint64_t rejected_candidates = 0;
@@ -38,6 +40,9 @@ struct CudaRestirSchedulerStats {
     std::uint64_t spatial_accepted = 0;
     std::uint64_t spatial_rejected = 0;
     std::uint64_t pairwise_fallbacks = 0;
+    std::uint64_t temporal_candidates = 0;
+    std::uint64_t temporal_accepted = 0;
+    std::uint64_t temporal_pairwise_fallbacks = 0;
     std::uint64_t valid_reservoirs = 0;
     double average_represented_M = 0.0;
     double average_effective_M = 0.0;

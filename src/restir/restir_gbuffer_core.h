@@ -36,6 +36,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGBufferStatus build_primary_surface_core(
     std::uint32_t iteration, std::uint32_t seed,
     RestirSurface &output) noexcept {
     output = {};
+    output.motion = kInvalidPackedIndex;
     const std::uint64_t pixel_count =
         static_cast<std::uint64_t>(width) * height;
     if (width < 2u || height < 2u || pixel_index >= pixel_count) {

@@ -19,6 +19,7 @@ enum class RestirHistoryResetReason : std::uint32_t {
     ExtentChanged,
     IntegratorChanged,
     SettingsChanged,
+    SeedChanged,
     CameraRevisionChanged,
     GeometryRevisionChanged,
     MaterialRevisionChanged,
@@ -31,7 +32,7 @@ struct alignas(16) RestirHistoryKey {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     IntegratorKind integrator = IntegratorKind::ReSTIRDI;
-    std::uint32_t reserved = 0;
+    std::uint32_t seed = 0;
     std::uint64_t settings = 0;
     SceneRevision revision;
 };

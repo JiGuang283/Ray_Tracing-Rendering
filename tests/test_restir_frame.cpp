@@ -4,12 +4,15 @@
 #include "restir_di_core.h"
 #include "restir_spatial_core.h"
 #include "restir_spatial_pairwise_core.h"
+#include "restir_reprojection_core.h"
+#include "restir_temporal_core.h"
 #include "restir_surface.h"
 
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -182,6 +185,81 @@ TEST_CASE(restir_pairwise_weights_and_effective_mass_are_explicit) {
     REQUIRE_NEAR(reservoir.unbiased_contribution_weight, 2.0f, 1e-6f);
 }
 
+TEST_CASE(restir_reprojection_maps_fixed_camera_samples_to_their_pixel) {
+    PackedCamera camera;
+    camera.origin = {0.0f, 0.0f, 0.0f};
+    camera.lower_left_corner = {-1.0f, -1.0f, -1.0f};
+    camera.horizontal = {2.0f, 0.0f, 0.0f};
+    camera.vertical = {0.0f, 2.0f, 0.0f};
+    restir::RestirSurface surface;
+    surface.flags = restir::RESTIR_SURFACE_VALID;
+    surface.position = {-0.2f, 0.4f, -2.0f};
+    restir::RestirReprojection projection;
+    REQUIRE(restir::reproject_restir_surface(camera, surface, 11u, 11u,
+                                              projection) ==
+            restir::RestirTemporalRejection::Accepted);
+    REQUIRE(projection.previous_pixel == 6u * 11u + 4u);
+    REQUIRE_NEAR(projection.expected_previous_depth, 2.0f, 1e-6f);
+
+    surface.position = {4.0f, 0.0f, -1.0f};
+    REQUIRE(restir::reproject_restir_surface(camera, surface, 11u, 11u,
+                                              projection) ==
+            restir::RestirTemporalRejection::OutsideFrame);
+}
+
+TEST_CASE(restir_temporal_compatibility_uses_previous_camera_depth) {
+    restir::RestirSurface current;
+    current.flags = restir::RESTIR_SURFACE_VALID;
+    current.instance_id = 4u;
+    current.material_id = 2u;
+    current.shading_normal =
+        restir::pack_octahedral_normal({0.0f, 1.0f, 0.0f});
+    restir::RestirSurface previous = current;
+    previous.view_depth = 5.0f;
+    REQUIRE(restir::restir_temporal_compatibility(
+                current, previous, 5.1f, 0.9f, 0.05f) ==
+            restir::RestirTemporalRejection::Accepted);
+    previous.instance_id = 9u;
+    REQUIRE(restir::restir_temporal_compatibility(
+                current, previous, 5.1f, 0.9f, 0.05f) ==
+            restir::RestirTemporalRejection::GeometryMismatch);
+}
+
+TEST_CASE(restir_temporal_history_age_limit_is_an_explicit_rejection) {
+    PackedCamera camera;
+    camera.origin = {0.0f, 0.0f, 0.0f};
+    camera.lower_left_corner = {-1.0f, -1.0f, -1.0f};
+    camera.horizontal = {2.0f, 0.0f, 0.0f};
+    camera.vertical = {0.0f, 2.0f, 0.0f};
+    restir::RestirSurface current;
+    current.flags = restir::RESTIR_SURFACE_VALID;
+    current.position = {-0.2f, 0.4f, -2.0f};
+    current.instance_id = 4u;
+    current.material_id = 2u;
+    current.shading_normal =
+        restir::pack_octahedral_normal({0.0f, 1.0f, 0.0f});
+    std::vector<restir::RestirSurface> surfaces(121u);
+    surfaces[6u * 11u + 4u] = current;
+    surfaces[6u * 11u + 4u].view_depth = 2.0f;
+    std::vector<restir::RestirDIReservoir> reservoirs(121u);
+    restir::RestirDIReservoir &history = reservoirs[6u * 11u + 4u];
+    history.sample.light_id = 1u;
+    history.weight_sum = 1.0f;
+    history.selected_target = 1.0f;
+    history.unbiased_contribution_weight = 1.0f;
+    history.effective_M = 1.0f;
+    history.M = 1u;
+    history.age = 5u;
+    history.flags = restir::RESERVOIR_FLAG_HAS_SAMPLE |
+                    restir::RESERVOIR_FLAG_FINALIZED;
+    restir::RestirReprojection projection;
+    restir::RestirDITemporalStats stats;
+    REQUIRE(!restir::prepare_restir_temporal_candidate(
+        &camera, current, surfaces.data(), reservoirs.data(), 11u, 11u, 5u,
+        0.9f, 0.1f, projection, stats));
+    REQUIRE(stats.rejection == restir::RestirTemporalRejection::AgeLimit);
+}
+
 TEST_CASE(restir_octahedral_normals_round_trip_both_hemispheres) {
     const std::array<Float3, 8> normals{{
         {1.0f, 0.0f, 0.0f},
@@ -300,6 +378,14 @@ TEST_CASE(restir_history_classifies_incompatible_keys) {
     restir::commit_restir_iteration(
         state, camera_reset.write_gbuffer,
         camera_reset.write_di_reservoir, request.frame_index);
+
+    request.render.seed += 1u;
+    const auto seed_reset = restir::prepare_restir_frame(state, request);
+    REQUIRE(seed_reset.reset_reason ==
+            restir::RestirHistoryResetReason::SeedChanged);
+    restir::commit_restir_iteration(
+        state, seed_reset.write_gbuffer, seed_reset.write_di_reservoir,
+        request.frame_index);
 
     request.frame_index = 2u;
     const auto rewind = restir::prepare_restir_frame(state, request);

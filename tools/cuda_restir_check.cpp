@@ -3,6 +3,7 @@
 #include "compiled_scene.h"
 #include "device_scene.h"
 #include "restir/restir_scheduler.h"
+#include "restir_temporal_core.h"
 #include "restir_gbuffer_host_check.h"
 #include "scene_compiler.h"
 #include "scene_ir.h"
@@ -74,7 +75,7 @@ Options parse_options(int argc, char **argv) {
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
-                   "[--mode reservoir|gbuffer|spatial|statistics] "
+                   "[--mode reservoir|gbuffer|spatial|temporal|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
                    "[--spp N] [--max-depth N] [--seed N] "
                    "[--bias basic|pairwise] [--spatial]\n";
@@ -84,10 +85,12 @@ Options parse_options(int argc, char **argv) {
         }
     }
     if ((options.mode != "reservoir" && options.mode != "gbuffer" &&
-         options.mode != "spatial" && options.mode != "statistics") ||
+         options.mode != "spatial" && options.mode != "temporal" &&
+         options.mode != "statistics") ||
         options.width < 2u || options.height < 2u || options.spp == 0u ||
         options.max_depth == 0u ||
-        ((options.mode == "gbuffer" || options.mode == "spatial") &&
+        ((options.mode == "gbuffer" || options.mode == "spatial" ||
+          options.mode == "temporal") &&
          options.spp != 1u)) {
         throw std::runtime_error("invalid CUDA ReSTIR check settings");
     }
@@ -517,6 +520,179 @@ bool check_spatial(const Options &options) {
     return passed;
 }
 
+bool check_temporal(const Options &options) {
+    const SceneIR ir = load_scene_ir_file(options.scene_file.string());
+    const CompiledScene compiled = compile_scene(ir);
+    const CompiledSceneView host_scene = make_scene_view(compiled);
+    cuda_backend::DeviceSceneStorage device_scene;
+    device_scene.upload(compiled);
+
+    cuda_backend::CudaRestirSkeletonSettings settings;
+    settings.frame.render.extent =
+        make_image_extent(static_cast<int>(options.width),
+                          static_cast<int>(options.height));
+    settings.frame.render.integrator = IntegratorKind::ReSTIRDI;
+    settings.frame.render.samples_per_pixel = 1u;
+    settings.frame.render.max_depth = options.max_depth;
+    settings.frame.render.seed = options.seed;
+    settings.frame.render.sample_clamp = 0.0;
+    settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
+    settings.frame.render.restir.initial_bsdf_candidates = 0u;
+    settings.frame.render.restir.temporal_reuse = true;
+    settings.frame.render.restir.spatial_reuse = false;
+    settings.frame.render.restir.bias_correction = options.bias;
+    settings.frame.camera = ir.camera;
+    settings.reference_transport.policy =
+        integrator_policy(IntegratorKind::MISPath);
+    settings.reference_transport.max_depth = options.max_depth;
+
+    cuda_backend::CudaRestirWorkspace workspace;
+    const cuda_backend::CudaRestirSchedulerOutput previous =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace);
+    settings.frame.render.restir.history_mode = RestirHistoryMode::Continue;
+    settings.frame.frame_index = 1u;
+    const cuda_backend::CudaRestirSchedulerOutput current =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(), settings, workspace);
+    const RestirDITemporalHostCheckResult host =
+        compare_restir_temporal_di_host(
+            host_scene, host_scene.camera, options.width, options.height, 1u,
+            settings.frame.render.restir.initial_light_candidates,
+            settings.frame.render.restir.max_history_length,
+            settings.frame.render.restir.max_reservoir_candidates,
+            settings.frame.render.restir.normal_threshold,
+            settings.frame.render.restir.depth_threshold, options.seed,
+            options.bias == RestirBiasCorrection::Pairwise,
+            previous.gbuffer, previous.di_reservoirs, current.gbuffer,
+            current.di_reservoirs, current.direct_film);
+    const bool stats_match =
+        current.stats.temporal_candidates == host.temporal_candidates &&
+        current.stats.temporal_accepted == host.temporal_accepted &&
+        current.stats.temporal_pairwise_fallbacks ==
+            host.pairwise_fallbacks &&
+        current.stats.visibility_rays == host.visibility_rays &&
+        current.stats.di_temporal_status == host.temporal_status &&
+        current.stats.di_shading_status == host.shading_status &&
+        current.stats.temporal_rejection == host.rejection;
+    std::uint64_t aged = 0u;
+    std::uint64_t age_overflow = 0u;
+    for (const restir::RestirDIReservoir &reservoir :
+         current.di_reservoirs) {
+        aged += reservoir.age > 0u ? 1u : 0u;
+        age_overflow +=
+            reservoir.age > settings.frame.render.restir.max_history_length
+                ? 1u
+                : 0u;
+    }
+
+    CameraConfig moved_camera = ir.camera;
+    moved_camera.lookfrom[0] += 0.15;
+    moved_camera.lookat[0] += 0.15;
+    settings.frame.camera = moved_camera;
+    settings.frame.frame_index = 2u;
+    cuda_backend::DeviceSceneView moved_device_view = device_scene.view();
+    moved_device_view.scene.camera = compile_packed_camera(
+        moved_camera, moved_device_view.scene.scene_time0,
+        moved_device_view.scene.scene_time1);
+    CompiledSceneView moved_host_scene = host_scene;
+    moved_host_scene.camera = moved_device_view.scene.camera;
+    const cuda_backend::CudaRestirSchedulerOutput moved =
+        cuda_backend::render_restir_skeleton_cuda(
+            moved_device_view, settings, workspace);
+    const RestirDITemporalHostCheckResult moved_host =
+        compare_restir_temporal_di_host(
+            moved_host_scene, host_scene.camera, options.width,
+            options.height, 2u,
+            settings.frame.render.restir.initial_light_candidates,
+            settings.frame.render.restir.max_history_length,
+            settings.frame.render.restir.max_reservoir_candidates,
+            settings.frame.render.restir.normal_threshold,
+            settings.frame.render.restir.depth_threshold, options.seed,
+            options.bias == RestirBiasCorrection::Pairwise,
+            current.gbuffer, current.di_reservoirs, moved.gbuffer,
+            moved.di_reservoirs, moved.direct_film);
+    const bool moved_stats_match =
+        moved.stats.temporal_candidates == moved_host.temporal_candidates &&
+        moved.stats.temporal_accepted == moved_host.temporal_accepted &&
+        moved.stats.temporal_pairwise_fallbacks ==
+            moved_host.pairwise_fallbacks &&
+        moved.stats.visibility_rays == moved_host.visibility_rays &&
+        moved.stats.di_temporal_status == moved_host.temporal_status &&
+        moved.stats.di_shading_status == moved_host.shading_status &&
+        moved.stats.temporal_rejection == moved_host.rejection;
+    std::uint64_t moved_pixels = 0u;
+    std::uint64_t temporal_M_overflow = 0u;
+    for (std::uint32_t pixel = 0u;
+         pixel < static_cast<std::uint32_t>(moved.gbuffer.size()); ++pixel) {
+        const restir::RestirSurface &surface = moved.gbuffer[pixel];
+        if (surface.motion != kInvalidPackedIndex &&
+            surface.motion != pixel) {
+            ++moved_pixels;
+        }
+        temporal_M_overflow +=
+            moved.di_reservoirs[pixel].M >
+                    settings.frame.render.restir.max_reservoir_candidates
+                ? 1u
+                : 0u;
+    }
+
+    settings.frame.frame_index = 3u;
+    settings.frame.revision.camera = 1u;
+    const cuda_backend::CudaRestirSchedulerOutput reset =
+        cuda_backend::render_restir_skeleton_cuda(
+            moved_device_view, settings, workspace);
+    const std::uint32_t no_history_index = static_cast<std::uint32_t>(
+        restir::RestirTemporalRejection::NoHistory);
+    const bool revision_reset =
+        reset.stats.history_reset_reason ==
+            restir::RestirHistoryResetReason::CameraRevisionChanged &&
+        reset.stats.temporal_rejection[no_history_index] ==
+            options.width * options.height;
+    const bool passed = host.reservoir_errors == 0u &&
+                        host.motion_errors == 0u &&
+                        host.direct_film_errors == 0u && stats_match &&
+                        current.stats.temporal_accepted > 0u && aged > 0u &&
+                        age_overflow == 0u &&
+                        moved_host.reservoir_errors == 0u &&
+                        moved_host.motion_errors == 0u &&
+                        moved_host.direct_film_errors == 0u &&
+                        moved_stats_match &&
+                        moved.stats.temporal_accepted > 0u &&
+                        moved_pixels > 0u && temporal_M_overflow == 0u &&
+                        revision_reset;
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=temporal"
+              << " bias="
+              << (options.bias == RestirBiasCorrection::Pairwise
+                      ? "pairwise"
+                      : "basic")
+              << " pixels=" << options.width * options.height
+              << " reservoir_errors=" << host.reservoir_errors
+              << " motion_errors=" << host.motion_errors
+              << " direct_errors=" << host.direct_film_errors
+              << " candidates=" << current.stats.temporal_candidates
+              << " accepted=" << current.stats.temporal_accepted
+              << " aged=" << aged
+              << " age_overflow=" << age_overflow
+              << " pairwise_fallbacks="
+              << current.stats.temporal_pairwise_fallbacks
+              << " stats=" << (stats_match ? "pass" : "fail")
+              << " moved_accepted=" << moved.stats.temporal_accepted
+              << " moved_pixels=" << moved_pixels
+              << " M_overflow=" << temporal_M_overflow
+              << " moved_exact="
+              << (moved_stats_match &&
+                          moved_host.reservoir_errors == 0u &&
+                          moved_host.motion_errors == 0u &&
+                          moved_host.direct_film_errors == 0u
+                      ? "pass"
+                      : "fail")
+              << " revision_reset=" << (revision_reset ? 1 : 0)
+              << " result=" << (passed ? "pass" : "fail") << '\n';
+    return passed;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -534,7 +710,9 @@ int main(int argc, char **argv) {
                        ? check_gbuffer(options)
                        : (options.mode == "spatial"
                               ? check_spatial(options)
-                              : check_statistics(options)));
+                              : (options.mode == "temporal"
+                                     ? check_temporal(options)
+                                     : check_statistics(options))));
         return passed
                    ? 0
                    : 1;

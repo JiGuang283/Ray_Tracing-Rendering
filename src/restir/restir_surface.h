@@ -45,8 +45,8 @@ struct alignas(16) RestirSurface {
     std::uint32_t geometric_normal = 0;
     std::uint32_t shading_normal = 0;
     std::uint32_t flags = RESTIR_SURFACE_NONE;
-    // Reserved for a packed current-to-previous pixel motion vector.
-    std::uint32_t motion = 0;
+    // Previous-frame pixel selected by reprojection.
+    std::uint32_t motion = kInvalidPackedIndex;
 
     RT_HOST_DEVICE bool valid() const noexcept {
         return (flags & RESTIR_SURFACE_VALID) != 0u;

@@ -4,6 +4,7 @@
 #include "restir_di_core.h"
 #include "restir_spatial_core.h"
 #include "restir_spatial_pairwise_core.h"
+#include "restir_temporal_core.h"
 
 #include <algorithm>
 #include <cmath>
@@ -316,4 +317,83 @@ RestirDISpatialHostCheckResult compare_restir_spatial_di_pairwise_host(
         scene, width, height, iteration, candidate_count, neighbor_count,
         pass_count, max_candidates, normal_threshold, depth_threshold, seed,
         device_surfaces, device_reservoirs, device_film, true);
+}
+
+RestirDITemporalHostCheckResult compare_restir_temporal_di_host(
+    const CompiledSceneView &scene, const PackedCamera &previous_camera,
+    std::uint32_t width, std::uint32_t height,
+    std::uint32_t iteration, std::uint32_t candidate_count,
+    std::uint32_t max_history_length, std::uint32_t max_candidates,
+    float normal_threshold, float depth_threshold, std::uint32_t seed,
+    bool pairwise,
+    const std::vector<restir::RestirSurface> &previous_surfaces,
+    const std::vector<restir::RestirDIReservoir> &previous_reservoirs,
+    const std::vector<restir::RestirSurface> &device_current_surfaces,
+    const std::vector<restir::RestirDIReservoir> &device_reservoirs,
+    const std::vector<cuda_backend::CudaFilmPixel> &device_film) {
+    RestirDITemporalHostCheckResult result;
+    const std::uint32_t pixel_count = width * height;
+    if (previous_surfaces.size() != pixel_count ||
+        previous_reservoirs.size() != pixel_count ||
+        device_current_surfaces.size() != pixel_count ||
+        device_reservoirs.size() != pixel_count ||
+        device_film.size() != pixel_count) {
+        result.reservoir_errors = pixel_count;
+        result.motion_errors = pixel_count;
+        result.direct_film_errors = pixel_count;
+        return result;
+    }
+    for (std::uint32_t pixel = 0u; pixel < pixel_count; ++pixel) {
+        restir::RestirSurface current = device_current_surfaces[pixel];
+        current.motion = kInvalidPackedIndex;
+        restir::RestirDIReservoir initial;
+        restir::RestirDICandidateStats initial_stats;
+        (void)restir::generate_initial_di_reservoir(
+            scene, current, width, height, pixel, iteration, seed,
+            candidate_count, initial, initial_stats);
+        restir::RestirDIReservoir temporal;
+        restir::RestirDITemporalStats temporal_stats;
+        const restir::RestirDIStatus status =
+            pairwise
+                ? restir::temporal_resample_di_pairwise(
+                      scene, current, initial, &previous_camera,
+                      previous_surfaces.data(), previous_reservoirs.data(),
+                      width, height, pixel, iteration, seed,
+                      max_history_length, max_candidates, normal_threshold,
+                      depth_threshold, temporal, temporal_stats)
+                : restir::temporal_resample_di_basic(
+                      scene, current, initial, &previous_camera,
+                      previous_surfaces.data(), previous_reservoirs.data(),
+                      width, height, pixel, iteration, seed,
+                      max_history_length, max_candidates, normal_threshold,
+                      depth_threshold, temporal, temporal_stats);
+        ++result.temporal_status[static_cast<std::uint32_t>(status)];
+        ++result.rejection[
+            static_cast<std::uint32_t>(temporal_stats.rejection)];
+        result.temporal_candidates += temporal_stats.candidates;
+        result.temporal_accepted += temporal_stats.accepted;
+        result.pairwise_fallbacks += temporal_stats.pairwise_fallbacks;
+        if (current.motion != device_current_surfaces[pixel].motion) {
+            ++result.motion_errors;
+        }
+        if (!compare_reservoir(device_reservoirs[pixel], temporal)) {
+            ++result.reservoir_errors;
+        }
+
+        Float3 radiance{};
+        std::uint32_t visibility_rays = 0u;
+        const restir::RestirDIStatus shading =
+            restir::shade_initial_di_reservoir(
+                scene, current, temporal, width, height, pixel, iteration,
+                seed, radiance, visibility_rays);
+        ++result.shading_status[static_cast<std::uint32_t>(shading)];
+        result.visibility_rays += visibility_rays;
+        if (device_film[pixel].sample_count != 1u ||
+            !near(device_film[pixel].radiance.x, radiance.x) ||
+            !near(device_film[pixel].radiance.y, radiance.y) ||
+            !near(device_film[pixel].radiance.z, radiance.z)) {
+            ++result.direct_film_errors;
+        }
+    }
+    return result;
 }
