@@ -33,6 +33,7 @@ struct RestirDISpatialStats {
     std::uint32_t candidates = 0;
     std::uint32_t accepted = 0;
     std::uint32_t rejected = 0;
+    std::uint32_t pairwise_fallbacks = 0;
     std::uint32_t compatibility[
         static_cast<std::uint32_t>(RestirSpatialCompatibility::Count)]{};
 };

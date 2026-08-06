@@ -3,6 +3,7 @@
 #include "restir_history.h"
 #include "restir_di_core.h"
 #include "restir_spatial_core.h"
+#include "restir_spatial_pairwise_core.h"
 #include "restir_surface.h"
 
 #include <array>
@@ -158,6 +159,27 @@ TEST_CASE(restir_spatial_compatibility_rejects_surface_discontinuities) {
     REQUIRE(restir::restir_spatial_compatibility(center, neighbor, 0.9f,
                                                   0.1f) ==
             restir::RestirSpatialCompatibility::NormalMismatch);
+}
+
+TEST_CASE(restir_pairwise_weights_and_effective_mass_are_explicit) {
+    REQUIRE_NEAR(restir::restir_pairwise_mis_weight(2.0f, 1.0f, 3.0f,
+                                                    4.0f),
+                 0.6f, 1e-6f);
+    REQUIRE_NEAR(restir::restir_pairwise_m_factor(0.0f, 0.0f), 1.0f,
+                 1e-6f);
+    REQUIRE_NEAR(restir::restir_pairwise_m_factor(2.0f, 1.0f),
+                 1.0f / 256.0f, 1e-6f);
+
+    restir::RestirDIReservoir reservoir;
+    restir::reset_reservoir(reservoir);
+    restir::RestirLightSample sample;
+    sample.light_id = 1u;
+    REQUIRE(restir::stream_di_weight(reservoir, sample, 2.0f, 8.0f,
+                                     4u, 0.5f, 0.0f)
+                .accepted());
+    REQUIRE(restir::finalize_di_reservoir(reservoir, 2.0f).accepted());
+    REQUIRE_NEAR(reservoir.effective_M, 0.5f, 1e-6f);
+    REQUIRE_NEAR(reservoir.unbiased_contribution_weight, 2.0f, 1e-6f);
 }
 
 TEST_CASE(restir_octahedral_normals_round_trip_both_hemispheres) {

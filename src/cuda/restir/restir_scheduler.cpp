@@ -70,10 +70,10 @@ void validate_settings(const CudaRestirSkeletonSettings &settings) {
             "ReSTIR DI temporal reuse is not implemented yet");
     }
     if (settings.frame.render.restir.spatial_reuse &&
-        settings.frame.render.restir.bias_correction !=
-            RestirBiasCorrection::Basic) {
+        settings.frame.render.restir.bias_correction ==
+            RestirBiasCorrection::Unbiased) {
         throw std::invalid_argument(
-            "this stage supports basic ReSTIR DI spatial correction only");
+            "unbiased ReSTIR DI spatial correction is not implemented");
     }
     if (!std::isfinite(settings.frame.render.sample_clamp) ||
         settings.frame.render.sample_clamp < 0.0) {
@@ -154,17 +154,32 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                  ++pass) {
                 const std::uint32_t destination_reservoir =
                     final_reservoir ^ 1u;
-                launch_restir_spatial_di_basic(
-                    scene, buffers.gbuffer[write_gbuffer].data(),
-                    buffers.di_reservoir[final_reservoir].data(),
-                    buffers.di_reservoir[destination_reservoir].data(),
-                    width, height, iteration, pass,
-                    settings.frame.render.seed,
-                    settings.frame.render.restir.spatial_neighbors,
-                    settings.frame.render.restir.max_reservoir_candidates,
-                    settings.frame.render.restir.normal_threshold,
-                    settings.frame.render.restir.depth_threshold,
-                    buffers.counters.data(), settings.block_size);
+                if (settings.frame.render.restir.bias_correction ==
+                    RestirBiasCorrection::Pairwise) {
+                    launch_restir_spatial_di_pairwise(
+                        scene, buffers.gbuffer[write_gbuffer].data(),
+                        buffers.di_reservoir[final_reservoir].data(),
+                        buffers.di_reservoir[destination_reservoir].data(),
+                        width, height, iteration, pass,
+                        settings.frame.render.seed,
+                        settings.frame.render.restir.spatial_neighbors,
+                        settings.frame.render.restir.max_reservoir_candidates,
+                        settings.frame.render.restir.normal_threshold,
+                        settings.frame.render.restir.depth_threshold,
+                        buffers.counters.data(), settings.block_size);
+                } else {
+                    launch_restir_spatial_di_basic(
+                        scene, buffers.gbuffer[write_gbuffer].data(),
+                        buffers.di_reservoir[final_reservoir].data(),
+                        buffers.di_reservoir[destination_reservoir].data(),
+                        width, height, iteration, pass,
+                        settings.frame.render.seed,
+                        settings.frame.render.restir.spatial_neighbors,
+                        settings.frame.render.restir.max_reservoir_candidates,
+                        settings.frame.render.restir.normal_threshold,
+                        settings.frame.render.restir.depth_threshold,
+                        buffers.counters.data(), settings.block_size);
+                }
                 final_reservoir = destination_reservoir;
             }
         }
@@ -244,6 +259,18 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     output.stats.spatial_candidates = counter.spatial_candidates;
     output.stats.spatial_accepted = counter.spatial_accepted;
     output.stats.spatial_rejected = counter.spatial_rejected;
+    output.stats.pairwise_fallbacks = counter.pairwise_fallbacks;
+    output.stats.valid_reservoirs = counter.valid_reservoirs;
+    if (counter.valid_reservoirs != 0u) {
+        const double inverse_valid =
+            1.0 / static_cast<double>(counter.valid_reservoirs);
+        output.stats.average_represented_M =
+            static_cast<double>(counter.reservoir_M_sum) * inverse_valid;
+        output.stats.average_effective_M =
+            counter.reservoir_effective_M_sum * inverse_valid;
+        output.stats.average_age =
+            static_cast<double>(counter.reservoir_age_sum) * inverse_valid;
+    }
     output.stats.visibility_rays = counter.visibility_rays;
     output.stats.di_clamped_samples = counter.di_clamped_samples;
     output.stats.di_invalid_samples = counter.di_invalid_samples;

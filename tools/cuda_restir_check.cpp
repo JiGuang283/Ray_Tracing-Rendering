@@ -30,6 +30,8 @@ struct Options {
     std::uint32_t spp = 2;
     std::uint32_t max_depth = 6;
     std::uint32_t seed = 123;
+    RestirBiasCorrection bias = RestirBiasCorrection::Pairwise;
+    bool spatial = false;
 };
 
 Options parse_options(int argc, char **argv) {
@@ -58,12 +60,24 @@ Options parse_options(int argc, char **argv) {
                 static_cast<std::uint32_t>(std::stoul(value()));
         } else if (argument == "--seed") {
             options.seed = static_cast<std::uint32_t>(std::stoul(value()));
+        } else if (argument == "--bias") {
+            const std::string name = value();
+            if (name == "basic") {
+                options.bias = RestirBiasCorrection::Basic;
+            } else if (name == "pairwise") {
+                options.bias = RestirBiasCorrection::Pairwise;
+            } else {
+                throw std::runtime_error("invalid ReSTIR bias: " + name);
+            }
+        } else if (argument == "--spatial") {
+            options.spatial = true;
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
                    "[--mode reservoir|gbuffer|spatial|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
-                   "[--spp N] [--max-depth N] [--seed N]\n";
+                   "[--spp N] [--max-depth N] [--seed N] "
+                   "[--bias basic|pairwise] [--spatial]\n";
             std::exit(0);
         } else {
             throw std::runtime_error("unknown option: " + argument);
@@ -319,7 +333,8 @@ bool check_statistics(const Options &options) {
     settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
     settings.frame.render.restir.initial_bsdf_candidates = 0u;
     settings.frame.render.restir.temporal_reuse = false;
-    settings.frame.render.restir.spatial_reuse = false;
+    settings.frame.render.restir.spatial_reuse = options.spatial;
+    settings.frame.render.restir.bias_correction = options.bias;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::DirectLighting);
@@ -378,6 +393,11 @@ bool check_statistics(const Options &options) {
                         restir_visibility < initial_candidates;
     std::cout << "CUDA_RESTIR_CHECK"
               << " mode=statistics"
+              << " spatial=" << (options.spatial ? 1 : 0)
+              << " bias="
+              << (options.bias == RestirBiasCorrection::Pairwise
+                      ? "pairwise"
+                      : "basic")
               << " seeds=" << kSeedCount
               << " spp=" << options.spp
               << " restir_mean=" << restir_mean
@@ -415,8 +435,7 @@ bool check_spatial(const Options &options) {
     settings.frame.render.restir.spatial_neighbors = 5u;
     settings.frame.render.restir.spatial_passes = 1u;
     settings.frame.render.restir.max_reservoir_candidates = 32u;
-    settings.frame.render.restir.bias_correction =
-        RestirBiasCorrection::Basic;
+    settings.frame.render.restir.bias_correction = options.bias;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::MISPath);
@@ -427,15 +446,27 @@ bool check_spatial(const Options &options) {
         cuda_backend::render_restir_skeleton_cuda(
             device_scene.view(), settings, workspace);
     const RestirDISpatialHostCheckResult host =
-        compare_restir_spatial_di_basic_host(
-            host_scene, options.width, options.height, 0u,
-            settings.frame.render.restir.initial_light_candidates,
-            settings.frame.render.restir.spatial_neighbors,
-            settings.frame.render.restir.spatial_passes,
-            settings.frame.render.restir.max_reservoir_candidates,
-            settings.frame.render.restir.normal_threshold,
-            settings.frame.render.restir.depth_threshold, options.seed,
-            output.gbuffer, output.di_reservoirs, output.direct_film);
+        options.bias == RestirBiasCorrection::Pairwise
+            ? compare_restir_spatial_di_pairwise_host(
+                  host_scene, options.width, options.height, 0u,
+                  settings.frame.render.restir.initial_light_candidates,
+                  settings.frame.render.restir.spatial_neighbors,
+                  settings.frame.render.restir.spatial_passes,
+                  settings.frame.render.restir.max_reservoir_candidates,
+                  settings.frame.render.restir.normal_threshold,
+                  settings.frame.render.restir.depth_threshold, options.seed,
+                  output.gbuffer, output.di_reservoirs,
+                  output.direct_film)
+            : compare_restir_spatial_di_basic_host(
+                  host_scene, options.width, options.height, 0u,
+                  settings.frame.render.restir.initial_light_candidates,
+                  settings.frame.render.restir.spatial_neighbors,
+                  settings.frame.render.restir.spatial_passes,
+                  settings.frame.render.restir.max_reservoir_candidates,
+                  settings.frame.render.restir.normal_threshold,
+                  settings.frame.render.restir.depth_threshold, options.seed,
+                  output.gbuffer, output.di_reservoirs,
+                  output.direct_film);
     const bool stats_match =
         output.stats.spatial_candidates == host.spatial_candidates &&
         output.stats.spatial_accepted == host.spatial_accepted &&
@@ -443,7 +474,8 @@ bool check_spatial(const Options &options) {
         output.stats.visibility_rays == host.visibility_rays &&
         output.stats.di_spatial_status == host.spatial_status &&
         output.stats.di_shading_status == host.shading_status &&
-        output.stats.spatial_compatibility == host.compatibility;
+        output.stats.spatial_compatibility == host.compatibility &&
+        output.stats.pairwise_fallbacks == host.pairwise_fallbacks;
     std::uint64_t capped_errors = 0u;
     for (const restir::RestirDIReservoir &reservoir :
          output.di_reservoirs) {
@@ -460,12 +492,22 @@ bool check_spatial(const Options &options) {
                         capped_errors == 0u && distinct_commits;
     std::cout << "CUDA_RESTIR_CHECK"
               << " mode=spatial"
+              << " bias="
+              << (options.bias == RestirBiasCorrection::Pairwise
+                      ? "pairwise"
+                      : "basic")
               << " pixels=" << options.width * options.height
               << " reservoir_errors=" << host.reservoir_errors
               << " direct_errors=" << host.direct_film_errors
               << " candidates=" << output.stats.spatial_candidates
               << " accepted=" << output.stats.spatial_accepted
               << " rejected=" << output.stats.spatial_rejected
+              << " pairwise_fallbacks="
+              << output.stats.pairwise_fallbacks
+              << " valid_reservoirs=" << output.stats.valid_reservoirs
+              << " average_M=" << output.stats.average_represented_M
+              << " average_effective_M="
+              << output.stats.average_effective_M
               << " capped_errors=" << capped_errors
               << " distinct_commits=" << (distinct_commits ? 1 : 0)
               << " stats=" << (stats_match ? "pass" : "fail")

@@ -18,6 +18,11 @@ struct DeviceRestirCounters {
     unsigned long long spatial_candidates = 0;
     unsigned long long spatial_accepted = 0;
     unsigned long long spatial_rejected = 0;
+    unsigned long long pairwise_fallbacks = 0;
+    unsigned long long valid_reservoirs = 0;
+    unsigned long long reservoir_M_sum = 0;
+    unsigned long long reservoir_age_sum = 0;
+    double reservoir_effective_M_sum = 0.0;
     unsigned long long visibility_rays = 0;
     unsigned long long di_clamped_samples = 0;
     unsigned long long di_invalid_samples = 0;

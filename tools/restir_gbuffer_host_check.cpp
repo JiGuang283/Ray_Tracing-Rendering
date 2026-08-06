@@ -3,6 +3,7 @@
 #include "restir_gbuffer_core.h"
 #include "restir_di_core.h"
 #include "restir_spatial_core.h"
+#include "restir_spatial_pairwise_core.h"
 
 #include <algorithm>
 #include <cmath>
@@ -208,7 +209,7 @@ RestirDIHostCheckResult compare_restir_initial_di_host(
     return result;
 }
 
-RestirDISpatialHostCheckResult compare_restir_spatial_di_basic_host(
+static RestirDISpatialHostCheckResult compare_restir_spatial_di_host_impl(
     const CompiledSceneView &scene, std::uint32_t width,
     std::uint32_t height, std::uint32_t iteration,
     std::uint32_t candidate_count, std::uint32_t neighbor_count,
@@ -216,7 +217,8 @@ RestirDISpatialHostCheckResult compare_restir_spatial_di_basic_host(
     float normal_threshold, float depth_threshold, std::uint32_t seed,
     const std::vector<restir::RestirSurface> &device_surfaces,
     const std::vector<restir::RestirDIReservoir> &device_reservoirs,
-    const std::vector<cuda_backend::CudaFilmPixel> &device_film) {
+    const std::vector<cuda_backend::CudaFilmPixel> &device_film,
+    bool pairwise) {
     RestirDISpatialHostCheckResult result;
     const std::uint32_t pixel_count = width * height;
     if (device_surfaces.size() != pixel_count ||
@@ -239,15 +241,22 @@ RestirDISpatialHostCheckResult compare_restir_spatial_di_basic_host(
         for (std::uint32_t pixel = 0; pixel < pixel_count; ++pixel) {
             restir::RestirDISpatialStats spatial_stats;
             const restir::RestirDIStatus status =
-                restir::spatial_resample_di_basic(
-                    scene, device_surfaces.data(), source.data(), width,
-                    height, pixel, iteration, pass, seed, neighbor_count,
-                    max_candidates, normal_threshold, depth_threshold,
-                    destination[pixel], spatial_stats);
+                pairwise
+                    ? restir::spatial_resample_di_pairwise(
+                          scene, device_surfaces.data(), source.data(), width,
+                          height, pixel, iteration, pass, seed,
+                          neighbor_count, max_candidates, normal_threshold,
+                          depth_threshold, destination[pixel], spatial_stats)
+                    : restir::spatial_resample_di_basic(
+                          scene, device_surfaces.data(), source.data(), width,
+                          height, pixel, iteration, pass, seed,
+                          neighbor_count, max_candidates, normal_threshold,
+                          depth_threshold, destination[pixel], spatial_stats);
             ++result.spatial_status[static_cast<std::uint32_t>(status)];
             result.spatial_candidates += spatial_stats.candidates;
             result.spatial_accepted += spatial_stats.accepted;
             result.spatial_rejected += spatial_stats.rejected;
+            result.pairwise_fallbacks += spatial_stats.pairwise_fallbacks;
             for (std::size_t index = 0;
                  index < result.compatibility.size(); ++index) {
                 result.compatibility[index] +=
@@ -277,4 +286,34 @@ RestirDISpatialHostCheckResult compare_restir_spatial_di_basic_host(
         }
     }
     return result;
+}
+
+RestirDISpatialHostCheckResult compare_restir_spatial_di_basic_host(
+    const CompiledSceneView &scene, std::uint32_t width,
+    std::uint32_t height, std::uint32_t iteration,
+    std::uint32_t candidate_count, std::uint32_t neighbor_count,
+    std::uint32_t pass_count, std::uint32_t max_candidates,
+    float normal_threshold, float depth_threshold, std::uint32_t seed,
+    const std::vector<restir::RestirSurface> &device_surfaces,
+    const std::vector<restir::RestirDIReservoir> &device_reservoirs,
+    const std::vector<cuda_backend::CudaFilmPixel> &device_film) {
+    return compare_restir_spatial_di_host_impl(
+        scene, width, height, iteration, candidate_count, neighbor_count,
+        pass_count, max_candidates, normal_threshold, depth_threshold, seed,
+        device_surfaces, device_reservoirs, device_film, false);
+}
+
+RestirDISpatialHostCheckResult compare_restir_spatial_di_pairwise_host(
+    const CompiledSceneView &scene, std::uint32_t width,
+    std::uint32_t height, std::uint32_t iteration,
+    std::uint32_t candidate_count, std::uint32_t neighbor_count,
+    std::uint32_t pass_count, std::uint32_t max_candidates,
+    float normal_threshold, float depth_threshold, std::uint32_t seed,
+    const std::vector<restir::RestirSurface> &device_surfaces,
+    const std::vector<restir::RestirDIReservoir> &device_reservoirs,
+    const std::vector<cuda_backend::CudaFilmPixel> &device_film) {
+    return compare_restir_spatial_di_host_impl(
+        scene, width, height, iteration, candidate_count, neighbor_count,
+        pass_count, max_candidates, normal_threshold, depth_threshold, seed,
+        device_surfaces, device_reservoirs, device_film, true);
 }

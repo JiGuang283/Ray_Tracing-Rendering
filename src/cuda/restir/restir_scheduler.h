@@ -37,6 +37,11 @@ struct CudaRestirSchedulerStats {
     std::uint64_t spatial_candidates = 0;
     std::uint64_t spatial_accepted = 0;
     std::uint64_t spatial_rejected = 0;
+    std::uint64_t pairwise_fallbacks = 0;
+    std::uint64_t valid_reservoirs = 0;
+    double average_represented_M = 0.0;
+    double average_effective_M = 0.0;
+    double average_age = 0.0;
     std::uint64_t visibility_rays = 0;
     std::uint64_t di_clamped_samples = 0;
     std::uint64_t di_invalid_samples = 0;

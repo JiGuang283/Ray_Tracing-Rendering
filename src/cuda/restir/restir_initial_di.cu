@@ -61,6 +61,15 @@ __global__ void shade_initial_di_kernel(
         restir::shade_initial_di_reservoir(
             scene.scene, surfaces[pixel], reservoirs[pixel], width, height,
             pixel, iteration, seed, radiance, visibility_rays);
+    if (restir::reservoir_is_usable(reservoirs[pixel])) {
+        atomicAdd(&counters->valid_reservoirs, 1ull);
+        atomicAdd(&counters->reservoir_M_sum,
+                  static_cast<unsigned long long>(reservoirs[pixel].M));
+        atomicAdd(&counters->reservoir_age_sum,
+                  static_cast<unsigned long long>(reservoirs[pixel].age));
+        atomicAdd(&counters->reservoir_effective_M_sum,
+                  static_cast<double>(reservoirs[pixel].effective_M));
+    }
     atomicAdd(&counters->visibility_rays,
               static_cast<unsigned long long>(visibility_rays));
 

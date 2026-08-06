@@ -23,7 +23,7 @@ di_raw_state_valid(const RestirDIReservoir &reservoir) noexcept {
         return reservoir.weight_sum == 0.0f &&
                reservoir.selected_target == 0.0f;
     }
-    return reservoir.weight_sum > 0.0f && reservoir.effective_M > 0.0f &&
+    return reservoir.weight_sum > 0.0f && reservoir.effective_M >= 0.0f &&
            finite(reservoir.selected_target) &&
            reservoir.selected_target > 0.0f;
 }
@@ -69,7 +69,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_di_weight(
                 ? ReservoirRejectReason::ReservoirFinalized
                 : ReservoirRejectReason::InvalidReservoirState);
     }
-    if (represented_count == 0u || !(effective_count > 0.0f)) {
+    if (represented_count == 0u || effective_count < 0.0f) {
         return detail::operation_result(ReservoirRejectReason::EmptyReservoir);
     }
     if (reservoir.M > std::numeric_limits<std::uint32_t>::max() -
@@ -138,7 +138,7 @@ represent_di_candidates(RestirDIReservoir &reservoir,
                 ? ReservoirRejectReason::ReservoirFinalized
                 : ReservoirRejectReason::InvalidReservoirState);
     }
-    if (represented_count == 0u || !(effective_count > 0.0f)) {
+    if (represented_count == 0u || effective_count < 0.0f) {
         return detail::operation_result(ReservoirRejectReason::EmptyReservoir);
     }
     if (reservoir.M > std::numeric_limits<std::uint32_t>::max() -
@@ -215,14 +215,16 @@ RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult stream_candidate(
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult
-finalize_reservoir(RestirDIReservoir &reservoir) noexcept {
+finalize_di_reservoir(RestirDIReservoir &reservoir,
+                      float normalization_denominator) noexcept {
     if (reservoir_is_finalized(reservoir)) {
         return reservoir_is_usable(reservoir)
                    ? detail::operation_result(ReservoirRejectReason::None)
                    : detail::operation_result(
                          ReservoirRejectReason::InvalidReservoirState);
     }
-    if (reservoir.M == 0u || !(reservoir.effective_M > 0.0f)) {
+    if (reservoir.M == 0u || !(reservoir.effective_M > 0.0f) ||
+        !(normalization_denominator > 0.0f)) {
         return detail::operation_result(ReservoirRejectReason::EmptyReservoir);
     }
     if (!reservoir_has_sample(reservoir)) {
@@ -242,9 +244,13 @@ finalize_reservoir(RestirDIReservoir &reservoir) noexcept {
         return detail::operation_result(
             ReservoirRejectReason::NonPositiveSelectedTarget);
     }
+    if (!detail::finite(normalization_denominator)) {
+        return detail::operation_result(
+            ReservoirRejectReason::NonFiniteUnbiasedContributionWeight);
+    }
     const float contribution_weight =
         (reservoir.weight_sum / reservoir.selected_target) /
-        reservoir.effective_M;
+        normalization_denominator;
     if (!detail::finite(contribution_weight) ||
         !(contribution_weight > 0.0f)) {
         return detail::operation_result(
@@ -253,6 +259,11 @@ finalize_reservoir(RestirDIReservoir &reservoir) noexcept {
     reservoir.unbiased_contribution_weight = contribution_weight;
     reservoir.flags |= RESERVOIR_FLAG_FINALIZED;
     return detail::operation_result(ReservoirRejectReason::None);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE ReservoirOperationResult
+finalize_reservoir(RestirDIReservoir &reservoir) noexcept {
+    return finalize_di_reservoir(reservoir, reservoir.effective_M);
 }
 
 } // namespace restir
