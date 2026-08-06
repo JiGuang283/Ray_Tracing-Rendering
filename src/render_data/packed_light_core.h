@@ -448,15 +448,16 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool choose_mesh_element(
            math::finite(element_probability);
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus sample_mesh(
+RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus
+evaluate_mesh_element_sample(
     const CompiledSceneView &scene, const PackedLight &light, Float3 origin,
-    Float2 random, PackedLightSample &sample) {
-    std::uint32_t element_index = 0;
-    float local_random = 0.0f;
-    float element_probability = 0.0f;
-    if (!choose_mesh_element(scene, light, random.x, element_index,
-                             local_random, element_probability)) {
-        return PackedLightStatus::InvalidDistribution;
+    std::uint32_t element_index, float b0, float b1, float b2,
+    PackedLightSample &sample) {
+    if (element_index >= light.element_indices.count || b0 < 0.0f ||
+        b1 < 0.0f || b2 < 0.0f || !math::finite(b0) ||
+        !math::finite(b1) || !math::finite(b2) ||
+        math::absolute((b0 + b1 + b2) - 1.0f) > 1e-5f) {
+        return PackedLightStatus::InvalidInput;
     }
     const std::uint32_t triangle_id = scene.light_element_indices[
         light.element_indices.offset + element_index];
@@ -464,10 +465,6 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus sample_mesh(
     if (!triangle_geometry(scene, light, triangle_id, geometry)) {
         return PackedLightStatus::InvalidInput;
     }
-    const float root = ::sqrtf(local_random);
-    const float b0 = 1.0f - root;
-    const float b1 = unit_random(random.y) * root;
-    const float b2 = 1.0f - b0 - b1;
     const Float3 point = math::add(
         math::multiply(geometry.world0, b0),
         math::add(math::multiply(geometry.world1, b1),
@@ -494,10 +491,30 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus sample_mesh(
     if (emission_status != PackedLightStatus::Success) {
         return emission_status;
     }
+    const float element_probability = scene.light_distributions[
+        light.distribution.offset + element_index];
     sample.pdf = element_probability / geometry.area *
                  distance_squared / cosine;
     sample.element_id = triangle_id;
     return finish_sample(sample);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus sample_mesh(
+    const CompiledSceneView &scene, const PackedLight &light, Float3 origin,
+    Float2 random, PackedLightSample &sample) {
+    std::uint32_t element_index = 0;
+    float local_random = 0.0f;
+    float element_probability = 0.0f;
+    if (!choose_mesh_element(scene, light, random.x, element_index,
+                             local_random, element_probability)) {
+        return PackedLightStatus::InvalidDistribution;
+    }
+    const float root = ::sqrtf(local_random);
+    const float b0 = 1.0f - root;
+    const float b1 = unit_random(random.y) * root;
+    const float b2 = 1.0f - b0 - b1;
+    return evaluate_mesh_element_sample(scene, light, origin, element_index,
+                                        b0, b1, b2, sample);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle(
@@ -659,14 +676,20 @@ RT_HOST_DEVICE RT_FORCE_INLINE void sphere_uv(Float3 normal, Float2 &uv) {
     uv = {phi / (2.0f * kPi), theta / kPi};
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus sample_sphere(
+RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus
+evaluate_sphere_surface_sample(
     const CompiledSceneView &scene, const PackedLight &light, Float3 origin,
-    Float2 random, PackedLightSample &sample) {
+    Float3 position_normal, PackedLightSample &sample) {
     SphereGeometry geometry;
     if (!sphere_geometry(scene, light, geometry)) {
         return PackedLightStatus::InvalidInput;
     }
-    const Float3 position_normal = sphere_sample_normal(random);
+    const float normal_length_squared = math::length_squared(position_normal);
+    if (!math::finite(position_normal) ||
+        !(normal_length_squared > 0.999f &&
+          normal_length_squared < 1.001f)) {
+        return PackedLightStatus::InvalidInput;
+    }
     const Float3 object_point = math::add(
         geometry.sphere->center,
         math::multiply(position_normal, geometry.sphere->radius));
@@ -710,6 +733,13 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus sample_sphere(
     sample.pdf = area_pdf * distance_squared / cosine;
     sample.element_id = light.instance_id;
     return finish_sample(sample);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus sample_sphere(
+    const CompiledSceneView &scene, const PackedLight &light, Float3 origin,
+    Float2 random, PackedLightSample &sample) {
+    return evaluate_sphere_surface_sample(
+        scene, light, origin, sphere_sample_normal(random), sample);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE float sphere_pdf(
