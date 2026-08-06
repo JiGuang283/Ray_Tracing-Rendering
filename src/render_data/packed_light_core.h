@@ -1095,9 +1095,13 @@ packed_emitter_hit_pdf_core(const CompiledSceneView &scene,
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus
-sample_non_delta_light_core(const CompiledSceneView &scene, Float3 origin,
-                            RNG &rng, SelectedPackedLightSample &selected) {
-    selected = {};
+select_non_delta_light_core(const CompiledSceneView &scene, float random,
+                            std::uint32_t &light_id,
+                            std::uint32_t &selection_index,
+                            float &selection_probability) {
+    light_id = kInvalidPackedIndex;
+    selection_index = kInvalidPackedIndex;
+    selection_probability = 0.0f;
     const std::uint32_t count = scene.non_delta_light_indices.count;
     if (count == 0) {
         return PackedLightStatus::NoSample;
@@ -1106,10 +1110,10 @@ sample_non_delta_light_core(const CompiledSceneView &scene, Float3 origin,
         scene.light_cdf.count != count) {
         return PackedLightStatus::InvalidDistribution;
     }
-    const float selection_random = static_cast<float>(rng.next());
-    const float sample_u = static_cast<float>(rng.next());
-    const float sample_v = static_cast<float>(rng.next());
-    const float target = unit_random(selection_random);
+    if (!math::finite(random)) {
+        return PackedLightStatus::InvalidInput;
+    }
+    const float target = unit_random(random);
     std::uint32_t lower = 0;
     std::uint32_t upper = count;
     while (lower < upper) {
@@ -1120,16 +1124,32 @@ sample_non_delta_light_core(const CompiledSceneView &scene, Float3 origin,
             upper = middle;
         }
     }
-    const std::uint32_t index = lower < count ? lower : count - 1;
-    const std::uint32_t light_id = scene.non_delta_light_indices[index];
-    const float probability = scene.light_selection_probabilities[index];
-    if (light_id >= scene.lights.count || !(probability > 0.0f) ||
-        !math::finite(probability)) {
+    selection_index = lower < count ? lower : count - 1;
+    light_id = scene.non_delta_light_indices[selection_index];
+    selection_probability =
+        scene.light_selection_probabilities[selection_index];
+    if (light_id >= scene.lights.count ||
+        !(selection_probability > 0.0f) ||
+        !math::finite(selection_probability)) {
         return PackedLightStatus::InvalidDistribution;
     }
-    selected.selection_index = index;
-    selected.selection_probability = probability;
-    return sample_packed_light_core(scene, light_id, origin,
+    return PackedLightStatus::Success;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedLightStatus
+sample_non_delta_light_core(const CompiledSceneView &scene, Float3 origin,
+                            RNG &rng, SelectedPackedLightSample &selected) {
+    selected = {};
+    const float selection_random = static_cast<float>(rng.next());
+    const float sample_u = static_cast<float>(rng.next());
+    const float sample_v = static_cast<float>(rng.next());
+    const PackedLightStatus selection_status = select_non_delta_light_core(
+        scene, selection_random, selected.sample.light_id,
+        selected.selection_index, selected.selection_probability);
+    if (selection_status != PackedLightStatus::Success) {
+        return selection_status;
+    }
+    return sample_packed_light_core(scene, selected.sample.light_id, origin,
                                     {sample_u, sample_v}, selected.sample);
 }
 
