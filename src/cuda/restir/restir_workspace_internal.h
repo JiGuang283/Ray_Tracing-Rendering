@@ -63,7 +63,9 @@ struct CudaRestirWorkspace::Impl {
         result.completed_history_iterations =
             frame_state.completed_iterations;
         result.pixel_capacity = film.size();
-        result.committed_buffer = frame_state.committed_buffer;
+        result.committed_gbuffer = frame_state.committed_gbuffer;
+        result.committed_di_reservoir =
+            frame_state.committed_di_reservoir;
         result.history_valid = frame_state.history_valid != 0u;
         result.gbuffer_addresses[0] =
             reinterpret_cast<std::uintptr_t>(gbuffer[0].data());

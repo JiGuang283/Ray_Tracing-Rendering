@@ -95,41 +95,70 @@ TEST_CASE(restir_history_only_advances_after_iteration_commit) {
         restir::prepare_restir_frame(state, request);
     REQUIRE(first.reset_reason ==
             restir::RestirHistoryResetReason::Uninitialized);
-    REQUIRE(first.read_buffer == restir::kInvalidHistoryBuffer);
-    REQUIRE(first.write_buffer == 0u);
+    REQUIRE(first.read_gbuffer == restir::kInvalidHistoryBuffer);
+    REQUIRE(first.read_di_reservoir == restir::kInvalidHistoryBuffer);
+    REQUIRE(first.write_gbuffer == 0u);
+    REQUIRE(first.write_di_reservoir == 0u);
     REQUIRE(state.history_valid == 0u);
 
     const restir::RestirFramePreparation cancelled =
         restir::prepare_restir_frame(state, request);
     REQUIRE(cancelled.reset_reason ==
             restir::RestirHistoryResetReason::Uninitialized);
-    REQUIRE(cancelled.write_buffer == 0u);
+    REQUIRE(cancelled.write_gbuffer == 0u);
+    REQUIRE(cancelled.write_di_reservoir == 0u);
     REQUIRE(state.completed_iterations == 0u);
 
-    restir::commit_restir_iteration(state, first.write_buffer,
-                                    request.frame_index);
+    restir::commit_restir_iteration(
+        state, first.write_gbuffer, first.write_di_reservoir,
+        request.frame_index);
     REQUIRE(state.history_valid == 1u);
-    REQUIRE(state.committed_buffer == 0u);
+    REQUIRE(state.committed_gbuffer == 0u);
+    REQUIRE(state.committed_di_reservoir == 0u);
     REQUIRE(state.completed_iterations == 1u);
 
     request.frame_index = 11u;
     const restir::RestirFramePreparation second =
         restir::prepare_restir_frame(state, request);
     REQUIRE(!second.reset());
-    REQUIRE(second.read_buffer == 0u);
-    REQUIRE(second.write_buffer == 1u);
-    restir::commit_restir_iteration(state, second.write_buffer,
-                                    request.frame_index);
-    REQUIRE(state.committed_buffer == 1u);
+    REQUIRE(second.read_gbuffer == 0u);
+    REQUIRE(second.read_di_reservoir == 0u);
+    REQUIRE(second.write_gbuffer == 1u);
+    REQUIRE(second.write_di_reservoir == 1u);
+    restir::commit_restir_iteration(
+        state, second.write_gbuffer, second.write_di_reservoir,
+        request.frame_index);
+    REQUIRE(state.committed_gbuffer == 1u);
+    REQUIRE(state.committed_di_reservoir == 1u);
     REQUIRE(state.completed_iterations == 2u);
+}
+
+TEST_CASE(restir_history_tracks_gbuffer_and_di_reservoir_independently) {
+    restir::RestirFrameState state;
+    RenderFrameRequest request = frame_request(4u);
+    const restir::RestirFramePreparation initial =
+        restir::prepare_restir_frame(state, request);
+    restir::commit_restir_iteration(state, initial.write_gbuffer, 1u,
+                                    request.frame_index);
+    REQUIRE(state.committed_gbuffer == 0u);
+    REQUIRE(state.committed_di_reservoir == 1u);
+
+    request.frame_index = 5u;
+    const restir::RestirFramePreparation next =
+        restir::prepare_restir_frame(state, request);
+    REQUIRE(next.read_gbuffer == 0u);
+    REQUIRE(next.write_gbuffer == 1u);
+    REQUIRE(next.read_di_reservoir == 1u);
+    REQUIRE(next.write_di_reservoir == 0u);
 }
 
 TEST_CASE(restir_history_classifies_incompatible_keys) {
     restir::RestirFrameState state;
     RenderFrameRequest request = frame_request(3u);
     const auto initial = restir::prepare_restir_frame(state, request);
-    restir::commit_restir_iteration(state, initial.write_buffer,
-                                    request.frame_index);
+    restir::commit_restir_iteration(
+        state, initial.write_gbuffer, initial.write_di_reservoir,
+        request.frame_index);
     const std::uint64_t generation = state.history_generation;
 
     request.render.restir.spatial_neighbors += 1u;
@@ -138,15 +167,17 @@ TEST_CASE(restir_history_classifies_incompatible_keys) {
             restir::RestirHistoryResetReason::SettingsChanged);
     REQUIRE(state.history_generation == generation + 1u);
     REQUIRE(state.history_valid == 0u);
-    restir::commit_restir_iteration(state, settings_reset.write_buffer,
-                                    request.frame_index);
+    restir::commit_restir_iteration(
+        state, settings_reset.write_gbuffer,
+        settings_reset.write_di_reservoir, request.frame_index);
 
     request.revision.camera += 1u;
     const auto camera_reset = restir::prepare_restir_frame(state, request);
     REQUIRE(camera_reset.reset_reason ==
             restir::RestirHistoryResetReason::CameraRevisionChanged);
-    restir::commit_restir_iteration(state, camera_reset.write_buffer,
-                                    request.frame_index);
+    restir::commit_restir_iteration(
+        state, camera_reset.write_gbuffer,
+        camera_reset.write_di_reservoir, request.frame_index);
 
     request.frame_index = 2u;
     const auto rewind = restir::prepare_restir_frame(state, request);
@@ -158,7 +189,9 @@ TEST_CASE(restir_explicit_history_reset_clears_committed_state) {
     restir::RestirFrameState state;
     RenderFrameRequest request = frame_request();
     auto preparation = restir::prepare_restir_frame(state, request);
-    restir::commit_restir_iteration(state, preparation.write_buffer, 0u);
+    restir::commit_restir_iteration(
+        state, preparation.write_gbuffer,
+        preparation.write_di_reservoir, 0u);
     const std::uint64_t generation = state.history_generation;
 
     restir::reset_restir_history(state);

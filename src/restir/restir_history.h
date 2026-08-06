@@ -39,16 +39,19 @@ struct alignas(16) RestirFrameState {
     std::uint64_t completed_iterations = 0;
     std::uint64_t history_generation = 0;
     std::uint64_t last_frame_index = 0;
-    std::uint32_t committed_buffer = 0;
+    std::uint32_t committed_gbuffer = 0;
+    std::uint32_t committed_di_reservoir = 0;
     std::uint32_t history_valid = 0;
-    std::uint32_t reserved[2]{};
+    std::uint32_t reserved = 0;
 };
 
 struct RestirFramePreparation {
     RestirHistoryResetReason reset_reason =
         RestirHistoryResetReason::None;
-    std::uint32_t read_buffer = kInvalidHistoryBuffer;
-    std::uint32_t write_buffer = 0;
+    std::uint32_t read_gbuffer = kInvalidHistoryBuffer;
+    std::uint32_t write_gbuffer = 0;
+    std::uint32_t read_di_reservoir = kInvalidHistoryBuffer;
+    std::uint32_t write_di_reservoir = 0;
 
     bool reset() const noexcept {
         return reset_reason != RestirHistoryResetReason::None;
@@ -63,7 +66,8 @@ RestirHistoryResetReason compare_restir_history(
 RestirFramePreparation prepare_restir_frame(
     RestirFrameState &state, const RenderFrameRequest &request);
 void commit_restir_iteration(RestirFrameState &state,
-                             std::uint32_t write_buffer,
+                             std::uint32_t gbuffer_buffer,
+                             std::uint32_t di_reservoir_buffer,
                              std::uint64_t frame_index);
 void reset_restir_history(RestirFrameState &state) noexcept;
 const char *restir_history_reset_reason_name(

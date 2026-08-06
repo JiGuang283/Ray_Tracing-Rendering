@@ -78,23 +78,31 @@ RestirFramePreparation prepare_restir_frame(
 
     RestirFramePreparation preparation;
     preparation.reset_reason = reset_reason;
-    preparation.read_buffer = state.history_valid != 0u
-                                  ? state.committed_buffer
-                                  : kInvalidHistoryBuffer;
-    preparation.write_buffer = state.history_valid != 0u
-                                   ? state.committed_buffer ^ 1u
-                                   : 0u;
+    preparation.read_gbuffer = state.history_valid != 0u
+                                   ? state.committed_gbuffer
+                                   : kInvalidHistoryBuffer;
+    preparation.write_gbuffer = state.history_valid != 0u
+                                    ? state.committed_gbuffer ^ 1u
+                                    : 0u;
+    preparation.read_di_reservoir = state.history_valid != 0u
+                                        ? state.committed_di_reservoir
+                                        : kInvalidHistoryBuffer;
+    preparation.write_di_reservoir = state.history_valid != 0u
+                                         ? state.committed_di_reservoir ^ 1u
+                                         : 0u;
     return preparation;
 }
 
 void commit_restir_iteration(RestirFrameState &state,
-                             std::uint32_t write_buffer,
+                             std::uint32_t gbuffer_buffer,
+                             std::uint32_t di_reservoir_buffer,
                              std::uint64_t frame_index) {
-    if (write_buffer > 1u) {
+    if (gbuffer_buffer > 1u || di_reservoir_buffer > 1u) {
         throw std::invalid_argument(
             "ReSTIR history buffer index must be 0 or 1");
     }
-    state.committed_buffer = write_buffer;
+    state.committed_gbuffer = gbuffer_buffer;
+    state.committed_di_reservoir = di_reservoir_buffer;
     state.history_valid = 1u;
     ++state.completed_iterations;
     state.last_frame_index = frame_index;

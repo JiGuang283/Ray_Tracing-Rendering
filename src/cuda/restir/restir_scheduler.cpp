@@ -118,23 +118,27 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
         }
         const std::uint32_t iteration = static_cast<std::uint32_t>(
             buffers.frame_state.completed_iterations);
-        const std::uint32_t write_buffer =
+        const std::uint32_t write_gbuffer =
             buffers.frame_state.history_valid != 0u
-                ? buffers.frame_state.committed_buffer ^ 1u
-                : preparation.write_buffer;
+                ? buffers.frame_state.committed_gbuffer ^ 1u
+                : preparation.write_gbuffer;
+        const std::uint32_t write_reservoir =
+            buffers.frame_state.history_valid != 0u
+                ? buffers.frame_state.committed_di_reservoir ^ 1u
+                : preparation.write_di_reservoir;
         launch_restir_gbuffer(
             scene, width, height, iteration, settings.frame.render.seed,
-            buffers.gbuffer[write_buffer].data(), buffers.counters.data(),
+            buffers.gbuffer[write_gbuffer].data(), buffers.counters.data(),
             settings.block_size);
         launch_restir_initial_di_candidates(
-            scene, buffers.gbuffer[write_buffer].data(), width, height,
+            scene, buffers.gbuffer[write_gbuffer].data(), width, height,
             iteration, settings.frame.render.seed,
             settings.frame.render.restir.initial_light_candidates,
-            buffers.di_reservoir[write_buffer].data(),
+            buffers.di_reservoir[write_reservoir].data(),
             buffers.counters.data(), settings.block_size);
         launch_restir_initial_di_shading(
-            scene, buffers.gbuffer[write_buffer].data(),
-            buffers.di_reservoir[write_buffer].data(), width, height,
+            scene, buffers.gbuffer[write_gbuffer].data(),
+            buffers.di_reservoir[write_reservoir].data(), width, height,
             iteration, settings.frame.render.seed,
             static_cast<float>(settings.frame.render.sample_clamp),
             buffers.direct_film.data(), buffers.counters.data(),
@@ -147,8 +151,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             buffers.film.data(), buffers.counters.data(),
             settings.block_size);
         RT_CUDA_CHECK(cudaStreamSynchronize(nullptr));
-        restir::commit_restir_iteration(buffers.frame_state, write_buffer,
-                                        settings.frame.frame_index);
+        restir::commit_restir_iteration(
+            buffers.frame_state, write_gbuffer, write_reservoir,
+            settings.frame.frame_index);
         ++completed;
     }
     RT_CUDA_CHECK(cudaEventRecord(end));
@@ -158,9 +163,10 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     buffers.film.download_prefix(output.film, pixel_count);
     buffers.direct_film.download_prefix(output.direct_film, pixel_count);
     if (buffers.frame_state.history_valid != 0u) {
-        buffers.gbuffer[buffers.frame_state.committed_buffer]
+        buffers.gbuffer[buffers.frame_state.committed_gbuffer]
             .download_prefix(output.gbuffer, pixel_count);
-        buffers.di_reservoir[buffers.frame_state.committed_buffer]
+        buffers.di_reservoir[
+            buffers.frame_state.committed_di_reservoir]
             .download_prefix(output.di_reservoirs, pixel_count);
     }
     std::vector<DeviceRestirCounters> counters;

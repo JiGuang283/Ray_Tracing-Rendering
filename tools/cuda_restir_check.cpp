@@ -221,7 +221,9 @@ bool check_gbuffer(const Options &options) {
             restir::RestirHistoryResetReason::Explicit &&
         first_info.history_valid &&
         first_info.completed_history_iterations == options.spp &&
-        first_info.committed_buffer == ((options.spp - 1u) & 1u);
+        first_info.committed_gbuffer == ((options.spp - 1u) & 1u) &&
+        first_info.committed_di_reservoir ==
+            ((options.spp - 1u) & 1u);
 
     settings.frame.render.samples_per_pixel = 1u;
     settings.frame.render.restir.history_mode =
@@ -252,8 +254,10 @@ bool check_gbuffer(const Options &options) {
 
     std::atomic<bool> cancel{true};
     settings.frame.frame_index = 2u;
-    const std::uint32_t committed_before_cancel =
-        continued_info.committed_buffer;
+    const std::uint32_t committed_gbuffer_before_cancel =
+        continued_info.committed_gbuffer;
+    const std::uint32_t committed_reservoir_before_cancel =
+        continued_info.committed_di_reservoir;
     const cuda_backend::CudaRestirSchedulerOutput cancelled =
         cuda_backend::render_restir_skeleton_cuda(
             device_scene.view(), settings, workspace, &cancel);
@@ -263,7 +267,10 @@ bool check_gbuffer(const Options &options) {
         cancelled.stats.cancelled &&
         cancelled.stats.completed_iterations == 0u &&
         cancelled_info.completed_history_iterations == options.spp + 1u &&
-        cancelled_info.committed_buffer == committed_before_cancel;
+        cancelled_info.committed_gbuffer ==
+            committed_gbuffer_before_cancel &&
+        cancelled_info.committed_di_reservoir ==
+            committed_reservoir_before_cancel;
 
     const bool passed = film_errors == 0u && surface_errors == 0u &&
                         di_check.reservoir_errors == 0u &&

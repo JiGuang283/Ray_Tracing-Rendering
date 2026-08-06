@@ -18,7 +18,8 @@ struct CudaRestirWorkspaceInfo {
     std::uint64_t history_generation = 0;
     std::uint64_t completed_history_iterations = 0;
     std::uint32_t pixel_capacity = 0;
-    std::uint32_t committed_buffer = 0;
+    std::uint32_t committed_gbuffer = 0;
+    std::uint32_t committed_di_reservoir = 0;
     bool history_valid = false;
     std::uintptr_t gbuffer_addresses[2]{};
     std::uintptr_t reservoir_addresses[2]{};
