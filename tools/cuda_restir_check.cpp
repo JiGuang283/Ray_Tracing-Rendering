@@ -84,7 +84,7 @@ Options parse_options(int argc, char **argv) {
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
-                   "[--mode reservoir|gbuffer|gi|gi-reuse|spatial|temporal|statistics] "
+                   "[--mode reservoir|gbuffer|gi|gi-reuse|gi-statistics|spatial|temporal|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
                    "[--spp N] [--max-depth N] [--seed N] "
                    "[--bias basic|pairwise] [--spatial] [--temporal]\n";
@@ -95,6 +95,7 @@ Options parse_options(int argc, char **argv) {
     }
     if ((options.mode != "reservoir" && options.mode != "gbuffer" &&
          options.mode != "gi" && options.mode != "gi-reuse" &&
+         options.mode != "gi-statistics" &&
          options.mode != "spatial" && options.mode != "temporal" &&
          options.mode != "statistics") ||
         options.width < 2u || options.height < 2u || options.spp == 0u ||
@@ -120,6 +121,32 @@ double image_mean_luminance(
         samples += pixel.sample_count;
     }
     return samples != 0u ? total / static_cast<double>(samples) : 0.0;
+}
+
+double combined_image_mean_luminance(
+    const std::vector<cuda_backend::CudaFilmPixel> &direct,
+    const std::vector<cuda_backend::CudaFilmPixel> &indirect,
+    bool &sample_counts_valid) {
+    sample_counts_valid = direct.size() == indirect.size();
+    double total = 0.0;
+    std::uint64_t samples = 0u;
+    for (std::size_t index = 0u;
+         sample_counts_valid && index < direct.size(); ++index) {
+        const cuda_backend::CudaFilmPixel &d = direct[index];
+        const cuda_backend::CudaFilmPixel &g = indirect[index];
+        if (d.sample_count != g.sample_count) {
+            sample_counts_valid = false;
+            break;
+        }
+        const Float3 radiance = packed_transport::math::add(
+            d.radiance, g.radiance);
+        total += 0.2126 * radiance.x + 0.7152 * radiance.y +
+                 0.0722 * radiance.z;
+        samples += d.sample_count;
+    }
+    return sample_counts_valid && samples != 0u
+               ? total / static_cast<double>(samples)
+               : 0.0;
 }
 
 double sample_variance(const std::vector<double> &values) {
@@ -662,6 +689,249 @@ bool check_gi_reuse(const Options &options) {
     return passed;
 }
 
+bool check_gi_statistics(const Options &options) {
+    const SceneIR ir = load_scene_ir_file(options.scene_file.string());
+    const CompiledScene compiled = compile_scene(ir);
+    const CompiledSceneView host_scene = make_scene_view(compiled);
+    cuda_backend::DeviceSceneStorage device_scene;
+    device_scene.upload(compiled);
+
+    cuda_backend::CudaRestirSkeletonSettings settings;
+    settings.frame.render.extent =
+        make_image_extent(static_cast<int>(options.width),
+                          static_cast<int>(options.height));
+    settings.frame.render.integrator = IntegratorKind::ReSTIRGI;
+    settings.frame.render.samples_per_pixel = options.spp;
+    settings.frame.render.max_depth = options.max_depth;
+    settings.frame.render.sample_clamp = 0.0;
+    settings.frame.render.restir.history_mode = RestirHistoryMode::Reset;
+    settings.frame.render.restir.initial_bsdf_candidates = 0u;
+    settings.frame.render.restir.initial_gi_candidates = 1u;
+    settings.frame.render.restir.temporal_reuse = options.temporal;
+    settings.frame.render.restir.spatial_reuse = options.spatial;
+    settings.frame.render.restir.spatial_neighbors = 5u;
+    settings.frame.render.restir.spatial_passes = 1u;
+    settings.frame.render.restir.max_reservoir_candidates = 32u;
+    settings.frame.render.restir.bias_correction =
+        RestirBiasCorrection::Basic;
+    settings.frame.camera = ir.camera;
+    settings.reference_transport.policy =
+        integrator_policy(IntegratorKind::MISPath);
+    settings.reference_transport.max_depth = options.max_depth;
+    settings.generate_reference = true;
+
+    std::vector<double> restir_means;
+    std::vector<double> direct_means;
+    std::vector<double> indirect_means;
+    std::vector<double> reference_means;
+    std::vector<double> direct_reference_means;
+    std::vector<double> differences;
+    std::uint64_t temporal_accepted = 0u;
+    std::uint64_t spatial_accepted = 0u;
+    std::uint64_t gi_visibility = 0u;
+    std::uint64_t reference_shadow_rays = 0u;
+    std::uint64_t invalid_samples = 0u;
+    bool sample_counts_valid = true;
+    std::array<std::uint64_t, 16> generation_status{};
+    std::array<std::uint64_t, 16> shading_status{};
+    std::array<std::uint64_t, 16> shift_failures{};
+    std::uint64_t emitter_hits = 0u;
+    std::uint64_t zero_emitter_pdfs = 0u;
+    double bsdf_mis_weight_sum = 0.0;
+    cuda_backend::CudaRenderSettings direct_reference_settings;
+    direct_reference_settings.transport.policy =
+        integrator_policy(IntegratorKind::DirectLighting);
+    direct_reference_settings.transport.max_depth = 1u;
+    direct_reference_settings.width = options.width;
+    direct_reference_settings.height = options.height;
+    direct_reference_settings.samples_per_pixel = options.spp;
+    direct_reference_settings.batch_size = options.width * options.height;
+    direct_reference_settings.sample_clamp = 0.0f;
+    constexpr std::uint32_t kSeedCount = 8u;
+    for (std::uint32_t sequence = 0u; sequence < kSeedCount; ++sequence) {
+        settings.frame.render.seed = options.seed + sequence * 977u;
+        settings.frame.frame_index = sequence;
+        cuda_backend::CudaRestirWorkspace workspace;
+        const cuda_backend::CudaRestirSchedulerOutput output =
+            cuda_backend::render_restir_skeleton_cuda(
+                device_scene.view(), settings, workspace);
+        direct_reference_settings.seed = settings.frame.render.seed;
+        cuda_backend::CudaRenderWorkspace direct_reference_workspace;
+        const cuda_backend::CudaRenderOutput direct_reference =
+            cuda_backend::render_wavefront_cuda(
+                device_scene.view(), direct_reference_settings,
+                direct_reference_workspace);
+        bool sequence_counts_valid = false;
+        const double restir_mean = combined_image_mean_luminance(
+            output.direct_film, output.indirect_film,
+            sequence_counts_valid);
+        const double reference_mean = image_mean_luminance(output.film);
+        sample_counts_valid = sample_counts_valid && sequence_counts_valid &&
+                              output.film.size() ==
+                                  output.direct_film.size();
+        restir_means.push_back(restir_mean);
+        direct_means.push_back(image_mean_luminance(output.direct_film));
+        indirect_means.push_back(
+            image_mean_luminance(output.indirect_film));
+        reference_means.push_back(reference_mean);
+        direct_reference_means.push_back(
+            image_mean_luminance(direct_reference.film));
+        differences.push_back(restir_mean - reference_mean);
+        temporal_accepted += output.stats.gi_temporal_accepted;
+        spatial_accepted += output.stats.gi_spatial_accepted;
+        gi_visibility += output.stats.gi_visibility_rays;
+        reference_shadow_rays += output.stats.shadow_rays;
+        invalid_samples += output.stats.gi_invalid_samples +
+                           output.stats.di_invalid_samples +
+                           output.stats.invalid_samples;
+        for (std::size_t index = 0u; index < generation_status.size();
+             ++index) {
+            generation_status[index] +=
+                output.stats.gi_generation_status[index];
+            shading_status[index] += output.stats.gi_shading_status[index];
+            shift_failures[index] += output.stats.gi_shift_failures[index];
+        }
+        if (sequence == 0u) {
+            const std::uint32_t iteration = options.spp - 1u;
+            constexpr std::uint32_t kCandidateDomain = 0x47494341u;
+            for (std::uint32_t pixel = 0u;
+                 pixel < output.gbuffer.size(); ++pixel) {
+                restir::RestirDIPixelContext primary;
+                if (restir::reconstruct_restir_gi_context(
+                        host_scene, output.gbuffer[pixel], options.width,
+                        options.height, pixel, iteration,
+                        settings.frame.render.seed, primary) !=
+                    restir::RestirGIStatus::Success) {
+                    continue;
+                }
+                RNG rng(restir::restir_random_seed(
+                    settings.frame.render.seed, pixel, iteration,
+                    kCandidateDomain));
+                PackedBSDFSample sample{};
+                if (packed_bsdf::sample_packed_bsdf_core(
+                        primary.material, primary.wo, rng, sample) !=
+                    PackedBSDFStatus::Success) {
+                    continue;
+                }
+                const PackedRay ray = packed_transport::spawn_ray(
+                    primary.surface, sample.wi,
+                    output.gbuffer[pixel].ray_time);
+                PackedHit hit{};
+                if (packed_intersector::intersect_compiled_scene_core(
+                        host_scene, ray, hit, &rng) !=
+                    PackedTraversalStatus::Hit) {
+                    continue;
+                }
+                PackedSurfaceInteraction secondary{};
+                if (packed_reconstruction::reconstruct_compiled_hit_core(
+                        host_scene, ray, hit, secondary) !=
+                        PackedShadingStatus::Success ||
+                    secondary.emitter_id == kInvalidPackedIndex) {
+                    continue;
+                }
+                ++emitter_hits;
+                float light_pdf = 0.0f;
+                const PackedLightStatus status =
+                    packed_light::emitter_hit_mis_pdf_core(
+                        host_scene, secondary.emitter_id, ray.origin,
+                        ray.direction, hit, light_pdf);
+                if (status != PackedLightStatus::Success ||
+                    !(light_pdf > 0.0f)) {
+                    ++zero_emitter_pdfs;
+                    continue;
+                }
+                const double bsdf_squared =
+                    static_cast<double>(sample.pdf) * sample.pdf;
+                const double light_squared =
+                    static_cast<double>(light_pdf) * light_pdf;
+                bsdf_mis_weight_sum +=
+                    bsdf_squared / (bsdf_squared + light_squared);
+            }
+        }
+    }
+
+    auto mean = [](const std::vector<double> &values) {
+        double sum = 0.0;
+        for (double value : values) {
+            sum += value;
+        }
+        return sum / static_cast<double>(values.size());
+    };
+    const double restir_mean = mean(restir_means);
+    const double direct_mean = mean(direct_means);
+    const double indirect_mean = mean(indirect_means);
+    const double reference_mean = mean(reference_means);
+    const double direct_reference_mean = mean(direct_reference_means);
+    const double difference_mean = mean(differences);
+    const double difference_variance = sample_variance(differences);
+    const double standard_error =
+        std::sqrt(difference_variance /
+                  static_cast<double>(differences.size()));
+    const double z_score =
+        std::abs(difference_mean) / std::max(1e-8, standard_error);
+    const double relative_error =
+        std::abs(difference_mean) / std::max(1e-6, reference_mean);
+    const double restir_variance = sample_variance(restir_means);
+    const double reference_variance = sample_variance(reference_means);
+    const bool reuse_exercised =
+        (!options.temporal || temporal_accepted != 0u) &&
+        (!options.spatial || spatial_accepted != 0u);
+    const bool reuse_enabled = options.temporal || options.spatial;
+    const bool statistical_threshold =
+        reuse_enabled ? relative_error <= 0.05
+                      : relative_error <= 0.02 && z_score <= 4.5;
+    const bool passed = sample_counts_valid && invalid_samples == 0u &&
+                        zero_emitter_pdfs == 0u && reuse_exercised &&
+                        statistical_threshold;
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=gi-statistics"
+              << " seeds=" << kSeedCount
+              << " spp=" << options.spp
+              << " spatial=" << (options.spatial ? 1 : 0)
+              << " temporal=" << (options.temporal ? 1 : 0)
+              << " correction="
+              << (reuse_enabled ? "basic" : "initial")
+              << " restir_mean=" << restir_mean
+              << " direct_mean=" << direct_mean
+              << " indirect_mean=" << indirect_mean
+              << " reference_mean=" << reference_mean
+              << " direct_reference_mean=" << direct_reference_mean
+              << " relative_error=" << relative_error
+              << " z_score=" << z_score
+              << " restir_variance=" << restir_variance
+              << " reference_variance=" << reference_variance
+              << " temporal_accepted=" << temporal_accepted
+              << " spatial_accepted=" << spatial_accepted
+              << " gi_visibility=" << gi_visibility
+              << " reference_shadow_rays=" << reference_shadow_rays
+              << " invalid_samples=" << invalid_samples
+              << " emitter_hits=" << emitter_hits
+              << " zero_emitter_pdfs=" << zero_emitter_pdfs
+              << " average_bsdf_mis_weight="
+              << (emitter_hits != zero_emitter_pdfs
+                      ? bsdf_mis_weight_sum /
+                            static_cast<double>(emitter_hits -
+                                                zero_emitter_pdfs)
+                      : 0.0)
+              << " sample_counts="
+              << (sample_counts_valid ? "pass" : "fail")
+              << " result=" << (passed ? "pass" : "fail") << '\n';
+    std::cout << "CUDA_RESTIR_GI_STATUS generation=";
+    for (std::size_t index = 0u; index < generation_status.size(); ++index) {
+        std::cout << (index == 0u ? "" : ",") << generation_status[index];
+    }
+    std::cout << " shading=";
+    for (std::size_t index = 0u; index < shading_status.size(); ++index) {
+        std::cout << (index == 0u ? "" : ",") << shading_status[index];
+    }
+    std::cout << " shift=";
+    for (std::size_t index = 0u; index < shift_failures.size(); ++index) {
+        std::cout << (index == 0u ? "" : ",") << shift_failures[index];
+    }
+    std::cout << '\n';
+    return passed;
+}
+
 bool check_statistics(const Options &options) {
     const SceneIR ir = load_scene_ir_file(options.scene_file.string());
     const CompiledScene compiled = compile_scene(ir);
@@ -1069,11 +1339,13 @@ int main(int argc, char **argv) {
                               ? check_initial_gi(options)
                        : (options.mode == "gi-reuse"
                               ? check_gi_reuse(options)
+                       : (options.mode == "gi-statistics"
+                              ? check_gi_statistics(options)
                        : (options.mode == "spatial"
                               ? check_spatial(options)
                               : (options.mode == "temporal"
                                      ? check_temporal(options)
-                                     : check_statistics(options))))));
+                                     : check_statistics(options)))))));
         return passed
                    ? 0
                    : 1;
