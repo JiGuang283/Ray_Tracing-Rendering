@@ -37,6 +37,7 @@ struct DeviceRestirCounters {
     unsigned long long visibility_rays = 0;
     unsigned long long di_clamped_samples = 0;
     unsigned long long di_invalid_samples = 0;
+    unsigned long long gi_clamped_samples = 0;
     unsigned long long gi_initial_candidates = 0;
     unsigned long long gi_represented_candidates = 0;
     unsigned long long gi_rejected_candidates = 0;

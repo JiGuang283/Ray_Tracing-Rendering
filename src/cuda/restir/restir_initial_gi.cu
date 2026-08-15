@@ -13,6 +13,10 @@ __device__ std::uint32_t gi_status_index(restir::RestirGIStatus status) {
                : static_cast<std::uint32_t>(restir::RestirGIStatus::NonFinite);
 }
 
+__device__ float luminance(Float3 value) {
+    return 0.2126f * value.x + 0.7152f * value.y + 0.0722f * value.z;
+}
+
 __global__ void generate_initial_gi_candidates_kernel(
     DeviceSceneView scene, const restir::RestirSurface *surfaces,
     std::uint32_t width, std::uint32_t height,
@@ -65,7 +69,8 @@ __global__ void shade_initial_gi_kernel(
     std::uint32_t iteration, std::uint32_t seed,
     PackedTransportSettings transport,
     CudaFilmPixel *film, DeviceRestirCounters *counters,
-    std::uint32_t *status_output, bool final_gather) {
+    float sample_clamp, std::uint32_t *status_output,
+    bool final_gather) {
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
     if (pixel >= pixel_count) {
@@ -122,6 +127,13 @@ __global__ void shade_initial_gi_kernel(
         !packed_transport::math::finite(radiance)) {
         radiance = {};
         atomicAdd(&counters->gi_invalid_samples, 1ull);
+    } else if (sample_clamp > 0.0f) {
+        const float value = luminance(radiance);
+        if (value > sample_clamp) {
+            radiance = packed_transport::math::multiply(
+                radiance, sample_clamp / value);
+            atomicAdd(&counters->gi_clamped_samples, 1ull);
+        }
     }
     CudaFilmPixel &output = film[pixel];
     output.radiance = packed_transport::math::add(output.radiance,
@@ -157,14 +169,15 @@ void launch_restir_initial_gi_shading(
     std::uint32_t iteration, std::uint32_t seed,
     const PackedTransportSettings &transport,
     CudaFilmPixel *film, DeviceRestirCounters *counters,
-    std::uint32_t block_size, std::uint32_t *status_output,
-    bool final_gather) {
+    std::uint32_t block_size, float sample_clamp,
+    std::uint32_t *status_output, bool final_gather) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
     shade_initial_gi_kernel<<<grid, block_size>>>(
         scene, surfaces, reservoirs, width, height, iteration, seed,
-        transport, film, counters, status_output, final_gather);
+        transport, film, counters, sample_clamp, status_output,
+        final_gather);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 

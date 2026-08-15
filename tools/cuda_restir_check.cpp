@@ -468,7 +468,8 @@ bool check_initial_gi(const Options &options) {
         device_scene.view(), device_surfaces.data(),
         device_reservoirs.data(), options.width, options.height, 0u,
         options.seed, transport, device_film.data(), device_counters.data(),
-        kBlockSize, device_shading_status.data(), options.final_gather);
+        kBlockSize, 0.0f, device_shading_status.data(),
+        options.final_gather);
 
     std::vector<restir::RestirSurface> surfaces;
     std::vector<restir::RestirGIReservoir> reservoirs;

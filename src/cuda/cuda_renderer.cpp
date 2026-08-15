@@ -269,7 +269,8 @@ class CudaRenderSession final : public IRenderSession {
         stats.completed_samples = output.stats.sample_count;
         stats.sample_count = output.stats.sample_count;
         stats.seed = frame.render.seed;
-        stats.clamped_samples = output.stats.di_clamped_samples;
+        stats.clamped_samples = output.stats.di_clamped_samples +
+                                output.stats.gi_clamped_samples;
         stats.invalid_samples = output.stats.di_invalid_samples +
                                 output.stats.gi_invalid_samples;
         stats.backend = "cuda";
@@ -324,6 +325,8 @@ class CudaRenderSession final : public IRenderSession {
             output.stats.gi_reconnect_selections;
         stats.restir.gi_replay_selections =
             output.stats.gi_replay_selections;
+        stats.restir.gi_clamped_samples =
+            output.stats.gi_clamped_samples;
         stats.restir.gi_invalid_reservoirs =
             output.stats.gi_invalid_samples;
         stats.restir.average_M = output.stats.average_effective_M;

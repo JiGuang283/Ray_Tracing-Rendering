@@ -67,6 +67,7 @@ struct RestirStats {
     std::uint64_t gi_replay_traversal_steps = 0;
     std::uint64_t gi_reconnect_selections = 0;
     std::uint64_t gi_replay_selections = 0;
+    std::uint64_t gi_clamped_samples = 0;
     std::uint64_t gi_invalid_reservoirs = 0;
     double gi_average_M = 0.0;
     double gi_average_age = 0.0;

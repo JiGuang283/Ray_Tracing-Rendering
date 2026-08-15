@@ -80,6 +80,7 @@ struct CudaRestirSchedulerStats {
     std::uint64_t gi_replay_traversal_steps = 0;
     std::uint64_t gi_reconnect_selections = 0;
     std::uint64_t gi_replay_selections = 0;
+    std::uint64_t gi_clamped_samples = 0;
     std::uint64_t gi_invalid_samples = 0;
     std::uint64_t gi_suffix_shadow_rays = 0;
     std::uint64_t gi_suffix_traversal_steps = 0;

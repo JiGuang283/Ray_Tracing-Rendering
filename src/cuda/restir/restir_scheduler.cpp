@@ -401,8 +401,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 height, iteration, settings.frame.render.seed,
                 settings.reference_transport,
                 buffers.indirect_film.data(), buffers.counters.data(),
-                settings.block_size, nullptr,
-                settings.frame.render.restir.final_gather);
+                settings.block_size,
+                static_cast<float>(settings.frame.render.sample_clamp),
+                nullptr, settings.frame.render.restir.final_gather);
         }
         launch_restir_fallback_shading(
             scene, settings.reference_transport,
@@ -606,6 +607,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     output.stats.gi_reconnect_selections =
         counter.gi_reconnect_selections;
     output.stats.gi_replay_selections = counter.gi_replay_selections;
+    output.stats.gi_clamped_samples = counter.gi_clamped_samples;
     output.stats.gi_invalid_samples = counter.gi_invalid_samples;
     output.stats.gi_suffix_shadow_rays = counter.gi_suffix_shadow_rays;
     output.stats.gi_suffix_traversal_steps =
