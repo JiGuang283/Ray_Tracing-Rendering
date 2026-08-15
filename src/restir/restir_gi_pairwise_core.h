@@ -7,13 +7,18 @@
 namespace restir {
 
 RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_gi_pairwise_target(
-    const RestirDIPixelContext &context, const RestirGISample &sample,
-    float &target, RestirGIShiftFailure &failure) noexcept {
-    RestirGIReconnectResult reconnect;
+    const CompiledSceneView &scene, const RestirDIPixelContext &context,
+    const RestirSurface &stored, const RestirGISample &sample,
+    const PackedTransportSettings &transport, float &target,
+    RestirGIShiftFailure &failure, std::uint32_t &shadow_rays,
+    std::uint32_t &traversal_steps) noexcept {
+    RestirGIShiftResult shifted;
     const RestirGIStatus status =
-        evaluate_diffuse_reconnection(context, sample, reconnect);
-    target = reconnect.target;
-    failure = reconnect.failure;
+        evaluate_gi_shift(scene, context, stored, sample, transport, shifted);
+    target = shifted.target;
+    failure = shifted.failure;
+    shadow_rays = shifted.shadow_rays;
+    traversal_steps = shifted.traversal_steps;
     return status;
 }
 

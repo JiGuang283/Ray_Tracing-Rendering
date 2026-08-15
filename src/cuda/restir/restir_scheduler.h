@@ -74,9 +74,18 @@ struct CudaRestirSchedulerStats {
     double gi_average_age = 0.0;
     std::uint64_t gi_visibility_rays = 0;
     std::uint64_t gi_fallbacks = 0;
+    std::uint64_t gi_replay_candidates = 0;
+    std::uint64_t gi_replay_evaluations = 0;
+    std::uint64_t gi_replay_shadow_rays = 0;
+    std::uint64_t gi_replay_traversal_steps = 0;
+    std::uint64_t gi_reconnect_selections = 0;
+    std::uint64_t gi_replay_selections = 0;
     std::uint64_t gi_invalid_samples = 0;
     std::uint64_t gi_suffix_shadow_rays = 0;
     std::uint64_t gi_suffix_traversal_steps = 0;
+    std::uint64_t gi_unique_source_pixels = 0;
+    std::uint64_t gi_max_source_reuse = 0;
+    double gi_average_source_reuse = 0.0;
     restir::RestirHistoryResetReason history_reset_reason =
         restir::RestirHistoryResetReason::None;
     CudaRestirWorkspaceInfo workspace;

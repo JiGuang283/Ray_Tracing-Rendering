@@ -54,6 +54,8 @@ __global__ void generate_initial_gi_candidates_kernel(
               static_cast<unsigned long long>(stats.suffix_traversal_steps));
     atomicAdd(&counters->gi_fallbacks,
               static_cast<unsigned long long>(stats.fallback_paths));
+    atomicAdd(&counters->gi_replay_candidates,
+              static_cast<unsigned long long>(stats.replay_candidates));
 }
 
 __global__ void shade_initial_gi_kernel(
@@ -61,27 +63,43 @@ __global__ void shade_initial_gi_kernel(
     const restir::RestirGIReservoir *reservoirs,
     std::uint32_t width, std::uint32_t height,
     std::uint32_t iteration, std::uint32_t seed,
+    PackedTransportSettings transport,
     CudaFilmPixel *film, DeviceRestirCounters *counters,
-    std::uint32_t *status_output) {
+    std::uint32_t *status_output, bool final_gather) {
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
     if (pixel >= pixel_count) {
         return;
     }
     Float3 radiance{};
-    std::uint32_t visibility_rays = 0u;
+    restir::RestirGIShadingStats stats;
     restir::RestirGIShiftFailure failure =
         restir::RestirGIShiftFailure::None;
     const restir::RestirGIStatus status = restir::shade_gi_reservoir(
         scene.scene, surfaces[pixel], reservoirs[pixel], width, height,
-        pixel, iteration, seed, radiance, visibility_rays, failure);
+        pixel, iteration, seed, radiance, transport, stats, failure,
+        final_gather);
     const std::uint32_t status_value = gi_status_index(status);
     if (status_output != nullptr) {
         status_output[pixel] = status_value;
     }
     atomicAdd(&counters->gi_shading_status[status_value], 1ull);
     atomicAdd(&counters->gi_visibility_rays,
-              static_cast<unsigned long long>(visibility_rays));
+              static_cast<unsigned long long>(stats.visibility_rays));
+    atomicAdd(&counters->gi_replay_evaluations,
+              static_cast<unsigned long long>(stats.replay_evaluations));
+    atomicAdd(&counters->gi_replay_shadow_rays,
+              static_cast<unsigned long long>(stats.replay_shadow_rays));
+    atomicAdd(&counters->gi_replay_traversal_steps,
+              static_cast<unsigned long long>(
+                  stats.replay_traversal_steps));
+    if (restir::reservoir_is_usable(reservoirs[pixel])) {
+        if (final_gather || reservoirs[pixel].sample.random_replay()) {
+            atomicAdd(&counters->gi_replay_selections, 1ull);
+        } else {
+            atomicAdd(&counters->gi_reconnect_selections, 1ull);
+        }
+    }
     const std::uint32_t failure_index = static_cast<std::uint32_t>(failure);
     if (failure_index < 16u &&
         failure != restir::RestirGIShiftFailure::None) {
@@ -137,14 +155,16 @@ void launch_restir_initial_gi_shading(
     const restir::RestirGIReservoir *reservoirs,
     std::uint32_t width, std::uint32_t height,
     std::uint32_t iteration, std::uint32_t seed,
+    const PackedTransportSettings &transport,
     CudaFilmPixel *film, DeviceRestirCounters *counters,
-    std::uint32_t block_size, std::uint32_t *status_output) {
+    std::uint32_t block_size, std::uint32_t *status_output,
+    bool final_gather) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
     shade_initial_gi_kernel<<<grid, block_size>>>(
-        scene, surfaces, reservoirs, width, height, iteration, seed, film,
-        counters, status_output);
+        scene, surfaces, reservoirs, width, height, iteration, seed,
+        transport, film, counters, status_output, final_gather);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 

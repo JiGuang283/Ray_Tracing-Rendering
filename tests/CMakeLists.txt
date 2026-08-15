@@ -99,6 +99,23 @@ if(RAYTRACER_ENABLE_CUDA)
                 --width 32 --height 32 --spp 1 --max-depth 4 --seed 123
                 --bias basic
     )
+    add_test(NAME cuda_restir_gi_replay_check
+        COMMAND cuda_restir_check --mode gi-reuse
+                --scene-file assets/scenes/scene_069_restir_glossy_gi.json
+                --width 32 --height 32 --spp 1 --max-depth 4 --seed 123
+                --bias pairwise --require-replay
+    )
+    add_test(NAME cuda_restir_glossy_gi_initial_check
+        COMMAND cuda_restir_check --mode gi
+                --scene-file assets/scenes/scene_069_restir_glossy_gi.json
+                --width 32 --height 32 --spp 1 --max-depth 4 --seed 123
+    )
+    add_test(NAME cuda_restir_gi_final_gather_check
+        COMMAND cuda_restir_check --mode gi-statistics
+                --scene-file assets/scenes/scene_068_restir_diffuse_gi.json
+                --width 16 --height 16 --spp 8 --max-depth 4 --seed 123
+                --spatial --temporal --bias pairwise --final-gather
+    )
     add_test(NAME cuda_restir_initial_gi_statistics
         COMMAND cuda_restir_check --mode gi-statistics
                 --scene-file assets/scenes/scene_068_restir_diffuse_gi.json
@@ -120,7 +137,7 @@ if(RAYTRACER_ENABLE_CUDA)
         COMMAND cuda_restir_check --mode gi-statistics
                 --scene-file assets/scenes/scene_069_restir_glossy_gi.json
                 --width 32 --height 32 --spp 2048 --max-depth 4 --seed 123
-                --require-fallback
+                --require-replay
     )
     add_test(NAME cuda_restir_spatial_pairwise_check
         COMMAND cuda_restir_check --mode spatial
@@ -209,6 +226,9 @@ if(RAYTRACER_ENABLE_CUDA)
         cuda_restir_initial_gi_check
         cuda_restir_gi_reuse_check
         cuda_restir_gi_reuse_basic_check
+        cuda_restir_gi_replay_check
+        cuda_restir_glossy_gi_initial_check
+        cuda_restir_gi_final_gather_check
         cuda_restir_initial_gi_statistics
         cuda_restir_basic_gi_statistics
         cuda_restir_pairwise_gi_statistics

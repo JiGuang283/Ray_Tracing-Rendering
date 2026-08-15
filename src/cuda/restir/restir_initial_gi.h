@@ -27,8 +27,10 @@ void launch_restir_initial_gi_shading(
     const restir::RestirGIReservoir *reservoirs,
     std::uint32_t width, std::uint32_t height,
     std::uint32_t iteration, std::uint32_t seed,
+    const PackedTransportSettings &transport,
     CudaFilmPixel *film, DeviceRestirCounters *counters,
-    std::uint32_t block_size, std::uint32_t *status_output = nullptr);
+    std::uint32_t block_size, std::uint32_t *status_output = nullptr,
+    bool final_gather = false);
 
 } // namespace cuda_backend
 

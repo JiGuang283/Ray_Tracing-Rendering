@@ -3,6 +3,7 @@
 
 #include "restir_gi_core.h"
 #include "restir_spatial_core.h"
+#include "restir_settings.h"
 
 namespace restir {
 
@@ -14,14 +15,23 @@ struct RestirGISpatialStats {
         static_cast<std::uint32_t>(RestirSpatialCompatibility::Count)]{};
     std::uint32_t shift_failures[kRestirShiftFailureBuckets]{};
     std::uint32_t pairwise_fallbacks = 0u;
+    std::uint32_t replay_evaluations = 0u;
+    std::uint32_t replay_shadow_rays = 0u;
+    std::uint32_t replay_traversal_steps = 0u;
 };
 
 RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus combine_basic_gi_source(
+    const CompiledSceneView &scene,
     const RestirDIPixelContext &destination,
+    const RestirSurface &destination_surface,
     const RestirGIReservoir &source, std::uint32_t max_candidates,
+    const PackedTransportSettings &transport,
     float random, RestirGIReservoir &output, bool &accepted,
     bool *changed_selection = nullptr,
-    RestirGIShiftFailure *shift_failure = nullptr) noexcept {
+    RestirGIShiftFailure *shift_failure = nullptr,
+    std::uint32_t *replay_evaluations = nullptr,
+    std::uint32_t *replay_shadow_rays = nullptr,
+    std::uint32_t *replay_traversal_steps = nullptr) noexcept {
     accepted = false;
     if (changed_selection != nullptr) {
         *changed_selection = false;
@@ -49,17 +59,28 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus combine_basic_gi_source(
                    : RestirGIStatus::ReservoirFailure;
     }
 
-    RestirGIReconnectResult reconnect;
-    const RestirGIStatus reconnect_status =
-        evaluate_diffuse_reconnection(destination, source.sample,
-                                      reconnect);
+    RestirGIShiftResult shifted;
+    const RestirGIStatus reconnect_status = evaluate_gi_shift(
+        scene, destination, destination_surface, source.sample, transport,
+        shifted);
     if (shift_failure != nullptr) {
-        *shift_failure = reconnect.failure;
+        *shift_failure = shifted.failure;
+    }
+    if (source.sample.random_replay()) {
+        if (replay_evaluations != nullptr) {
+            ++*replay_evaluations;
+        }
+        if (replay_shadow_rays != nullptr) {
+            *replay_shadow_rays += shifted.shadow_rays;
+        }
+        if (replay_traversal_steps != nullptr) {
+            *replay_traversal_steps += shifted.traversal_steps;
+        }
     }
     if (reconnect_status != RestirGIStatus::Success) {
         return reconnect_status;
     }
-    if (!(reconnect.target > 0.0f)) {
+    if (!(shifted.target > 0.0f)) {
         const ReservoirOperationResult represented =
             represent_gi_candidates(output, represented_count,
                                     effective_count);
@@ -73,8 +94,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus combine_basic_gi_source(
         source.unbiased_contribution_weight * source.effective_M *
         mass_fraction;
     const ReservoirOperationResult combined = stream_gi_weight(
-        output, source.sample, reconnect.target,
-        reconnect.target * stream_normalization, represented_count,
+        output, source.sample, shifted.target,
+        shifted.target * stream_normalization, represented_count,
         effective_count, random);
     if (!combined.accepted()) {
         return RestirGIStatus::ReservoirFailure;
@@ -93,7 +114,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus spatial_resample_gi_basic(
     std::uint32_t iteration, std::uint32_t pass_index,
     std::uint32_t seed, std::uint32_t neighbor_count,
     std::uint32_t max_candidates, float normal_threshold,
-    float depth_threshold, RestirGIReservoir &output,
+    float depth_threshold, const PackedTransportSettings &transport,
+    RestirGIReservoir &output,
     RestirGISpatialStats &stats) noexcept {
     reset_reservoir(output);
     stats = {};
@@ -119,9 +141,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus spatial_resample_gi_basic(
         bool selected = false;
         RestirGIShiftFailure failure = RestirGIShiftFailure::None;
         const RestirGIStatus status = combine_basic_gi_source(
-            destination, source, max_candidates,
+            scene, destination, surfaces[pixel], source, max_candidates,
+            transport,
             static_cast<float>(rng.next()), output, accepted, &selected,
-            &failure);
+            &failure, &stats.replay_evaluations,
+            &stats.replay_shadow_rays, &stats.replay_traversal_steps);
         if (failure != RestirGIShiftFailure::None) {
             const std::uint32_t index = static_cast<std::uint32_t>(failure);
             if (index < kRestirShiftFailureBuckets) {

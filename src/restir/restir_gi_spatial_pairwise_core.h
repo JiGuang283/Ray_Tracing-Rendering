@@ -16,11 +16,21 @@ RT_HOST_DEVICE RT_FORCE_INLINE void record_gi_shift_failure(
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_spatial_gi_target(
-    const RestirDIPixelContext &context, const RestirGISample &sample,
-    float &target, RestirGISpatialStats &stats) noexcept {
+    const CompiledSceneView &scene, const RestirDIPixelContext &context,
+    const RestirSurface &stored, const RestirGISample &sample,
+    const PackedTransportSettings &transport, float &target,
+    RestirGISpatialStats &stats) noexcept {
     RestirGIShiftFailure failure = RestirGIShiftFailure::None;
-    const RestirGIStatus status =
-        evaluate_gi_pairwise_target(context, sample, target, failure);
+    std::uint32_t shadow_rays = 0u;
+    std::uint32_t traversal_steps = 0u;
+    const RestirGIStatus status = evaluate_gi_pairwise_target(
+        scene, context, stored, sample, transport, target, failure,
+        shadow_rays, traversal_steps);
+    if (sample.random_replay()) {
+        ++stats.replay_evaluations;
+        stats.replay_shadow_rays += shadow_rays;
+        stats.replay_traversal_steps += traversal_steps;
+    }
     record_gi_shift_failure(failure, stats);
     return status;
 }
@@ -32,7 +42,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus spatial_resample_gi_pairwise(
     std::uint32_t iteration, std::uint32_t pass_index,
     std::uint32_t seed, std::uint32_t neighbor_count,
     std::uint32_t max_candidates, float normal_threshold,
-    float depth_threshold, RestirGIReservoir &output,
+    float depth_threshold, const PackedTransportSettings &transport,
+    RestirGIReservoir &output,
     RestirGISpatialStats &stats) noexcept {
     reset_reservoir(output);
     stats = {};
@@ -47,7 +58,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus spatial_resample_gi_pairwise(
         const RestirGIStatus fallback = spatial_resample_gi_basic(
             scene, surfaces, source_reservoirs, width, height, pixel,
             iteration, pass_index, seed, neighbor_count, max_candidates,
-            normal_threshold, depth_threshold, output, stats);
+            normal_threshold, depth_threshold, transport, output, stats);
         ++stats.pairwise_fallbacks;
         return fallback;
     }
@@ -144,11 +155,13 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus spatial_resample_gi_pairwise(
         float neighbor_at_neighbor = 0.0f;
         if (reservoir_is_usable(neighbor_reservoir)) {
             status = evaluate_spatial_gi_target(
-                center_context, neighbor_reservoir.sample,
-                neighbor_at_center, stats);
+                scene, center_context, surfaces[pixel],
+                neighbor_reservoir.sample, transport, neighbor_at_center,
+                stats);
             if (status == RestirGIStatus::Success) {
                 status = evaluate_spatial_gi_target(
-                    neighbor_context, neighbor_reservoir.sample,
+                    scene, neighbor_context, surfaces[neighbor.pixel],
+                    neighbor_reservoir.sample, transport,
                     neighbor_at_neighbor, stats);
             }
             if (status != RestirGIStatus::Success) {
@@ -159,12 +172,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus spatial_resample_gi_pairwise(
         float canonical_at_neighbor = 0.0f;
         float canonical_at_center = 0.0f;
         status = evaluate_spatial_gi_target(
-            neighbor_context, canonical.sample, canonical_at_neighbor,
-            stats);
+            scene, neighbor_context, surfaces[neighbor.pixel],
+            canonical.sample, transport, canonical_at_neighbor, stats);
         if (status == RestirGIStatus::Success) {
             status = evaluate_spatial_gi_target(
-                center_context, canonical.sample, canonical_at_center,
-                stats);
+                scene, center_context, surfaces[pixel], canonical.sample,
+                transport, canonical_at_center, stats);
         }
         if (status != RestirGIStatus::Success) {
             ++stats.rejected;
@@ -211,7 +224,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus spatial_resample_gi_pairwise(
     ++stats.candidates;
     float canonical_target = 0.0f;
     status = evaluate_spatial_gi_target(
-        center_context, canonical.sample, canonical_target, stats);
+        scene, center_context, surfaces[pixel], canonical.sample,
+        transport, canonical_target, stats);
     if (status != RestirGIStatus::Success) {
         ++stats.rejected;
         return status;

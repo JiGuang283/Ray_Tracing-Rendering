@@ -22,6 +22,7 @@ void launch_restir_temporal_gi(
     std::uint32_t max_history_length,
     std::uint32_t max_candidates, float normal_threshold,
     float depth_threshold, bool pairwise,
+    const PackedTransportSettings &transport,
     DeviceRestirCounters *counters,
     std::uint32_t block_size, std::uint32_t *status_output = nullptr);
 

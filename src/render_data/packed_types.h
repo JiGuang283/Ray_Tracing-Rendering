@@ -2,7 +2,7 @@
 #define PACKED_TYPES_H
 
 #include "host_device.h"
-#include "render_types.h"
+#include "integrator_policy.h"
 
 #include <cstdint>
 #include <limits>

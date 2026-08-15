@@ -52,6 +52,12 @@ struct DeviceRestirCounters {
     double gi_reservoir_effective_M_sum = 0.0;
     unsigned long long gi_visibility_rays = 0;
     unsigned long long gi_fallbacks = 0;
+    unsigned long long gi_replay_candidates = 0;
+    unsigned long long gi_replay_evaluations = 0;
+    unsigned long long gi_replay_shadow_rays = 0;
+    unsigned long long gi_replay_traversal_steps = 0;
+    unsigned long long gi_reconnect_selections = 0;
+    unsigned long long gi_replay_selections = 0;
     unsigned long long gi_invalid_samples = 0;
     unsigned long long gi_shift_failures[16]{};
     unsigned long long gi_suffix_shadow_rays = 0;

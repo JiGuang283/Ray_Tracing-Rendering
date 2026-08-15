@@ -222,6 +222,18 @@ int run_benchmark(const AppOptions &options) {
         restir_totals.gi_visibility_rays +=
             last_stats.restir.gi_visibility_rays;
         restir_totals.gi_fallbacks += last_stats.restir.gi_fallbacks;
+        restir_totals.gi_replay_candidates +=
+            last_stats.restir.gi_replay_candidates;
+        restir_totals.gi_replay_evaluations +=
+            last_stats.restir.gi_replay_evaluations;
+        restir_totals.gi_replay_shadow_rays +=
+            last_stats.restir.gi_replay_shadow_rays;
+        restir_totals.gi_replay_traversal_steps +=
+            last_stats.restir.gi_replay_traversal_steps;
+        restir_totals.gi_reconnect_selections +=
+            last_stats.restir.gi_reconnect_selections;
+        restir_totals.gi_replay_selections +=
+            last_stats.restir.gi_replay_selections;
         restir_totals.gi_invalid_reservoirs +=
             last_stats.restir.gi_invalid_reservoirs;
         restir_totals.average_M += last_stats.restir.average_M;
@@ -298,6 +310,18 @@ int run_benchmark(const AppOptions &options) {
                   << last_stats.restir.gi_visibility_rays
                   << " restir_gi_fallbacks="
                   << last_stats.restir.gi_fallbacks
+                  << " restir_gi_replay_candidates="
+                  << last_stats.restir.gi_replay_candidates
+                  << " restir_gi_replay_evaluations="
+                  << last_stats.restir.gi_replay_evaluations
+                  << " restir_gi_replay_shadow_rays="
+                  << last_stats.restir.gi_replay_shadow_rays
+                  << " restir_gi_replay_traversal_steps="
+                  << last_stats.restir.gi_replay_traversal_steps
+                  << " restir_gi_reconnect_selections="
+                  << last_stats.restir.gi_reconnect_selections
+                  << " restir_gi_replay_selections="
+                  << last_stats.restir.gi_replay_selections
                   << " restir_gi_invalid_reservoirs="
                   << last_stats.restir.gi_invalid_reservoirs
                   << " restir_average_M=" << last_stats.restir.average_M
@@ -378,6 +402,18 @@ int run_benchmark(const AppOptions &options) {
               << restir_totals.gi_visibility_rays
               << " restir_gi_fallbacks="
               << restir_totals.gi_fallbacks
+              << " restir_gi_replay_candidates="
+              << restir_totals.gi_replay_candidates
+              << " restir_gi_replay_evaluations="
+              << restir_totals.gi_replay_evaluations
+              << " restir_gi_replay_shadow_rays="
+              << restir_totals.gi_replay_shadow_rays
+              << " restir_gi_replay_traversal_steps="
+              << restir_totals.gi_replay_traversal_steps
+              << " restir_gi_reconnect_selections="
+              << restir_totals.gi_reconnect_selections
+              << " restir_gi_replay_selections="
+              << restir_totals.gi_replay_selections
               << " restir_gi_invalid_reservoirs="
               << restir_totals.gi_invalid_reservoirs
               << " restir_average_M="

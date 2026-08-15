@@ -31,6 +31,10 @@ struct RestirSettings {
     bool temporal_reuse = true;
     bool spatial_reuse = true;
     bool visibility_reuse = false;
+    // When enabled, final shading re-traces a fresh indirect path for each
+    // pixel instead of directly reusing the reservoir's cached suffix. This
+    // reduces spatial correlation at the cost of extra path tracing.
+    bool final_gather = false;
     RestirBiasCorrection bias_correction =
         RestirBiasCorrection::Pairwise;
     RestirHistoryMode history_mode = RestirHistoryMode::Auto;
@@ -57,9 +61,18 @@ struct RestirStats {
     std::uint64_t gi_spatial_accepted = 0;
     std::uint64_t gi_visibility_rays = 0;
     std::uint64_t gi_fallbacks = 0;
+    std::uint64_t gi_replay_candidates = 0;
+    std::uint64_t gi_replay_evaluations = 0;
+    std::uint64_t gi_replay_shadow_rays = 0;
+    std::uint64_t gi_replay_traversal_steps = 0;
+    std::uint64_t gi_reconnect_selections = 0;
+    std::uint64_t gi_replay_selections = 0;
     std::uint64_t gi_invalid_reservoirs = 0;
     double gi_average_M = 0.0;
     double gi_average_age = 0.0;
+    std::uint64_t gi_unique_source_pixels = 0;
+    std::uint64_t gi_max_source_reuse = 0;
+    double gi_average_source_reuse = 0.0;
     std::array<std::uint64_t, kRestirShiftFailureBuckets> shift_failures{};
     std::array<std::uint64_t, kRestirHistoryFailureBuckets>
         history_failures{};

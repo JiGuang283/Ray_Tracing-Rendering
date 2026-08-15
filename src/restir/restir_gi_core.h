@@ -7,6 +7,7 @@
 #include "packed_material_core.h"
 #include "packed_transport_core.h"
 #include "restir_di_core.h"
+#include "restir_settings.h"
 #include "restir_gi_reservoir_core.h"
 #include "surface_reconstruction_core.h"
 
@@ -45,7 +46,9 @@ enum class RestirGIShiftFailure : std::uint32_t {
     MaterialMismatch = 7,
     Occluded = 8,
     NonFinite = 9,
-    Count = 10,
+    ReplayNoSample = 10,
+    ReplayFailure = 11,
+    Count = 12,
 };
 
 struct RestirGICandidateStats {
@@ -55,6 +58,14 @@ struct RestirGICandidateStats {
     std::uint32_t suffix_shadow_rays = 0u;
     std::uint32_t suffix_traversal_steps = 0u;
     std::uint32_t fallback_paths = 0u;
+    std::uint32_t replay_candidates = 0u;
+};
+
+struct RestirGIShadingStats {
+    std::uint32_t visibility_rays = 0u;
+    std::uint32_t replay_evaluations = 0u;
+    std::uint32_t replay_shadow_rays = 0u;
+    std::uint32_t replay_traversal_steps = 0u;
 };
 
 struct RestirGIReconnectResult {
@@ -64,6 +75,23 @@ struct RestirGIReconnectResult {
     float target = 0.0f;
     RestirGIShiftFailure failure = RestirGIShiftFailure::None;
 };
+
+struct RestirGIShiftResult {
+    Float3 integrand{};
+    float target = 0.0f;
+    Float3 direction{};
+    float distance = 0.0f;
+    std::uint32_t shadow_rays = 0u;
+    std::uint32_t traversal_steps = 0u;
+    std::uint32_t path_length = 0u;
+    RestirGIShiftMapping mapping = RestirGIShiftMapping::Reconnect;
+    RestirGIShiftFailure failure = RestirGIShiftFailure::None;
+};
+
+RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_reconnection(
+    const RestirDIPixelContext &destination,
+    const RestirGISample &sample,
+    RestirGIReconnectResult &result) noexcept;
 
 RT_HOST_DEVICE RT_FORCE_INLINE bool make_gi_visibility_ray(
     const PackedSurfaceInteraction &source, Float3 target_position,
@@ -220,7 +248,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_suffix(
     const PackedMaterialOutput &secondary_material, Float3 wo,
     float ray_time, const PackedTransportSettings &transport, RNG &rng,
     Float3 &radiance, std::uint32_t &shadow_rays,
-    std::uint32_t &traversal_steps) noexcept {
+    std::uint32_t &traversal_steps,
+    std::uint32_t *path_length = nullptr) noexcept {
     radiance = {};
     shadow_rays = 0u;
     traversal_steps = 0u;
@@ -243,6 +272,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_suffix(
                    : RestirGIStatus::LightFailure;
     }
     if (transport.max_depth <= 2u) {
+        if (path_length != nullptr) {
+            *path_length = 2u;
+        }
         return packed_transport::math::finite(radiance)
                    ? RestirGIStatus::Success
                    : RestirGIStatus::NonFinite;
@@ -286,6 +318,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_suffix(
     rng.state = state.rng_state;
     shadow_rays += state.shadow_rays;
     traversal_steps += state.traversal_steps;
+    if (path_length != nullptr) {
+        *path_length = state.depth;
+    }
     if (state.status != PackedTransportStatus::Success) {
         return state.status == PackedTransportStatus::TraversalFailure
                    ? RestirGIStatus::TraversalFailure
@@ -297,13 +332,14 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_suffix(
                : RestirGIStatus::NonFinite;
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_gi_fallback_path(
+RT_HOST_DEVICE RT_NOINLINE RestirGIStatus evaluate_gi_fallback_path(
     const CompiledSceneView &scene, const PackedRay &secondary_ray,
     const PackedMaterialOutput &primary_material,
     const PackedBSDFSample &primary_sample,
     const PackedTransportSettings &transport, RNG &rng, Float3 &radiance,
     std::uint32_t &shadow_rays,
-    std::uint32_t &traversal_steps) noexcept {
+    std::uint32_t &traversal_steps,
+    std::uint32_t *path_length = nullptr) noexcept {
     radiance = {};
     shadow_rays = 0u;
     traversal_steps = 0u;
@@ -339,6 +375,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_gi_fallback_path(
     rng.state = state.rng_state;
     shadow_rays = state.shadow_rays;
     traversal_steps = state.traversal_steps;
+    if (path_length != nullptr) {
+        *path_length = state.depth;
+    }
     if (state.status != PackedTransportStatus::Success) {
         return state.status == PackedTransportStatus::TraversalFailure
                    ? RestirGIStatus::TraversalFailure
@@ -348,6 +387,76 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_gi_fallback_path(
     return packed_transport::math::finite(radiance)
                ? RestirGIStatus::Success
                : RestirGIStatus::NonFinite;
+}
+
+RT_HOST_DEVICE RT_NOINLINE RestirGIStatus evaluate_gi_random_replay(
+    const CompiledSceneView &scene, const RestirDIPixelContext &destination,
+    const RestirSurface &stored, const RestirGISample &sample,
+    const PackedTransportSettings &transport, RNG &rng,
+    RestirGIShiftResult &result) noexcept {
+    result = {};
+    result.mapping = RestirGIShiftMapping::RandomReplay;
+    if (!sample.valid() || !sample.random_replay()) {
+        result.failure = RestirGIShiftFailure::InvalidSample;
+        return RestirGIStatus::ReservoirFailure;
+    }
+    PackedBSDFSample primary_sample{};
+    const PackedBSDFStatus bsdf_status =
+        packed_bsdf::sample_packed_bsdf_core(
+            destination.material, destination.wo, rng, primary_sample);
+    if (bsdf_status == PackedBSDFStatus::Empty ||
+        bsdf_status == PackedBSDFStatus::NoSample) {
+        result.failure = RestirGIShiftFailure::ReplayNoSample;
+        return RestirGIStatus::Success;
+    }
+    if (bsdf_status != PackedBSDFStatus::Success ||
+        !(primary_sample.pdf >= 1e-8f)) {
+        result.failure = RestirGIShiftFailure::ReplayFailure;
+        return RestirGIStatus::BSDFFailure;
+    }
+    const PackedRay secondary_ray = packed_transport::spawn_ray(
+        destination.surface, primary_sample.wi, stored.ray_time);
+    const RestirGIStatus replay_status = evaluate_gi_fallback_path(
+        scene, secondary_ray, destination.material, primary_sample,
+        transport, rng, result.integrand, result.shadow_rays,
+        result.traversal_steps, &result.path_length);
+    if (replay_status != RestirGIStatus::Success) {
+        result.failure = RestirGIShiftFailure::ReplayFailure;
+        return replay_status;
+    }
+    result.target = packed_light::math::luminance(result.integrand);
+    if (!packed_transport::math::finite(result.integrand) ||
+        !packed_transport::math::finite(result.target)) {
+        result = {};
+        result.mapping = RestirGIShiftMapping::RandomReplay;
+        result.failure = RestirGIShiftFailure::NonFinite;
+        return RestirGIStatus::NonFinite;
+    }
+    return RestirGIStatus::Success;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_gi_shift(
+    const CompiledSceneView &scene, const RestirDIPixelContext &destination,
+    const RestirSurface &stored, const RestirGISample &sample,
+    const PackedTransportSettings &transport,
+    RestirGIShiftResult &result) noexcept {
+    if (sample.random_replay()) {
+        RNG replay_rng(sample.replay_seed);
+        return evaluate_gi_random_replay(
+            scene, destination, stored, sample, transport, replay_rng,
+            result);
+    }
+    result = {};
+    result.mapping = RestirGIShiftMapping::Reconnect;
+    RestirGIReconnectResult reconnect;
+    const RestirGIStatus status =
+        evaluate_diffuse_reconnection(destination, sample, reconnect);
+    result.integrand = reconnect.integrand_area;
+    result.target = reconnect.target;
+    result.direction = reconnect.direction;
+    result.distance = reconnect.distance;
+    result.failure = reconnect.failure;
+    return status;
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_reconnection(
@@ -419,6 +528,46 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_diffuse_reconnection(
     return RestirGIStatus::Success;
 }
 
+RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus stream_initial_gi_replay(
+    const CompiledSceneView &scene, const RestirDIPixelContext &primary,
+    const RestirSurface &stored, std::uint32_t pixel,
+    std::uint32_t replay_seed, const PackedTransportSettings &transport,
+    RNG &candidate_rng, RestirGIReservoir &reservoir,
+    RestirGICandidateStats &stats) noexcept {
+    RestirGISample replay;
+    replay.source_pdf_area = kRandomReplayProposalDensity;
+    replay.source_pixel = pixel;
+    replay.mapping = RestirGIShiftMapping::RandomReplay;
+    replay.replay_seed = replay_seed;
+    RNG replay_rng(replay_seed);
+    RestirGIShiftResult evaluated;
+    const RestirGIStatus status = evaluate_gi_random_replay(
+        scene, primary, stored, replay, transport, replay_rng, evaluated);
+    candidate_rng.state = replay_rng.state;
+    stats.suffix_shadow_rays += evaluated.shadow_rays;
+    stats.suffix_traversal_steps += evaluated.traversal_steps;
+    if (status != RestirGIStatus::Success) {
+        ++stats.rejected;
+        return status;
+    }
+    replay.path_length = evaluated.path_length;
+    const bool nonzero =
+        !packed_transport::math::black(evaluated.integrand);
+    const RestirGICandidate candidate = make_candidate(
+        replay, evaluated.target, kRandomReplayProposalDensity, nonzero,
+        replay.valid());
+    const ReservoirOperationResult update = stream_candidate(
+        reservoir, candidate, static_cast<float>(candidate_rng.next()));
+    stats.represented += update.represented_candidates;
+    ++stats.replay_candidates;
+    if (!update.accepted() &&
+        update.rejection != ReservoirRejectReason::ZeroTarget) {
+        ++stats.rejected;
+        return RestirGIStatus::ReservoirFailure;
+    }
+    return RestirGIStatus::Success;
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
     const CompiledSceneView &scene, const RestirSurface &stored,
     std::uint32_t width, std::uint32_t height, std::uint32_t pixel,
@@ -446,6 +595,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
     RNG rng(restir_random_seed(seed, pixel, iteration, kCandidateDomain));
     for (std::uint32_t index = 0u; index < candidate_count; ++index) {
         ++stats.attempted;
+        const std::uint32_t replay_seed = rng.state;
         PackedBSDFSample primary_sample{};
         const PackedBSDFStatus bsdf_status =
             packed_bsdf::sample_packed_bsdf_core(
@@ -469,26 +619,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
         const PackedRay secondary_ray = packed_transport::spawn_ray(
             primary.surface, primary_sample.wi, stored.ray_time);
         if (primary_sample.is_delta()) {
-            Float3 fallback{};
-            std::uint32_t fallback_shadow_rays = 0u;
-            std::uint32_t fallback_steps = 0u;
-            const RestirGIStatus fallback_status = evaluate_gi_fallback_path(
-                scene, secondary_ray, primary.material, primary_sample,
-                transport, rng, fallback, fallback_shadow_rays,
-                fallback_steps);
-            stats.suffix_shadow_rays += fallback_shadow_rays;
-            stats.suffix_traversal_steps += fallback_steps;
-            if (fallback_status != RestirGIStatus::Success) {
-                ++stats.rejected;
-                return fallback_status;
+            const RestirGIStatus replay_status = stream_initial_gi_replay(
+                scene, primary, stored, pixel, replay_seed, transport, rng,
+                reservoir, stats);
+            if (replay_status != RestirGIStatus::Success) {
+                return replay_status;
             }
-            if (fallback_radiance != nullptr) {
-                *fallback_radiance = packed_transport::math::add(
-                    *fallback_radiance,
-                    packed_transport::math::multiply(
-                        fallback, 1.0f / static_cast<float>(candidate_count)));
-            }
-            ++stats.fallback_paths;
             continue;
         }
         PackedHit secondary_hit{};
@@ -530,26 +666,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
             continue;
         }
         if (!is_diffuse_secondary(secondary_material)) {
-            Float3 fallback{};
-            std::uint32_t fallback_shadow_rays = 0u;
-            std::uint32_t fallback_steps = 0u;
-            const RestirGIStatus fallback_status = evaluate_gi_fallback_path(
-                scene, secondary_ray, primary.material, primary_sample,
-                transport, rng, fallback, fallback_shadow_rays,
-                fallback_steps);
-            stats.suffix_shadow_rays += fallback_shadow_rays;
-            stats.suffix_traversal_steps += fallback_steps;
-            if (fallback_status != RestirGIStatus::Success) {
-                ++stats.rejected;
-                return fallback_status;
+            const RestirGIStatus replay_status = stream_initial_gi_replay(
+                scene, primary, stored, pixel, replay_seed, transport, rng,
+                reservoir, stats);
+            if (replay_status != RestirGIStatus::Success) {
+                return replay_status;
             }
-            if (fallback_radiance != nullptr) {
-                *fallback_radiance = packed_transport::math::add(
-                    *fallback_radiance,
-                    packed_transport::math::multiply(
-                        fallback, 1.0f / static_cast<float>(candidate_count)));
-            }
-            ++stats.fallback_paths;
             continue;
         }
 
@@ -574,10 +696,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
         Float3 suffix{};
         std::uint32_t suffix_shadow_rays = 0u;
         std::uint32_t suffix_steps = 0u;
+        std::uint32_t suffix_path_length = 0u;
         const RestirGIStatus suffix_status = evaluate_diffuse_suffix(
             scene, secondary, secondary_material, to_primary,
             stored.ray_time, transport, rng, suffix,
-            suffix_shadow_rays, suffix_steps);
+            suffix_shadow_rays, suffix_steps, &suffix_path_length);
         stats.suffix_shadow_rays += suffix_shadow_rays;
         stats.suffix_traversal_steps += suffix_steps;
         if (suffix_status != RestirGIStatus::Success) {
@@ -595,6 +718,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus generate_initial_gi_reservoir(
         canonical.instance_id = secondary_hit.instance_id;
         canonical.primitive_id = secondary_hit.primitive_id;
         canonical.source_pixel = pixel;
+        canonical.mapping = RestirGIShiftMapping::Reconnect;
+        canonical.replay_seed = replay_seed;
+        canonical.path_length = suffix_path_length;
         RestirGIReconnectResult evaluated;
         const RestirGIStatus reconnect_status =
             evaluate_diffuse_reconnection(primary, canonical, evaluated);
@@ -632,10 +758,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus shade_gi_reservoir(
     const RestirGIReservoir &reservoir, std::uint32_t width,
     std::uint32_t height, std::uint32_t pixel,
     std::uint32_t iteration, std::uint32_t seed, Float3 &radiance,
-    std::uint32_t &visibility_rays,
-    RestirGIShiftFailure &failure) noexcept {
+    const PackedTransportSettings &transport,
+    RestirGIShadingStats &stats,
+    RestirGIShiftFailure &failure,
+    bool final_gather = false) noexcept {
     radiance = {};
-    visibility_rays = 0u;
+    stats = {};
     failure = RestirGIShiftFailure::None;
     if (!reservoir_is_usable(reservoir)) {
         return RestirGIStatus::ReservoirEmpty;
@@ -646,16 +774,64 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus shade_gi_reservoir(
     if (context_status != RestirGIStatus::Success) {
         return context_status;
     }
-    RestirGIReconnectResult reconnect;
-    const RestirGIStatus reconnect_status =
-        evaluate_diffuse_reconnection(primary, reservoir.sample, reconnect);
-    failure = reconnect.failure;
+
+    if (final_gather) {
+        // Final gather: do not directly reuse the cached reservoir sample.
+        // Trace a fresh random-replay path from the current pixel so that
+        // spatially reused reservoirs do not all resolve to the same cached
+        // suffix radiance.
+        RestirGISample gather;
+        gather.source_pdf_area = kRandomReplayProposalDensity;
+        gather.source_pixel = pixel;
+        gather.mapping = RestirGIShiftMapping::RandomReplay;
+        constexpr std::uint32_t kFinalGatherDomain = 0x46494741u;
+        gather.replay_seed = restir_random_seed(
+            seed, pixel, iteration, kFinalGatherDomain);
+        RNG gather_rng(gather.replay_seed);
+        RestirGIShiftResult gathered;
+        const RestirGIStatus gather_status = evaluate_gi_random_replay(
+            scene, primary, stored, gather, transport, gather_rng,
+            gathered);
+        failure = gathered.failure;
+        stats.replay_evaluations = 1u;
+        stats.replay_shadow_rays = gathered.shadow_rays;
+        stats.replay_traversal_steps = gathered.traversal_steps;
+        if (gather_status != RestirGIStatus::Success ||
+            !(gathered.target > 0.0f)) {
+            return gather_status;
+        }
+        // The fresh path is an independent path-tracing estimate of the
+        // indirect contribution, so it must not be scaled by the reused
+        // reservoir's unbiased contribution weight.
+        radiance = gathered.integrand;
+        return packed_transport::math::finite(radiance)
+                   ? RestirGIStatus::Success
+                   : RestirGIStatus::NonFinite;
+    }
+
+    RestirGIShiftResult shifted;
+    const RestirGIStatus reconnect_status = evaluate_gi_shift(
+        scene, primary, stored, reservoir.sample, transport, shifted);
+    failure = shifted.failure;
+    if (reservoir.sample.random_replay()) {
+        stats.replay_evaluations = 1u;
+        stats.replay_shadow_rays = shifted.shadow_rays;
+        stats.replay_traversal_steps = shifted.traversal_steps;
+    }
     if (reconnect_status != RestirGIStatus::Success ||
-        !(reconnect.target > 0.0f)) {
+        !(shifted.target > 0.0f)) {
         return reconnect_status;
     }
 
-    ++visibility_rays;
+    if (reservoir.sample.random_replay()) {
+        radiance = packed_transport::math::multiply(
+            shifted.integrand, reservoir.unbiased_contribution_weight);
+        return packed_transport::math::finite(radiance)
+                   ? RestirGIStatus::Success
+                   : RestirGIStatus::NonFinite;
+    }
+
+    ++stats.visibility_rays;
     constexpr std::uint32_t kVisibilityDomain = 0x47495649u;
     RNG visibility_rng(
         restir_random_seed(seed, pixel, iteration, kVisibilityDomain));
@@ -664,7 +840,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus shade_gi_reservoir(
     PackedRay shadow;
     if (!make_gi_visibility_ray(
             primary.surface, reservoir.sample.position, secondary_normal,
-            reconnect.direction, reconnect.distance, stored.ray_time,
+            shifted.direction, shifted.distance, stored.ray_time,
             shadow)) {
         failure = RestirGIShiftFailure::DegenerateDistance;
         return RestirGIStatus::VisibilityFailure;
@@ -681,7 +857,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus shade_gi_reservoir(
         return RestirGIStatus::TraversalFailure;
     }
     radiance = packed_transport::math::multiply(
-        reconnect.integrand_area,
+        shifted.integrand,
         reservoir.unbiased_contribution_weight);
     return packed_transport::math::finite(radiance)
                ? RestirGIStatus::Success

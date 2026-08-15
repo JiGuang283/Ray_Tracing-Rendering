@@ -111,6 +111,12 @@ struct RestirGIReuseHostCheckResult {
     std::uint64_t spatial_pairwise_fallbacks = 0;
     std::uint64_t temporal_pairwise_fallbacks = 0;
     std::uint64_t visibility_rays = 0;
+    std::uint64_t replay_candidates = 0;
+    std::uint64_t replay_evaluations = 0;
+    std::uint64_t replay_shadow_rays = 0;
+    std::uint64_t replay_traversal_steps = 0;
+    std::uint64_t reconnect_selections = 0;
+    std::uint64_t replay_selections = 0;
     std::array<std::uint64_t, 16> generation_status{};
     std::array<std::uint64_t, 16> spatial_status{};
     std::array<std::uint64_t, 16> temporal_status{};

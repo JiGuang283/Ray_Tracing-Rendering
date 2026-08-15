@@ -9,9 +9,18 @@
 
 namespace restir {
 
-// A diffuse GI sample is canonicalized to world-space area measure at x2.
-// The cached suffix radiance is valid only for direction-independent diffuse
-// scattering at the secondary vertex.
+enum class RestirGIShiftMapping : std::uint32_t {
+    Reconnect = 0u,
+    RandomReplay = 1u,
+};
+
+inline constexpr float kRandomReplayProposalDensity = 1.0f;
+inline constexpr float kRandomReplayJacobian = 1.0f;
+
+// Reconnection samples are canonicalized to world-space area measure at x2.
+// Random-replay samples identify a primary-sample-space sequence, whose
+// Jacobian is one. The two domains are explicitly tagged and never inferred
+// from payload values.
 struct alignas(16) RestirGISample {
     Float3 position{};
     float source_pdf_area = 0.0f;
@@ -24,9 +33,27 @@ struct alignas(16) RestirGISample {
     std::uint32_t primitive_id = kInvalidPackedIndex;
     std::uint32_t source_pixel = kInvalidPackedIndex;
 
+    RestirGIShiftMapping mapping = RestirGIShiftMapping::Reconnect;
+    std::uint32_t replay_seed = 0u;
+    std::uint32_t path_length = 0u;
+    std::uint32_t reserved = 0u;
+
     RT_HOST_DEVICE bool valid() const noexcept {
-        return instance_id != kInvalidPackedIndex &&
+        if (mapping == RestirGIShiftMapping::RandomReplay) {
+            return replay_seed != 0u &&
+                   source_pixel != kInvalidPackedIndex;
+        }
+        return mapping == RestirGIShiftMapping::Reconnect &&
+               instance_id != kInvalidPackedIndex &&
                primitive_id != kInvalidPackedIndex;
+    }
+
+    RT_HOST_DEVICE bool reconnect() const noexcept {
+        return mapping == RestirGIShiftMapping::Reconnect;
+    }
+
+    RT_HOST_DEVICE bool random_replay() const noexcept {
+        return mapping == RestirGIShiftMapping::RandomReplay;
     }
 };
 
@@ -44,10 +71,10 @@ struct alignas(16) RestirGIReservoir {
     std::uint32_t reserved = 0u;
 };
 
-static_assert(sizeof(RestirGISample) == 48,
-              "diffuse ReSTIR GI samples must remain 48 bytes");
-static_assert(sizeof(RestirGIReservoir) == 80,
-              "diffuse ReSTIR GI reservoirs must remain 80 bytes");
+static_assert(sizeof(RestirGISample) == 64,
+              "hybrid ReSTIR GI samples must remain 64 bytes");
+static_assert(sizeof(RestirGIReservoir) == 96,
+              "hybrid ReSTIR GI reservoirs must remain 96 bytes");
 static_assert(std::is_trivially_copyable_v<RestirGISample>);
 static_assert(std::is_trivially_copyable_v<RestirGIReservoir>);
 

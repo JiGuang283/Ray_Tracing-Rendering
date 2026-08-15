@@ -6,6 +6,8 @@
 namespace cuda_backend {
 namespace {
 
+static_assert(sizeof(DeviceRestirCounters) == 1872);
+
 RT_HOST_DEVICE RT_FORCE_INLINE float luminance(Float3 value) noexcept {
     return 0.2126f * value.x + 0.7152f * value.y + 0.0722f * value.z;
 }

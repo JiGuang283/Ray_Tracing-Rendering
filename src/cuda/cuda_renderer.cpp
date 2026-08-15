@@ -312,6 +312,18 @@ class CudaRenderSession final : public IRenderSession {
         stats.restir.gi_visibility_rays =
             output.stats.gi_visibility_rays;
         stats.restir.gi_fallbacks = output.stats.gi_fallbacks;
+        stats.restir.gi_replay_candidates =
+            output.stats.gi_replay_candidates;
+        stats.restir.gi_replay_evaluations =
+            output.stats.gi_replay_evaluations;
+        stats.restir.gi_replay_shadow_rays =
+            output.stats.gi_replay_shadow_rays;
+        stats.restir.gi_replay_traversal_steps =
+            output.stats.gi_replay_traversal_steps;
+        stats.restir.gi_reconnect_selections =
+            output.stats.gi_reconnect_selections;
+        stats.restir.gi_replay_selections =
+            output.stats.gi_replay_selections;
         stats.restir.gi_invalid_reservoirs =
             output.stats.gi_invalid_samples;
         stats.restir.average_M = output.stats.average_effective_M;
@@ -319,6 +331,12 @@ class CudaRenderSession final : public IRenderSession {
         stats.restir.gi_average_M =
             output.stats.gi_average_effective_M;
         stats.restir.gi_average_age = output.stats.gi_average_age;
+        stats.restir.gi_unique_source_pixels =
+            output.stats.gi_unique_source_pixels;
+        stats.restir.gi_max_source_reuse =
+            output.stats.gi_max_source_reuse;
+        stats.restir.gi_average_source_reuse =
+            output.stats.gi_average_source_reuse;
         for (std::size_t index = 0;
              index < stats.restir.shift_failures.size(); ++index) {
             stats.restir.shift_failures[index] =

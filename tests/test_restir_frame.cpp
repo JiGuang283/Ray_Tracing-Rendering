@@ -80,12 +80,39 @@ TEST_CASE(restir_di_sample_and_reservoir_abi_is_stable) {
 }
 
 TEST_CASE(restir_gi_sample_and_reservoir_abi_is_stable) {
-    REQUIRE(sizeof(restir::RestirGISample) == 48u);
-    REQUIRE(sizeof(restir::RestirGIReservoir) == 80u);
+    REQUIRE(sizeof(restir::RestirGISample) == 64u);
+    REQUIRE(sizeof(restir::RestirGIReservoir) == 96u);
     restir::RestirGIReservoir reservoir;
     restir::reset_reservoir(reservoir);
     REQUIRE(!restir::reservoir_has_sample(reservoir));
     REQUIRE(reservoir.M == 0u);
+}
+
+TEST_CASE(restir_gi_shift_mapping_has_explicit_measure_contract) {
+    REQUIRE_NEAR(restir::kRandomReplayProposalDensity, 1.0f, 0.0f);
+    REQUIRE_NEAR(restir::kRandomReplayJacobian, 1.0f, 0.0f);
+
+    restir::RestirGISample reconnect;
+    reconnect.instance_id = 1u;
+    reconnect.primitive_id = 2u;
+    REQUIRE(reconnect.valid());
+    REQUIRE(reconnect.reconnect());
+    REQUIRE(!reconnect.random_replay());
+
+    restir::RestirGISample replay;
+    replay.mapping = restir::RestirGIShiftMapping::RandomReplay;
+    replay.source_pdf_area = restir::kRandomReplayProposalDensity;
+    replay.source_pixel = 7u;
+    replay.replay_seed = 123u;
+    REQUIRE(replay.valid());
+    REQUIRE(!replay.reconnect());
+    REQUIRE(replay.random_replay());
+
+    replay.replay_seed = 0u;
+    REQUIRE(!replay.valid());
+    replay.replay_seed = 123u;
+    replay.mapping = static_cast<restir::RestirGIShiftMapping>(99u);
+    REQUIRE(!replay.valid());
 }
 
 TEST_CASE(restir_gi_area_measure_and_diffuse_reconnection_are_analytic) {

@@ -15,6 +15,7 @@ __global__ void spatial_gi_kernel(
     std::uint32_t seed, std::uint32_t neighbor_count,
     std::uint32_t max_candidates, float normal_threshold,
     float depth_threshold, bool pairwise,
+    PackedTransportSettings transport,
     DeviceRestirCounters *counters,
     std::uint32_t *status_output) {
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
@@ -26,11 +27,13 @@ __global__ void spatial_gi_kernel(
         ? restir::spatial_resample_gi_pairwise(
             scene.scene, surfaces, source, width, height, pixel, iteration,
             pass_index, seed, neighbor_count, max_candidates,
-            normal_threshold, depth_threshold, destination[pixel], stats)
+            normal_threshold, depth_threshold, transport,
+            destination[pixel], stats)
         : restir::spatial_resample_gi_basic(
             scene.scene, surfaces, source, width, height, pixel, iteration,
             pass_index, seed, neighbor_count, max_candidates,
-            normal_threshold, depth_threshold, destination[pixel], stats);
+            normal_threshold, depth_threshold, transport,
+            destination[pixel], stats);
     std::uint32_t status_index = static_cast<std::uint32_t>(status);
     status_index = status_index < 16u ? status_index : 15u;
     if (status_output != nullptr) {
@@ -43,6 +46,13 @@ __global__ void spatial_gi_kernel(
               static_cast<unsigned long long>(stats.accepted));
     atomicAdd(&counters->gi_spatial_pairwise_fallbacks,
               static_cast<unsigned long long>(stats.pairwise_fallbacks));
+    atomicAdd(&counters->gi_replay_evaluations,
+              static_cast<unsigned long long>(stats.replay_evaluations));
+    atomicAdd(&counters->gi_replay_shadow_rays,
+              static_cast<unsigned long long>(stats.replay_shadow_rays));
+    atomicAdd(&counters->gi_replay_traversal_steps,
+              static_cast<unsigned long long>(
+                  stats.replay_traversal_steps));
     for (std::uint32_t index = 0u;
          index < static_cast<std::uint32_t>(
                      restir::RestirSpatialCompatibility::Count);
@@ -68,6 +78,7 @@ void launch_restir_spatial_gi(
     std::uint32_t seed, std::uint32_t neighbor_count,
     std::uint32_t max_candidates, float normal_threshold,
     float depth_threshold, bool pairwise,
+    const PackedTransportSettings &transport,
     DeviceRestirCounters *counters,
     std::uint32_t block_size, std::uint32_t *status_output) {
     const std::uint32_t pixel_count = width * height;
@@ -76,8 +87,8 @@ void launch_restir_spatial_gi(
     spatial_gi_kernel<<<grid, block_size>>>(
         scene, surfaces, source, destination, width, height, iteration,
         pass_index, seed, neighbor_count, max_candidates,
-        normal_threshold, depth_threshold, pairwise, counters,
-        status_output);
+        normal_threshold, depth_threshold, pairwise, transport,
+        counters, status_output);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 

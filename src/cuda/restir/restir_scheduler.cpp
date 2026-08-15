@@ -3,6 +3,7 @@
 #include "cuda_error.h"
 #include "restir_gbuffer.h"
 #include "restir_initial_di.h"
+#include "restir_gi_reservoir_core.h"
 #include "restir_initial_gi.h"
 #include "restir_reference_shading.h"
 #include "restir_spatial_di.h"
@@ -15,6 +16,7 @@
 
 #include <cmath>
 #include <limits>
+#include <map>
 #include <stdexcept>
 
 namespace cuda_backend {
@@ -348,6 +350,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                     settings.frame.render.restir.depth_threshold,
                     settings.frame.render.restir.bias_correction ==
                         RestirBiasCorrection::Pairwise,
+                    settings.reference_transport,
                     buffers.counters.data(), settings.block_size);
                 final_gi_reservoir = destination;
                 if (cancel_at_pass_boundary()) {
@@ -372,6 +375,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                         settings.frame.render.restir.depth_threshold,
                         settings.frame.render.restir.bias_correction ==
                             RestirBiasCorrection::Pairwise,
+                        settings.reference_transport,
                         buffers.counters.data(), settings.block_size);
                     final_gi_reservoir = destination;
                     if (cancel_at_pass_boundary()) {
@@ -395,8 +399,10 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 scene, buffers.gbuffer[write_gbuffer].data(),
                 buffers.gi_reservoir[final_gi_reservoir].data(), width,
                 height, iteration, settings.frame.render.seed,
+                settings.reference_transport,
                 buffers.indirect_film.data(), buffers.counters.data(),
-                settings.block_size);
+                settings.block_size, nullptr,
+                settings.frame.render.restir.final_gather);
         }
         launch_restir_fallback_shading(
             scene, settings.reference_transport,
@@ -447,6 +453,33 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
             buffers.gi_reservoir[
                 buffers.frame_state.committed_gi_reservoir]
                 .download_prefix(output.gi_reservoirs, pixel_count);
+        }
+    }
+    if (gi_mode && !output.gi_reservoirs.empty()) {
+        std::map<std::uint32_t, std::uint64_t> source_counts;
+        std::uint64_t usable_reservoirs = 0u;
+        for (const restir::RestirGIReservoir &reservoir :
+             output.gi_reservoirs) {
+            if (!restir::reservoir_is_usable(reservoir) ||
+                reservoir.sample.source_pixel ==
+                    kInvalidPackedIndex) {
+                continue;
+            }
+            ++source_counts[reservoir.sample.source_pixel];
+            ++usable_reservoirs;
+        }
+        output.stats.gi_unique_source_pixels =
+            static_cast<std::uint64_t>(source_counts.size());
+        output.stats.gi_max_source_reuse = 0u;
+        for (const auto &entry : source_counts) {
+            if (entry.second > output.stats.gi_max_source_reuse) {
+                output.stats.gi_max_source_reuse = entry.second;
+            }
+        }
+        if (!source_counts.empty()) {
+            output.stats.gi_average_source_reuse =
+                static_cast<double>(usable_reservoirs) /
+                static_cast<double>(source_counts.size());
         }
     }
     std::vector<DeviceRestirCounters> counters;
@@ -565,6 +598,14 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     }
     output.stats.gi_visibility_rays = counter.gi_visibility_rays;
     output.stats.gi_fallbacks = counter.gi_fallbacks;
+    output.stats.gi_replay_candidates = counter.gi_replay_candidates;
+    output.stats.gi_replay_evaluations = counter.gi_replay_evaluations;
+    output.stats.gi_replay_shadow_rays = counter.gi_replay_shadow_rays;
+    output.stats.gi_replay_traversal_steps =
+        counter.gi_replay_traversal_steps;
+    output.stats.gi_reconnect_selections =
+        counter.gi_reconnect_selections;
+    output.stats.gi_replay_selections = counter.gi_replay_selections;
     output.stats.gi_invalid_samples = counter.gi_invalid_samples;
     output.stats.gi_suffix_shadow_rays = counter.gi_suffix_shadow_rays;
     output.stats.gi_suffix_traversal_steps =

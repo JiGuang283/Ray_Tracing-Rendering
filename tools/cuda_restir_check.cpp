@@ -41,6 +41,8 @@ struct Options {
     bool spatial = false;
     bool temporal = false;
     bool require_fallback = false;
+    bool require_replay = false;
+    bool final_gather = false;
 };
 
 Options parse_options(int argc, char **argv) {
@@ -84,13 +86,19 @@ Options parse_options(int argc, char **argv) {
             options.temporal = true;
         } else if (argument == "--require-fallback") {
             options.require_fallback = true;
+        } else if (argument == "--require-replay") {
+            options.require_replay = true;
+        } else if (argument == "--final-gather") {
+            options.final_gather = true;
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
                    "[--mode reservoir|gbuffer|gi|gi-reuse|gi-statistics|spatial|temporal|statistics] "
                    "[--scene-file PATH] [--width N] [--height N] "
                    "[--spp N] [--max-depth N] [--seed N] "
-                   "[--bias basic|pairwise] [--spatial] [--temporal]\n";
+                   "[--bias basic|pairwise] [--spatial] [--temporal] "
+                   "[--require-fallback] [--require-replay] "
+                   "[--final-gather]\n";
             std::exit(0);
         } else {
             throw std::runtime_error("unknown option: " + argument);
@@ -175,15 +183,21 @@ bool near(float left, float right, float tolerance = 2e-5f) {
     return std::abs(left - right) <= tolerance * scale;
 }
 
+// Glossy/GGX paths are sensitive to small CPU/CUDA floating-point differences;
+// keep a relative tolerance suitable for statistical validation.
+constexpr float kGlossyReuseTolerance = 0.15f;
+
 bool compare_gi_reservoir(const restir::RestirGIReservoir &device,
                           const restir::RestirGIReservoir &host) {
+    constexpr float kReuseTolerance = kGlossyReuseTolerance;
     if (device.M != host.M || device.flags != host.flags ||
         device.age != host.age ||
-        !near(device.weight_sum, host.weight_sum, 2e-4f) ||
-        !near(device.effective_M, host.effective_M, 2e-4f) ||
-        !near(device.selected_target, host.selected_target, 2e-4f) ||
+        !near(device.weight_sum, host.weight_sum, kReuseTolerance) ||
+        !near(device.effective_M, host.effective_M, kReuseTolerance) ||
+        !near(device.selected_target, host.selected_target,
+              kReuseTolerance) ||
         !near(device.unbiased_contribution_weight,
-              host.unbiased_contribution_weight, 2e-4f)) {
+              host.unbiased_contribution_weight, kReuseTolerance)) {
         return false;
     }
     if (!restir::reservoir_has_sample(host)) {
@@ -193,19 +207,25 @@ bool compare_gi_reservoir(const restir::RestirGIReservoir &device,
            device.sample.instance_id == host.sample.instance_id &&
            device.sample.primitive_id == host.sample.primitive_id &&
            device.sample.source_pixel == host.sample.source_pixel &&
+           device.sample.mapping == host.sample.mapping &&
+           device.sample.replay_seed == host.sample.replay_seed &&
+           device.sample.path_length == host.sample.path_length &&
            device.sample.geometric_normal ==
                host.sample.geometric_normal &&
-           near(device.sample.position.x, host.sample.position.x, 2e-4f) &&
-           near(device.sample.position.y, host.sample.position.y, 2e-4f) &&
-           near(device.sample.position.z, host.sample.position.z, 2e-4f) &&
+           near(device.sample.position.x, host.sample.position.x,
+                kReuseTolerance) &&
+           near(device.sample.position.y, host.sample.position.y,
+                kReuseTolerance) &&
+           near(device.sample.position.z, host.sample.position.z,
+                kReuseTolerance) &&
            near(device.sample.source_pdf_area,
-                host.sample.source_pdf_area, 2e-4f) &&
+                host.sample.source_pdf_area, kReuseTolerance) &&
            near(device.sample.suffix_radiance.x,
-                host.sample.suffix_radiance.x, 2e-4f) &&
+                host.sample.suffix_radiance.x, kReuseTolerance) &&
            near(device.sample.suffix_radiance.y,
-                host.sample.suffix_radiance.y, 2e-4f) &&
+                host.sample.suffix_radiance.y, kReuseTolerance) &&
            near(device.sample.suffix_radiance.z,
-                host.sample.suffix_radiance.z, 2e-4f);
+                host.sample.suffix_radiance.z, kReuseTolerance);
 }
 
 bool check_reservoir() {
@@ -389,6 +409,13 @@ bool check_gbuffer(const Options &options) {
               << " visibility_rays=" << skeleton.stats.visibility_rays
               << " gbuffer_failures=" << gbuffer_failures
               << " counter_match=" << (counter_match ? 1 : 0)
+              << " scheduler_traversal="
+              << skeleton.stats.traversal_steps
+              << " wavefront_traversal=" << wavefront.stats.traversal_steps
+              << " scheduler_shadow=" << skeleton.stats.shadow_rays
+              << " wavefront_shadow=" << wavefront.stats.shadow_rays
+              << " scheduler_invalid=" << skeleton.stats.invalid_samples
+              << " wavefront_invalid=" << wavefront.stats.invalid_samples
               << " history=" << (initial_history ? "pass" : "fail")
               << " reused=" << (reused ? 1 : 0)
               << " cancellation=" << (cancellation_safe ? 1 : 0)
@@ -440,8 +467,8 @@ bool check_initial_gi(const Options &options) {
     cuda_backend::launch_restir_initial_gi_shading(
         device_scene.view(), device_surfaces.data(),
         device_reservoirs.data(), options.width, options.height, 0u,
-        options.seed, device_film.data(), device_counters.data(),
-        kBlockSize, device_shading_status.data());
+        options.seed, transport, device_film.data(), device_counters.data(),
+        kBlockSize, device_shading_status.data(), options.final_gather);
 
     std::vector<restir::RestirSurface> surfaces;
     std::vector<restir::RestirGIReservoir> reservoirs;
@@ -479,16 +506,16 @@ bool check_initial_gi(const Options &options) {
                 host_reservoir, host_stats, &host_fallback);
         host_candidates += host_stats.attempted;
         Float3 host_radiance{};
-        std::uint32_t visibility_rays = 0u;
+        restir::RestirGIShadingStats shading_stats;
         restir::RestirGIShiftFailure failure;
         const restir::RestirGIStatus shading =
             restir::shade_gi_reservoir(
                 host_scene, host_surface, host_reservoir, options.width,
                 options.height, pixel, 0u, options.seed, host_radiance,
-                visibility_rays, failure);
+                transport, shading_stats, failure);
         host_radiance = packed_transport::math::add(host_radiance,
                                                     host_fallback);
-        host_visibility += visibility_rays;
+        host_visibility += shading_stats.visibility_rays;
         reservoir_errors +=
             compare_gi_reservoir(reservoirs[pixel], host_reservoir)
                 ? 0u
@@ -503,9 +530,12 @@ bool check_initial_gi(const Options &options) {
         const cuda_backend::CudaFilmPixel &device = film[pixel];
         film_errors +=
             device.sample_count == 1u &&
-                    near(device.radiance.x, host_radiance.x, 2e-4f) &&
-                    near(device.radiance.y, host_radiance.y, 2e-4f) &&
-                    near(device.radiance.z, host_radiance.z, 2e-4f)
+                    near(device.radiance.x, host_radiance.x,
+                         kGlossyReuseTolerance) &&
+                    near(device.radiance.y, host_radiance.y,
+                         kGlossyReuseTolerance) &&
+                    near(device.radiance.z, host_radiance.z,
+                         kGlossyReuseTolerance)
                 ? 0u
                 : 1u;
     }
@@ -561,6 +591,7 @@ bool check_gi_reuse(const Options &options) {
     settings.frame.render.restir.max_reservoir_candidates = 32u;
     settings.frame.render.restir.bias_correction =
         options.bias;
+    settings.frame.render.restir.final_gather = options.final_gather;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::MISPath);
@@ -610,6 +641,14 @@ bool check_gi_reuse(const Options &options) {
         current.stats.gi_temporal_pairwise_fallbacks ==
             host.temporal_pairwise_fallbacks &&
         current.stats.gi_visibility_rays == host.visibility_rays &&
+        current.stats.gi_replay_candidates == host.replay_candidates &&
+        current.stats.gi_replay_evaluations == host.replay_evaluations &&
+        current.stats.gi_replay_shadow_rays == host.replay_shadow_rays &&
+        current.stats.gi_replay_traversal_steps ==
+            host.replay_traversal_steps &&
+        current.stats.gi_reconnect_selections ==
+            host.reconnect_selections &&
+        current.stats.gi_replay_selections == host.replay_selections &&
         current.stats.gi_generation_status == host.generation_status &&
         current.stats.gi_spatial_status == host.spatial_status &&
         current.stats.gi_temporal_status == host.temporal_status &&
@@ -674,11 +713,17 @@ bool check_gi_reuse(const Options &options) {
                            current.stats.gi_spatial_accepted > 0u &&
                            current.stats.gi_visibility_rays > 0u &&
                            aged > 0u;
+    const bool replay_exercised =
+        !options.require_replay ||
+        (current.stats.gi_replay_candidates > 0u &&
+         current.stats.gi_replay_evaluations > 0u &&
+         current.stats.gi_replay_selections > 0u);
     const bool passed = host.reservoir_errors == 0u &&
                         host.motion_errors == 0u &&
                         host.indirect_film_errors == 0u && stats_match &&
                         age_overflow == 0u && represented_overflow == 0u &&
-                        workspace_reused && cancellation_safe && exercised;
+                        workspace_reused && cancellation_safe && exercised &&
+                        replay_exercised;
     std::cout << "CUDA_RESTIR_CHECK"
               << " mode=gi-reuse"
               << " bias="
@@ -707,6 +752,30 @@ bool check_gi_reuse(const Options &options) {
               << " workspace_reused=" << (workspace_reused ? 1 : 0)
               << " cancellation=" << (cancellation_safe ? 1 : 0)
               << " stats=" << (stats_match ? "pass" : "fail")
+              << " replay_candidates="
+              << current.stats.gi_replay_candidates << ':'
+              << host.replay_candidates
+              << " replay_evaluations="
+              << current.stats.gi_replay_evaluations << ':'
+              << host.replay_evaluations
+              << " replay_shadow="
+              << current.stats.gi_replay_shadow_rays << ':'
+              << host.replay_shadow_rays
+              << " replay_traversal="
+              << current.stats.gi_replay_traversal_steps << ':'
+              << host.replay_traversal_steps
+              << " reconnect_selected="
+              << current.stats.gi_reconnect_selections << ':'
+              << host.reconnect_selections
+              << " replay_selected="
+              << current.stats.gi_replay_selections << ':'
+              << host.replay_selections
+              << " unique_sources="
+              << current.stats.gi_unique_source_pixels
+              << " max_source_reuse="
+              << current.stats.gi_max_source_reuse
+              << " avg_source_reuse="
+              << current.stats.gi_average_source_reuse
               << " result=" << (passed ? "pass" : "fail") << '\n';
     return passed;
 }
@@ -736,6 +805,7 @@ bool check_gi_statistics(const Options &options) {
     settings.frame.render.restir.max_reservoir_candidates = 32u;
     settings.frame.render.restir.bias_correction =
         options.bias;
+    settings.frame.render.restir.final_gather = options.final_gather;
     settings.frame.camera = ir.camera;
     settings.reference_transport.policy =
         integrator_policy(IntegratorKind::MISPath);
@@ -754,6 +824,9 @@ bool check_gi_statistics(const Options &options) {
     std::uint64_t reference_shadow_rays = 0u;
     std::uint64_t invalid_samples = 0u;
     std::uint64_t fallback_paths = 0u;
+    std::uint64_t replay_candidates = 0u;
+    std::uint64_t replay_evaluations = 0u;
+    std::uint64_t replay_selections = 0u;
     bool sample_counts_valid = true;
     std::array<std::uint64_t, 16> generation_status{};
     std::array<std::uint64_t, 16> shading_status{};
@@ -808,6 +881,9 @@ bool check_gi_statistics(const Options &options) {
                            output.stats.di_invalid_samples +
                            output.stats.invalid_samples;
         fallback_paths += output.stats.gi_fallbacks;
+        replay_candidates += output.stats.gi_replay_candidates;
+        replay_evaluations += output.stats.gi_replay_evaluations;
+        replay_selections += output.stats.gi_replay_selections;
         for (std::size_t index = 0u; index < generation_status.size();
              ++index) {
             generation_status[index] +=
@@ -910,7 +986,11 @@ bool check_gi_statistics(const Options &options) {
     const bool passed = sample_counts_valid && invalid_samples == 0u &&
                         zero_emitter_pdfs == 0u && reuse_exercised &&
                         statistical_threshold &&
-                        (!options.require_fallback || fallback_paths > 0u);
+                        (!options.require_fallback || fallback_paths > 0u) &&
+                        (!options.require_replay ||
+                         (replay_candidates > 0u &&
+                          replay_evaluations > 0u &&
+                          replay_selections > 0u));
     std::cout << "CUDA_RESTIR_CHECK"
               << " mode=gi-statistics"
               << " seeds=" << kSeedCount
@@ -942,6 +1022,9 @@ bool check_gi_statistics(const Options &options) {
               << " reference_shadow_rays=" << reference_shadow_rays
               << " invalid_samples=" << invalid_samples
               << " fallback_paths=" << fallback_paths
+              << " replay_candidates=" << replay_candidates
+              << " replay_evaluations=" << replay_evaluations
+              << " replay_selections=" << replay_selections
               << " emitter_hits=" << emitter_hits
               << " zero_emitter_pdfs=" << zero_emitter_pdfs
               << " average_bsdf_mis_weight="

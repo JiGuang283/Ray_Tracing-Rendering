@@ -14,7 +14,29 @@ struct RestirGITemporalStats {
         RestirTemporalRejection::NoHistory;
     RestirGIShiftFailure shift_failure = RestirGIShiftFailure::None;
     std::uint32_t pairwise_fallbacks = 0u;
+    std::uint32_t replay_evaluations = 0u;
+    std::uint32_t replay_shadow_rays = 0u;
+    std::uint32_t replay_traversal_steps = 0u;
 };
+
+RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus evaluate_temporal_gi_target(
+    const CompiledSceneView &scene, const RestirDIPixelContext &context,
+    const RestirSurface &stored, const RestirGISample &sample,
+    const PackedTransportSettings &transport, float &target,
+    RestirGIShiftFailure &failure,
+    RestirGITemporalStats &stats) noexcept {
+    std::uint32_t shadow_rays = 0u;
+    std::uint32_t traversal_steps = 0u;
+    const RestirGIStatus status = evaluate_gi_pairwise_target(
+        scene, context, stored, sample, transport, target, failure,
+        shadow_rays, traversal_steps);
+    if (sample.random_replay()) {
+        ++stats.replay_evaluations;
+        stats.replay_shadow_rays += shadow_rays;
+        stats.replay_traversal_steps += traversal_steps;
+    }
+    return status;
+}
 
 RT_HOST_DEVICE RT_FORCE_INLINE bool prepare_gi_temporal_candidate(
     const PackedCamera *previous_camera, RestirSurface &current_surface,
@@ -66,6 +88,7 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus temporal_resample_gi_basic(
     std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t max_history_length, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold,
+    const PackedTransportSettings &transport,
     RestirGIReservoir &output,
     RestirGITemporalStats &stats) noexcept {
     output = current_reservoir;
@@ -94,9 +117,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus temporal_resample_gi_basic(
     bool current_accepted = false;
     bool current_selected = false;
     RestirGIStatus status = combine_basic_gi_source(
-        destination, current_reservoir, max_candidates,
+        scene, destination, current_surface, current_reservoir,
+        max_candidates, transport,
         static_cast<float>(rng.next()), output, current_accepted,
-        &current_selected);
+        &current_selected, nullptr, &stats.replay_evaluations,
+        &stats.replay_shadow_rays, &stats.replay_traversal_steps);
     if (status != RestirGIStatus::Success) {
         stats.rejection = RestirTemporalRejection::NonFinite;
         return status;
@@ -104,9 +129,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus temporal_resample_gi_basic(
     bool history_accepted = false;
     bool history_selected = false;
     status = combine_basic_gi_source(
-        destination, previous, max_candidates,
+        scene, destination, current_surface, previous, max_candidates,
+        transport,
         static_cast<float>(rng.next()), output, history_accepted,
-        &history_selected, &stats.shift_failure);
+        &history_selected, &stats.shift_failure,
+        &stats.replay_evaluations, &stats.replay_shadow_rays,
+        &stats.replay_traversal_steps);
     if (status != RestirGIStatus::Success) {
         stats.rejection = RestirTemporalRejection::NonFinite;
         return status;
@@ -139,14 +167,15 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus temporal_resample_gi_pairwise(
     std::uint32_t height, std::uint32_t pixel, std::uint32_t iteration,
     std::uint32_t seed, std::uint32_t max_history_length,
     std::uint32_t max_candidates, float normal_threshold,
-    float depth_threshold, RestirGIReservoir &output,
+    float depth_threshold, const PackedTransportSettings &transport,
+    RestirGIReservoir &output,
     RestirGITemporalStats &stats) noexcept {
     if (!reservoir_is_usable(current_reservoir)) {
         const RestirGIStatus fallback = temporal_resample_gi_basic(
             scene, current_surface, current_reservoir, previous_camera,
             previous_surfaces, previous_reservoirs, width, height, pixel,
             iteration, seed, max_history_length, max_candidates,
-            normal_threshold, depth_threshold, output, stats);
+            normal_threshold, depth_threshold, transport, output, stats);
         ++stats.pairwise_fallbacks;
         return fallback;
     }
@@ -198,23 +227,28 @@ RT_HOST_DEVICE RT_FORCE_INLINE RestirGIStatus temporal_resample_gi_pairwise(
     float current_at_previous = 0.0f;
     float current_at_current = 0.0f;
     RestirGIShiftFailure failure = RestirGIShiftFailure::None;
-    status = evaluate_gi_pairwise_target(
-        current_context, previous.sample, previous_at_current, failure);
+    status = evaluate_temporal_gi_target(
+        scene, current_context, current_surface, previous.sample,
+        transport, previous_at_current, failure, stats);
     stats.shift_failure = failure;
     if (status == RestirGIStatus::Success) {
-        status = evaluate_gi_pairwise_target(
-            previous_context, previous.sample, previous_at_previous,
-            failure);
+        status = evaluate_temporal_gi_target(
+            scene, previous_context,
+            previous_surfaces[projection.previous_pixel], previous.sample,
+            transport, previous_at_previous, failure, stats);
     }
     if (status == RestirGIStatus::Success) {
-        status = evaluate_gi_pairwise_target(
-            previous_context, current_reservoir.sample,
-            current_at_previous, failure);
+        status = evaluate_temporal_gi_target(
+            scene, previous_context,
+            previous_surfaces[projection.previous_pixel],
+            current_reservoir.sample, transport, current_at_previous,
+            failure, stats);
     }
     if (status == RestirGIStatus::Success) {
-        status = evaluate_gi_pairwise_target(
-            current_context, current_reservoir.sample,
-            current_at_current, failure);
+        status = evaluate_temporal_gi_target(
+            scene, current_context, current_surface,
+            current_reservoir.sample, transport, current_at_current,
+            failure, stats);
     }
     if (failure != RestirGIShiftFailure::None) {
         stats.shift_failure = failure;
