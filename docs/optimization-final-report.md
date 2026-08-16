@@ -49,5 +49,7 @@ ARCH-1 要求 `cpu-packed` 达到旧 double 后端性能并切换默认。初始
 - any-hit occlusion：未证明失配源，但随实验回退。
 
 因此默认 CPU 后端保持 double 多态运行时；`--cpu-packed` 作为验证后端保留。
-达到性能目标需要方向 B（packed quad/rect primitive 或 host-only fast
-transport）级别的重构。
+
+cachegrind 补充数据（64x36, spp2, 单线程）：packed D refs 13.9M / writes
+6.8M，double 11.1M / 5.6M。方向 B 已将单线程差距降至约 4%；剩余多线程
+差距与更高的总内存引用及混合 P/E 核上的 AVX2 调度特性相关。
