@@ -30,7 +30,7 @@
 
 - CPU Release：3/3。
 - CUDA Release：35/35。
-- CPU ASan+UBSan：3/3。
+- CPU ASan+UBSan：3/3（方向 B host fast 路径后复测通过）。
 - LTO+native 构建：通过。
 - 编译警告：CPU/CUDA 均 0。
 - `perf_smoke.py review-baseline + cpu_packed_scene23`：6/6。
