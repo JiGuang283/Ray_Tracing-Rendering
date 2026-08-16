@@ -261,10 +261,10 @@ TEST_CASE(renderer_cancellation_reports_partial_samples) {
     cancellation.cancel();
     rendering.join();
 
-    REQUIRE(result.stats.cancelled);
-    REQUIRE(result.stats.completed_samples > 0);
-    REQUIRE(result.stats.completed_samples < result.stats.requested_samples);
-    REQUIRE(result.stats.sample_count == result.stats.completed_samples);
+    REQUIRE(result.stats.base.cancelled);
+    REQUIRE(result.stats.base.completed_samples > 0);
+    REQUIRE(result.stats.base.completed_samples < result.stats.base.requested_samples);
+    REQUIRE(result.stats.base.sample_count == result.stats.base.completed_samples);
 }
 
 TEST_CASE(renderer_seed_is_independent_of_worker_count) {

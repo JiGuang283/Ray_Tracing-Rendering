@@ -2,6 +2,7 @@ add_executable(CGAssignment4
     ${PROJECT_SOURCE_DIR}/src/main.cpp
     WindowsApp.cpp
     app_options.cpp
+    benchmark_report.cpp
     image_output.cpp
     render_app.cpp
 )
@@ -26,3 +27,5 @@ if(RAYTRACER_ENABLE_CUDA)
         raytracer::cuda
     )
 endif()
+
+raytracer_enable_warnings(CGAssignment4)

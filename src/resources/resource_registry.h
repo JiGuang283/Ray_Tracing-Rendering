@@ -13,6 +13,10 @@
 
 class ResourceRegistry {
   public:
+    void set_strict_assets(bool strict) {
+        m_strict_assets = strict;
+    }
+
     std::shared_ptr<const ImageAsset>
     load_image(const std::string &path);
     std::shared_ptr<const ImageAsset>
@@ -37,6 +41,7 @@ class ResourceRegistry {
     std::unordered_map<std::string, std::shared_ptr<const ModelAsset>>
         m_models;
     std::unordered_map<std::string, std::shared_ptr<const MeshAsset>> m_meshes;
+    bool m_strict_assets = false;
 };
 
 #endif

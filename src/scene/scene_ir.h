@@ -290,6 +290,7 @@ struct SceneIR {
     std::vector<LightIR> lights;
     bool world_accel = true;
     bool auto_emitters = true;
+    bool strict_assets = false;
     double time0 = 0.0;
     double time1 = 1.0;
 };

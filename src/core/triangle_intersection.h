@@ -263,6 +263,44 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle_kernel(
     return true;
 }
 
+// Simplified Möller-Trumbore intersection used only by the CPU packed fast
+// transport. It is intentionally less robust than intersect_triangle_kernel:
+// callers must choose it only for host validation paths, never for CUDA.
+template <typename T>
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle_kernel_host_fast(
+    TriangleKernelVector<T> origin, TriangleKernelVector<T> direction,
+    TriangleKernelVector<T> vertex0, TriangleKernelVector<T> vertex1,
+    TriangleKernelVector<T> vertex2, T t_min, T t_max,
+    TriangleKernelHit<T> &hit) {
+    const TriangleKernelVector<T> edge1 = subtract(vertex1, vertex0);
+    const TriangleKernelVector<T> edge2 = subtract(vertex2, vertex0);
+    const TriangleKernelVector<T> pvec = cross(direction, edge2);
+    const T determinant = dot(edge1, pvec);
+    const T epsilon = static_cast<T>(1e-7);
+    if (!finite(determinant) || absolute(determinant) <= epsilon) {
+        return false;
+    }
+    const T inverse = T(1) / determinant;
+    const TriangleKernelVector<T> tvec = subtract(origin, vertex0);
+    const T u = dot(tvec, pvec) * inverse;
+    if (!finite(u) || u < T(0) || u > T(1)) {
+        return false;
+    }
+    const TriangleKernelVector<T> qvec = cross(tvec, edge1);
+    const T v = dot(direction, qvec) * inverse;
+    if (!finite(v) || v < T(0) || u + v > T(1)) {
+        return false;
+    }
+    const T t = dot(edge2, qvec) * inverse;
+    if (!finite(t) || t < t_min || t > t_max) {
+        return false;
+    }
+    hit.t = t;
+    hit.barycentric_u = u;
+    hit.barycentric_v = v;
+    return true;
+}
+
 } // namespace triangle_intersection
 
 #endif

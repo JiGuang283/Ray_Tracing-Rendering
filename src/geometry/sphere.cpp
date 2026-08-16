@@ -53,6 +53,25 @@ bool sphere::hit(const ray &r, double t_min, double t_max,
     return true;
 }
 
+bool sphere::occluded(const ray &r, double t_min, double t_max,
+                       RNG & /*rng*/) const {
+    const vec3 oc = r.origin() - center;
+    const double a = r.direction().length_squared();
+    const double half_b = dot(oc, r.direction());
+    const double c = oc.length_squared() - radius * radius;
+    const double discriminant = half_b * half_b - a * c;
+    if (discriminant < 0.0) {
+        return false;
+    }
+    const double sqrtd = sqrt(discriminant);
+    const double first = (-half_b - sqrtd) / a;
+    if (first >= t_min && first <= t_max) {
+        return true;
+    }
+    const double second = (-half_b + sqrtd) / a;
+    return second >= t_min && second <= t_max;
+}
+
 bool sphere::bounding_box(double /*time0*/, double /*time1*/,
                           aabb &output_box) const {
     output_box = aabb(center - vec3(radius, radius, radius),

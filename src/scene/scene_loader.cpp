@@ -16,6 +16,8 @@ SceneConfig build_scene_config(const SceneIR &ir) {
     SceneBuildContext context;
     context.source_path = ir.source_path;
     context.scene_ir = &ir;
+    context.strict_assets = ir.strict_assets;
+    context.resources.set_strict_assets(ir.strict_assets);
     for (const auto &material : ir.materials) {
         context.materials[material.name] =
             build_material(material, context);

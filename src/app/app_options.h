@@ -16,6 +16,8 @@ struct RenderOptions {
     int threads = 0;
     unsigned seed = 1337;
     double sample_clamp_override = -1.0;
+    bool cpu_packed = false;
+    bool strict_assets = false;
     RenderBackend backend = RenderBackend::CPU;
     unsigned cuda_batch_size = 0;
     RestirSettings restir;
@@ -27,6 +29,7 @@ struct BenchmarkOptions {
     int runs = 1;
     std::string image_output_path;
     std::string linear_output_path;
+    std::string json_output_path;
 };
 
 struct AppOptions {

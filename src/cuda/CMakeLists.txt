@@ -37,3 +37,5 @@ set_target_properties(raytracer_cuda PROPERTIES
 target_compile_options(raytracer_cuda PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
+
+raytracer_enable_warnings(raytracer_cuda)

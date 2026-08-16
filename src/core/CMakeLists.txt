@@ -10,3 +10,5 @@ target_include_directories(raytracer_core PUBLIC
 target_link_libraries(raytracer_core PUBLIC
     raytracer::build_config
 )
+
+raytracer_enable_warnings(raytracer_core)

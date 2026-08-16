@@ -25,41 +25,84 @@ __global__ void generate_initial_gi_candidates_kernel(
     restir::RestirGIReservoir *reservoirs,
     CudaFilmPixel *fallback_film,
     DeviceRestirCounters *counters, std::uint32_t *status_output) {
+    __shared__ unsigned long long status_partial[16];
+    __shared__ unsigned long long initial_partial;
+    __shared__ unsigned long long represented_partial;
+    __shared__ unsigned long long rejected_partial;
+    __shared__ unsigned long long suffix_shadow_partial;
+    __shared__ unsigned long long suffix_traversal_partial;
+    __shared__ unsigned long long fallback_partial;
+    __shared__ unsigned long long replay_partial;
+
+    const unsigned thread = threadIdx.x;
+    if (thread < 16u) {
+        status_partial[thread] = 0;
+    }
+    if (thread == 0) {
+        initial_partial = 0;
+        represented_partial = 0;
+        rejected_partial = 0;
+        suffix_shadow_partial = 0;
+        suffix_traversal_partial = 0;
+        fallback_partial = 0;
+        replay_partial = 0;
+    }
+    __syncthreads();
+
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
-    if (pixel >= pixel_count) {
-        return;
+    if (pixel < pixel_count) {
+        restir::RestirGICandidateStats stats;
+        Float3 fallback_radiance{};
+        const restir::RestirGIStatus status =
+            restir::generate_initial_gi_reservoir(
+                scene.scene, surfaces[pixel], width, height, pixel, iteration,
+                seed, candidate_count, transport, reservoirs[pixel], stats,
+                &fallback_radiance);
+        if (fallback_film != nullptr) {
+            fallback_film[pixel].radiance = packed_transport::math::add(
+                fallback_film[pixel].radiance, fallback_radiance);
+        }
+        const std::uint32_t status_value = gi_status_index(status);
+        if (status_output != nullptr) {
+            status_output[pixel] = status_value;
+        }
+        atomicAdd(&status_partial[status_value], 1ull);
+        atomicAdd(&initial_partial,
+                  static_cast<unsigned long long>(stats.attempted));
+        atomicAdd(&represented_partial,
+                  static_cast<unsigned long long>(stats.represented));
+        atomicAdd(&rejected_partial,
+                  static_cast<unsigned long long>(stats.rejected));
+        atomicAdd(&suffix_shadow_partial,
+                  static_cast<unsigned long long>(
+                      stats.suffix_shadow_rays));
+        atomicAdd(&suffix_traversal_partial,
+                  static_cast<unsigned long long>(
+                      stats.suffix_traversal_steps));
+        atomicAdd(&fallback_partial,
+                  static_cast<unsigned long long>(stats.fallback_paths));
+        atomicAdd(&replay_partial,
+                  static_cast<unsigned long long>(stats.replay_candidates));
     }
-    restir::RestirGICandidateStats stats;
-    Float3 fallback_radiance{};
-    const restir::RestirGIStatus status =
-        restir::generate_initial_gi_reservoir(
-            scene.scene, surfaces[pixel], width, height, pixel, iteration,
-            seed, candidate_count, transport, reservoirs[pixel], stats,
-            &fallback_radiance);
-    if (fallback_film != nullptr) {
-        fallback_film[pixel].radiance = packed_transport::math::add(
-            fallback_film[pixel].radiance, fallback_radiance);
+
+    __syncthreads();
+    if (thread == 0) {
+        for (unsigned index = 0; index < 16u; ++index) {
+            atomicAdd(&counters->gi_generation_status[index],
+                      status_partial[index]);
+        }
+        atomicAdd(&counters->gi_initial_candidates, initial_partial);
+        atomicAdd(&counters->gi_represented_candidates,
+                  represented_partial);
+        atomicAdd(&counters->gi_rejected_candidates, rejected_partial);
+        atomicAdd(&counters->gi_suffix_shadow_rays,
+                  suffix_shadow_partial);
+        atomicAdd(&counters->gi_suffix_traversal_steps,
+                  suffix_traversal_partial);
+        atomicAdd(&counters->gi_fallbacks, fallback_partial);
+        atomicAdd(&counters->gi_replay_candidates, replay_partial);
     }
-    const std::uint32_t status_value = gi_status_index(status);
-    if (status_output != nullptr) {
-        status_output[pixel] = status_value;
-    }
-    atomicAdd(&counters->gi_generation_status[status_value], 1ull);
-    atomicAdd(&counters->gi_initial_candidates,
-              static_cast<unsigned long long>(stats.attempted));
-    atomicAdd(&counters->gi_represented_candidates,
-              static_cast<unsigned long long>(stats.represented));
-    atomicAdd(&counters->gi_rejected_candidates,
-              static_cast<unsigned long long>(stats.rejected));
-    atomicAdd(&counters->gi_suffix_shadow_rays,
-              static_cast<unsigned long long>(stats.suffix_shadow_rays));
-    atomicAdd(&counters->gi_suffix_traversal_steps,
-              static_cast<unsigned long long>(stats.suffix_traversal_steps));
-    atomicAdd(&counters->gi_fallbacks,
-              static_cast<unsigned long long>(stats.fallback_paths));
-    atomicAdd(&counters->gi_replay_candidates,
-              static_cast<unsigned long long>(stats.replay_candidates));
 }
 
 __global__ void shade_initial_gi_kernel(
@@ -71,74 +114,139 @@ __global__ void shade_initial_gi_kernel(
     CudaFilmPixel *film, DeviceRestirCounters *counters,
     float sample_clamp, std::uint32_t *status_output,
     bool final_gather) {
+    __shared__ unsigned long long status_partial[16];
+    __shared__ unsigned long long shift_partial[16];
+    __shared__ unsigned long long visibility_partial;
+    __shared__ unsigned long long replay_eval_partial;
+    __shared__ unsigned long long replay_shadow_partial;
+    __shared__ unsigned long long replay_traversal_partial;
+    __shared__ unsigned long long replay_selection_partial;
+    __shared__ unsigned long long reconnect_selection_partial;
+    __shared__ unsigned long long valid_partial;
+    __shared__ unsigned long long M_partial;
+    __shared__ unsigned long long age_partial;
+    __shared__ double effective_M_partial;
+    __shared__ unsigned long long invalid_partial;
+    __shared__ unsigned long long clamped_partial;
+
+    const unsigned thread = threadIdx.x;
+    if (thread < 16u) {
+        status_partial[thread] = 0;
+        shift_partial[thread] = 0;
+    }
+    if (thread == 0) {
+        visibility_partial = 0;
+        replay_eval_partial = 0;
+        replay_shadow_partial = 0;
+        replay_traversal_partial = 0;
+        replay_selection_partial = 0;
+        reconnect_selection_partial = 0;
+        valid_partial = 0;
+        M_partial = 0;
+        age_partial = 0;
+        effective_M_partial = 0.0;
+        invalid_partial = 0;
+        clamped_partial = 0;
+    }
+    __syncthreads();
+
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
-    if (pixel >= pixel_count) {
-        return;
-    }
-    Float3 radiance{};
-    restir::RestirGIShadingStats stats;
-    restir::RestirGIShiftFailure failure =
-        restir::RestirGIShiftFailure::None;
-    const restir::RestirGIStatus status = restir::shade_gi_reservoir(
-        scene.scene, surfaces[pixel], reservoirs[pixel], width, height,
-        pixel, iteration, seed, radiance, transport, stats, failure,
-        final_gather);
-    const std::uint32_t status_value = gi_status_index(status);
-    if (status_output != nullptr) {
-        status_output[pixel] = status_value;
-    }
-    atomicAdd(&counters->gi_shading_status[status_value], 1ull);
-    atomicAdd(&counters->gi_visibility_rays,
-              static_cast<unsigned long long>(stats.visibility_rays));
-    atomicAdd(&counters->gi_replay_evaluations,
-              static_cast<unsigned long long>(stats.replay_evaluations));
-    atomicAdd(&counters->gi_replay_shadow_rays,
-              static_cast<unsigned long long>(stats.replay_shadow_rays));
-    atomicAdd(&counters->gi_replay_traversal_steps,
-              static_cast<unsigned long long>(
-                  stats.replay_traversal_steps));
-    if (restir::reservoir_is_usable(reservoirs[pixel])) {
-        if (final_gather || reservoirs[pixel].sample.random_replay()) {
-            atomicAdd(&counters->gi_replay_selections, 1ull);
-        } else {
-            atomicAdd(&counters->gi_reconnect_selections, 1ull);
+    if (pixel < pixel_count) {
+        Float3 radiance{};
+        restir::RestirGIShadingStats stats;
+        restir::RestirGIShiftFailure failure =
+            restir::RestirGIShiftFailure::None;
+        const restir::RestirGIStatus status = restir::shade_gi_reservoir(
+            scene.scene, surfaces[pixel], reservoirs[pixel], width, height,
+            pixel, iteration, seed, radiance, transport, stats, failure,
+            final_gather);
+        const std::uint32_t status_value = gi_status_index(status);
+        if (status_output != nullptr) {
+            status_output[pixel] = status_value;
         }
+        atomicAdd(&status_partial[status_value], 1ull);
+        atomicAdd(&visibility_partial,
+                  static_cast<unsigned long long>(stats.visibility_rays));
+        atomicAdd(&replay_eval_partial,
+                  static_cast<unsigned long long>(
+                      stats.replay_evaluations));
+        atomicAdd(&replay_shadow_partial,
+                  static_cast<unsigned long long>(
+                      stats.replay_shadow_rays));
+        atomicAdd(&replay_traversal_partial,
+                  static_cast<unsigned long long>(
+                      stats.replay_traversal_steps));
+        if (restir::reservoir_is_usable(reservoirs[pixel])) {
+            if (final_gather || reservoirs[pixel].sample.random_replay()) {
+                atomicAdd(&replay_selection_partial, 1ull);
+            } else {
+                atomicAdd(&reconnect_selection_partial, 1ull);
+            }
+        }
+        const std::uint32_t failure_index =
+            static_cast<std::uint32_t>(failure);
+        if (failure_index < 16u &&
+            failure != restir::RestirGIShiftFailure::None) {
+            atomicAdd(&shift_partial[failure_index], 1ull);
+        }
+        if (restir::reservoir_is_usable(reservoirs[pixel])) {
+            atomicAdd(&valid_partial, 1ull);
+            atomicAdd(&M_partial,
+                      static_cast<unsigned long long>(reservoirs[pixel].M));
+            atomicAdd(&age_partial,
+                      static_cast<unsigned long long>(reservoirs[pixel].age));
+            atomicAdd(&effective_M_partial,
+                      static_cast<double>(reservoirs[pixel].effective_M));
+        }
+        const bool expected_empty =
+            status == restir::RestirGIStatus::NoSurface ||
+            status == restir::RestirGIStatus::UnsupportedPrimary ||
+            status == restir::RestirGIStatus::ReservoirEmpty;
+        if ((status != restir::RestirGIStatus::Success && !expected_empty) ||
+            !packed_transport::math::finite(radiance)) {
+            radiance = {};
+            atomicAdd(&invalid_partial, 1ull);
+        } else if (sample_clamp > 0.0f) {
+            const float value = luminance(radiance);
+            if (value > sample_clamp) {
+                radiance = packed_transport::math::multiply(
+                    radiance, sample_clamp / value);
+                atomicAdd(&clamped_partial, 1ull);
+            }
+        }
+        CudaFilmPixel &output = film[pixel];
+        output.radiance =
+            packed_transport::math::add(output.radiance, radiance);
+        ++output.sample_count;
     }
-    const std::uint32_t failure_index = static_cast<std::uint32_t>(failure);
-    if (failure_index < 16u &&
-        failure != restir::RestirGIShiftFailure::None) {
-        atomicAdd(&counters->gi_shift_failures[failure_index], 1ull);
-    }
-    if (restir::reservoir_is_usable(reservoirs[pixel])) {
-        atomicAdd(&counters->gi_valid_reservoirs, 1ull);
-        atomicAdd(&counters->gi_reservoir_M_sum,
-                  static_cast<unsigned long long>(reservoirs[pixel].M));
-        atomicAdd(&counters->gi_reservoir_age_sum,
-                  static_cast<unsigned long long>(reservoirs[pixel].age));
+
+    __syncthreads();
+    if (thread == 0) {
+        for (unsigned index = 0; index < 16u; ++index) {
+            atomicAdd(&counters->gi_shading_status[index],
+                      status_partial[index]);
+            atomicAdd(&counters->gi_shift_failures[index],
+                      shift_partial[index]);
+        }
+        atomicAdd(&counters->gi_visibility_rays, visibility_partial);
+        atomicAdd(&counters->gi_replay_evaluations, replay_eval_partial);
+        atomicAdd(&counters->gi_replay_shadow_rays,
+                  replay_shadow_partial);
+        atomicAdd(&counters->gi_replay_traversal_steps,
+                  replay_traversal_partial);
+        atomicAdd(&counters->gi_replay_selections,
+                  replay_selection_partial);
+        atomicAdd(&counters->gi_reconnect_selections,
+                  reconnect_selection_partial);
+        atomicAdd(&counters->gi_valid_reservoirs, valid_partial);
+        atomicAdd(&counters->gi_reservoir_M_sum, M_partial);
+        atomicAdd(&counters->gi_reservoir_age_sum, age_partial);
         atomicAdd(&counters->gi_reservoir_effective_M_sum,
-                  static_cast<double>(reservoirs[pixel].effective_M));
+                  effective_M_partial);
+        atomicAdd(&counters->gi_invalid_samples, invalid_partial);
+        atomicAdd(&counters->gi_clamped_samples, clamped_partial);
     }
-    const bool expected_empty =
-        status == restir::RestirGIStatus::NoSurface ||
-        status == restir::RestirGIStatus::UnsupportedPrimary ||
-        status == restir::RestirGIStatus::ReservoirEmpty;
-    if ((status != restir::RestirGIStatus::Success && !expected_empty) ||
-        !packed_transport::math::finite(radiance)) {
-        radiance = {};
-        atomicAdd(&counters->gi_invalid_samples, 1ull);
-    } else if (sample_clamp > 0.0f) {
-        const float value = luminance(radiance);
-        if (value > sample_clamp) {
-            radiance = packed_transport::math::multiply(
-                radiance, sample_clamp / value);
-            atomicAdd(&counters->gi_clamped_samples, 1ull);
-        }
-    }
-    CudaFilmPixel &output = film[pixel];
-    output.radiance = packed_transport::math::add(output.radiance,
-                                                  radiance);
-    ++output.sample_count;
 }
 
 } // namespace

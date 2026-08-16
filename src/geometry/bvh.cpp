@@ -1,6 +1,7 @@
 #include "bvh.h"
 
 #include <algorithm>
+#include <array>
 #include <stdexcept>
 
 bool LinearBVH::bounding_box(double /*time0*/, double /*time1*/,
@@ -110,8 +111,11 @@ bool LinearBVH::hit(const ray &r, double t_min, double t_max, hit_record &rec,
     double closest_so_far = t_max;
     hit_record temp_rec;
 
-    std::vector<int> stack;
-    stack.reserve(128);
+    // Deliberately not value-initialized: writing 512 bytes on every ray is
+    // slower than the per-ray allocation it replaces. stack_size controls
+    // which slots are live.
+    std::array<int, 128> stack;
+    std::size_t stack_size = 0;
     int current = 0;
 
     while (true) {
@@ -130,23 +134,69 @@ bool LinearBVH::hit(const ray &r, double t_min, double t_max, hit_record &rec,
                     }
                 }
 
-                if (stack.empty()) {
+                if (stack_size == 0) {
                     break;
                 }
-                current = stack.back();
-                stack.pop_back();
+                current = stack[--stack_size];
             } else {
-                stack.push_back(node.second_child_offset);
+                if (stack_size == stack.size()) {
+                    throw std::runtime_error(
+                        "LinearBVH traversal stack overflow.");
+                }
+                stack[stack_size++] = node.second_child_offset;
                 current = current + 1;
             }
         } else {
-            if (stack.empty()) {
+            if (stack_size == 0) {
                 break;
             }
-            current = stack.back();
-            stack.pop_back();
+            current = stack[--stack_size];
         }
     }
 
     return hit_anything;
+}
+
+bool LinearBVH::occluded(const ray &r, double t_min, double t_max,
+                         RNG &rng) const {
+    if (nodes.empty()) {
+        return false;
+    }
+
+    double closest_so_far = t_max;
+    std::array<int, 128> stack;
+    std::size_t stack_size = 0;
+    int current = 0;
+
+    while (true) {
+        const LinearBVHNode &node = nodes[current];
+        if (!node.bbox.hit(r, t_min, closest_so_far)) {
+            if (stack_size == 0) {
+                return false;
+            }
+            current = stack[--stack_size];
+            continue;
+        }
+
+        if (node.is_leaf()) {
+            const int begin = node.primitives_offset;
+            const int end = begin + node.n_primitives;
+            for (int i = begin; i < end; ++i) {
+                if (primitives[i]->occluded(r, t_min, closest_so_far, rng)) {
+                    return true;
+                }
+            }
+            if (stack_size == 0) {
+                return false;
+            }
+            current = stack[--stack_size];
+        } else {
+            if (stack_size == stack.size()) {
+                throw std::runtime_error(
+                    "LinearBVH occlusion traversal stack overflow.");
+            }
+            stack[stack_size++] = node.second_child_offset;
+            current = current + 1;
+        }
+    }
 }

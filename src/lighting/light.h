@@ -21,7 +21,8 @@ class Light {
     virtual LightSample sample(const point3 &p, const vec2 &u) const = 0;
 
     // 给定方向的 PDF (用于 MIS)
-    virtual double pdf(const point3 &origin, const vec3 &direction) const {
+    virtual double pdf(const point3 & /*origin*/,
+                       const vec3 & /*direction*/) const {
         return 0.0;
     }
 
@@ -41,7 +42,7 @@ class Light {
     }
 
     // BSDF 命中光源时获取辐射度
-    virtual color Le(const ray &r) const {
+    virtual color Le(const ray & /*r*/) const {
         return color(0, 0, 0);
     }
 

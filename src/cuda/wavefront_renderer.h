@@ -39,6 +39,8 @@ struct CudaRenderStats {
     std::uint64_t shadow_rays = 0;
     std::uint64_t clamped_samples = 0;
     std::uint64_t invalid_samples = 0;
+    std::uint64_t advance_launches = 0;
+    std::uint64_t active_path_steps = 0;
     std::uint32_t batch_size = 0;
     std::uint32_t batch_count = 0;
     std::size_t workspace_bytes = 0;

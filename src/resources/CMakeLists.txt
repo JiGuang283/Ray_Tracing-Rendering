@@ -27,3 +27,5 @@ target_link_libraries(raytracer_resources
     PRIVATE
         raytracer_mikktspace
 )
+
+raytracer_enable_warnings(raytracer_resources)

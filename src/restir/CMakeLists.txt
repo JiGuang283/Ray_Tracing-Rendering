@@ -14,3 +14,5 @@ target_link_libraries(raytracer_restir PUBLIC
     raytracer::render_api
     raytracer::render_data
 )
+
+raytracer_enable_warnings(raytracer_restir)

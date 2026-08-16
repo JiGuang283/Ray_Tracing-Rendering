@@ -1,15 +1,51 @@
 #include "device_scene.h"
 
 #include <chrono>
+#include <cstddef>
+#include <cstring>
 #include <sstream>
+#include <vector>
 #include <stdexcept>
 
 namespace cuda_backend {
 namespace {
 
+constexpr std::size_t kSceneArenaAlignment = 16;
+
+std::size_t aligned_offset(std::size_t offset, std::size_t alignment) {
+    const std::size_t remainder = offset % alignment;
+    return remainder == 0 ? offset : offset + (alignment - remainder);
+}
+
 template <typename T>
-PackedArrayView<T> view_of(const DeviceBuffer<T> &buffer) noexcept {
-    return {buffer.data(), buffer.size()};
+std::size_t stage_arena(std::vector<std::byte> &staging, std::size_t offset,
+                        const std::vector<T> &values) {
+    const std::size_t alignment =
+        alignof(T) > kSceneArenaAlignment ? alignof(T)
+                                          : kSceneArenaAlignment;
+    offset = aligned_offset(offset, alignment);
+    const std::size_t end = offset + values.size() * sizeof(T);
+    if (staging.size() < end) {
+        staging.resize(end);
+    }
+    if (!values.empty()) {
+        std::memcpy(staging.data() + offset, values.data(),
+                    values.size() * sizeof(T));
+    }
+    return end;
+}
+
+template <typename T>
+std::size_t place_arena(PackedArrayView<T> &view,
+                        const std::vector<T> &values, std::byte *base,
+                        std::size_t offset) {
+    const std::size_t alignment =
+        alignof(T) > kSceneArenaAlignment ? alignof(T)
+                                          : kSceneArenaAlignment;
+    offset = aligned_offset(offset, alignment);
+    view = {reinterpret_cast<const T *>(base + offset),
+            static_cast<std::uint32_t>(values.size())};
+    return offset + values.size() * sizeof(T);
 }
 
 std::string validation_message(const ValidationReport &report) {
@@ -80,46 +116,98 @@ DeviceSceneUploadStats DeviceSceneStorage::upload(
 
     const auto begin = std::chrono::steady_clock::now();
     DeviceSceneStorage staged;
-    staged.m_camera = scene.camera;
-    staged.m_background = scene.background;
-    staged.m_scene_time0 = scene.scene_time0;
-    staged.m_scene_time1 = scene.scene_time1;
 
-#define UPLOAD_BUFFER(field) staged.m_##field.upload(scene.field)
-    UPLOAD_BUFFER(positions);
-    UPLOAD_BUFFER(normals);
-    UPLOAD_BUFFER(tangents);
-    UPLOAD_BUFFER(uv0);
-    UPLOAD_BUFFER(vertex_colors);
-    UPLOAD_BUFFER(triangles);
-    UPLOAD_BUFFER(meshes);
-    UPLOAD_BUFFER(spheres);
-    UPLOAD_BUFFER(moving_spheres);
-    UPLOAD_BUFFER(transforms);
-    UPLOAD_BUFFER(instances);
-    UPLOAD_BUFFER(material_bindings);
-    UPLOAD_BUFFER(emitter_bindings);
-    UPLOAD_BUFFER(aggregates);
-    UPLOAD_BUFFER(aggregate_instance_indices);
-    UPLOAD_BUFFER(bvh_nodes);
-    UPLOAD_BUFFER(media);
-    UPLOAD_BUFFER(materials);
-    UPLOAD_BUFFER(texture_nodes);
-    UPLOAD_BUFFER(images);
-    UPLOAD_BUFFER(image_texels);
-    UPLOAD_BUFFER(perlin_tables);
-    UPLOAD_BUFFER(perlin_gradients);
-    UPLOAD_BUFFER(perlin_permutations);
-    UPLOAD_BUFFER(lights);
-    UPLOAD_BUFFER(delta_light_indices);
-    UPLOAD_BUFFER(non_delta_light_indices);
-    UPLOAD_BUFFER(light_selection_probabilities);
-    UPLOAD_BUFFER(light_cdf);
-    UPLOAD_BUFFER(light_element_indices);
-    UPLOAD_BUFFER(light_distributions);
-#undef UPLOAD_BUFFER
+    // Stage every buffer into one host allocation with the exact layout the
+    // device arena will use.
+    std::vector<std::byte> staging;
+    std::size_t offset = 0;
+#define STAGE_ARENA_FIELD(field)                                              \
+    offset = stage_arena(staging, offset, scene.field)
+    STAGE_ARENA_FIELD(positions);
+    STAGE_ARENA_FIELD(normals);
+    STAGE_ARENA_FIELD(tangents);
+    STAGE_ARENA_FIELD(uv0);
+    STAGE_ARENA_FIELD(vertex_colors);
+    STAGE_ARENA_FIELD(triangles);
+    STAGE_ARENA_FIELD(meshes);
+    STAGE_ARENA_FIELD(spheres);
+    STAGE_ARENA_FIELD(moving_spheres);
+    STAGE_ARENA_FIELD(transforms);
+    STAGE_ARENA_FIELD(instances);
+    STAGE_ARENA_FIELD(material_bindings);
+    STAGE_ARENA_FIELD(emitter_bindings);
+    STAGE_ARENA_FIELD(aggregates);
+    STAGE_ARENA_FIELD(aggregate_instance_indices);
+    STAGE_ARENA_FIELD(bvh_nodes);
+    STAGE_ARENA_FIELD(media);
+    STAGE_ARENA_FIELD(materials);
+    STAGE_ARENA_FIELD(texture_nodes);
+    STAGE_ARENA_FIELD(images);
+    STAGE_ARENA_FIELD(image_texels);
+    STAGE_ARENA_FIELD(perlin_tables);
+    STAGE_ARENA_FIELD(perlin_gradients);
+    STAGE_ARENA_FIELD(perlin_permutations);
+    STAGE_ARENA_FIELD(lights);
+    STAGE_ARENA_FIELD(delta_light_indices);
+    STAGE_ARENA_FIELD(non_delta_light_indices);
+    STAGE_ARENA_FIELD(light_selection_probabilities);
+    STAGE_ARENA_FIELD(light_cdf);
+    STAGE_ARENA_FIELD(light_element_indices);
+    STAGE_ARENA_FIELD(light_distributions);
+#undef STAGE_ARENA_FIELD
+    const std::size_t arena_bytes = staging.size();
+    if (offset != arena_bytes) {
+        throw std::logic_error("CUDA scene arena staging size mismatch");
+    }
 
-    if (staged.allocated_bytes() != scene_stats.bytes) {
+    staged.m_storage.upload(staging);
+
+    CompiledSceneView &view = staged.m_view;
+    view.camera = scene.camera;
+    view.background = scene.background;
+    view.scene_time0 = scene.scene_time0;
+    view.scene_time1 = scene.scene_time1;
+    std::byte *base = staged.m_storage.data();
+    offset = 0;
+#define PLACE_ARENA_FIELD(field)                                              \
+    offset = place_arena(view.field, scene.field, base, offset)
+    PLACE_ARENA_FIELD(positions);
+    PLACE_ARENA_FIELD(normals);
+    PLACE_ARENA_FIELD(tangents);
+    PLACE_ARENA_FIELD(uv0);
+    PLACE_ARENA_FIELD(vertex_colors);
+    PLACE_ARENA_FIELD(triangles);
+    PLACE_ARENA_FIELD(meshes);
+    PLACE_ARENA_FIELD(spheres);
+    PLACE_ARENA_FIELD(moving_spheres);
+    PLACE_ARENA_FIELD(transforms);
+    PLACE_ARENA_FIELD(instances);
+    PLACE_ARENA_FIELD(material_bindings);
+    PLACE_ARENA_FIELD(emitter_bindings);
+    PLACE_ARENA_FIELD(aggregates);
+    PLACE_ARENA_FIELD(aggregate_instance_indices);
+    PLACE_ARENA_FIELD(bvh_nodes);
+    PLACE_ARENA_FIELD(media);
+    PLACE_ARENA_FIELD(materials);
+    PLACE_ARENA_FIELD(texture_nodes);
+    PLACE_ARENA_FIELD(images);
+    PLACE_ARENA_FIELD(image_texels);
+    PLACE_ARENA_FIELD(perlin_tables);
+    PLACE_ARENA_FIELD(perlin_gradients);
+    PLACE_ARENA_FIELD(perlin_permutations);
+    PLACE_ARENA_FIELD(lights);
+    PLACE_ARENA_FIELD(delta_light_indices);
+    PLACE_ARENA_FIELD(non_delta_light_indices);
+    PLACE_ARENA_FIELD(light_selection_probabilities);
+    PLACE_ARENA_FIELD(light_cdf);
+    PLACE_ARENA_FIELD(light_element_indices);
+    PLACE_ARENA_FIELD(light_distributions);
+#undef PLACE_ARENA_FIELD
+    if (offset != arena_bytes) {
+        throw std::logic_error("CUDA scene arena layout size mismatch");
+    }
+
+    if (staged.allocated_bytes() != arena_bytes) {
         throw std::logic_error("CUDA scene upload byte count mismatch");
     }
     *this = std::move(staged);
@@ -138,83 +226,12 @@ void DeviceSceneStorage::reset() noexcept {
 
 DeviceSceneView DeviceSceneStorage::view() const noexcept {
     DeviceSceneView result;
-    CompiledSceneView &scene = result.scene;
-    scene.camera = m_camera;
-    scene.background = m_background;
-    scene.scene_time0 = m_scene_time0;
-    scene.scene_time1 = m_scene_time1;
-    scene.positions = view_of(m_positions);
-    scene.normals = view_of(m_normals);
-    scene.tangents = view_of(m_tangents);
-    scene.uv0 = view_of(m_uv0);
-    scene.vertex_colors = view_of(m_vertex_colors);
-    scene.triangles = view_of(m_triangles);
-    scene.meshes = view_of(m_meshes);
-    scene.spheres = view_of(m_spheres);
-    scene.moving_spheres = view_of(m_moving_spheres);
-    scene.transforms = view_of(m_transforms);
-    scene.instances = view_of(m_instances);
-    scene.material_bindings = view_of(m_material_bindings);
-    scene.emitter_bindings = view_of(m_emitter_bindings);
-    scene.aggregates = view_of(m_aggregates);
-    scene.aggregate_instance_indices =
-        view_of(m_aggregate_instance_indices);
-    scene.bvh_nodes = view_of(m_bvh_nodes);
-    scene.media = view_of(m_media);
-    scene.materials = view_of(m_materials);
-    scene.texture_nodes = view_of(m_texture_nodes);
-    scene.images = view_of(m_images);
-    scene.image_texels = view_of(m_image_texels);
-    scene.perlin_tables = view_of(m_perlin_tables);
-    scene.perlin_gradients = view_of(m_perlin_gradients);
-    scene.perlin_permutations = view_of(m_perlin_permutations);
-    scene.lights = view_of(m_lights);
-    scene.delta_light_indices = view_of(m_delta_light_indices);
-    scene.non_delta_light_indices = view_of(m_non_delta_light_indices);
-    scene.light_selection_probabilities =
-        view_of(m_light_selection_probabilities);
-    scene.light_cdf = view_of(m_light_cdf);
-    scene.light_element_indices = view_of(m_light_element_indices);
-    scene.light_distributions = view_of(m_light_distributions);
+    result.scene = m_view;
     return result;
 }
 
 std::size_t DeviceSceneStorage::allocated_bytes() const noexcept {
-    std::size_t total = 0;
-#define ADD_BUFFER_BYTES(field) total += m_##field.bytes()
-    ADD_BUFFER_BYTES(positions);
-    ADD_BUFFER_BYTES(normals);
-    ADD_BUFFER_BYTES(tangents);
-    ADD_BUFFER_BYTES(uv0);
-    ADD_BUFFER_BYTES(vertex_colors);
-    ADD_BUFFER_BYTES(triangles);
-    ADD_BUFFER_BYTES(meshes);
-    ADD_BUFFER_BYTES(spheres);
-    ADD_BUFFER_BYTES(moving_spheres);
-    ADD_BUFFER_BYTES(transforms);
-    ADD_BUFFER_BYTES(instances);
-    ADD_BUFFER_BYTES(material_bindings);
-    ADD_BUFFER_BYTES(emitter_bindings);
-    ADD_BUFFER_BYTES(aggregates);
-    ADD_BUFFER_BYTES(aggregate_instance_indices);
-    ADD_BUFFER_BYTES(bvh_nodes);
-    ADD_BUFFER_BYTES(media);
-    ADD_BUFFER_BYTES(materials);
-    ADD_BUFFER_BYTES(texture_nodes);
-    ADD_BUFFER_BYTES(images);
-    ADD_BUFFER_BYTES(image_texels);
-    ADD_BUFFER_BYTES(perlin_tables);
-    ADD_BUFFER_BYTES(perlin_gradients);
-    ADD_BUFFER_BYTES(perlin_permutations);
-    ADD_BUFFER_BYTES(lights);
-    ADD_BUFFER_BYTES(delta_light_indices);
-    ADD_BUFFER_BYTES(non_delta_light_indices);
-    ADD_BUFFER_BYTES(light_selection_probabilities);
-    ADD_BUFFER_BYTES(light_cdf);
-    ADD_BUFFER_BYTES(light_element_indices);
-    ADD_BUFFER_BYTES(light_distributions);
-#undef ADD_BUFFER_BYTES
-    return total;
+    return m_storage.bytes();
 }
 
 } // namespace cuda_backend

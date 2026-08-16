@@ -79,6 +79,7 @@ class MeshAsset {
 
     bool intersect(const ray &object_ray, double t_min, double t_max,
                    MeshIntersection &intersection) const;
+    bool occluded(const ray &object_ray, double t_min, double t_max) const;
 
     const MeshVertex &vertex(std::uint32_t index) const;
     const MeshTriangle &triangle(std::uint32_t index) const;

@@ -24,6 +24,9 @@ class ImageAsset {
     int channels() const;
     bool is_hdr() const;
     float component(int x, int y, int channel) const;
+    // RGB components decoded to linear light for LDR assets. HDR assets are
+    // already linear and share the encoded buffer. Alpha is never decoded.
+    float linear_component(int x, int y, int channel) const;
     const std::vector<float> &pixels() const;
 
   private:
@@ -35,6 +38,7 @@ class ImageAsset {
     int m_channels = 0;
     bool m_hdr = false;
     std::vector<float> m_pixels;
+    std::vector<float> m_linear_pixels;
 };
 
 #endif

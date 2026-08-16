@@ -15,7 +15,7 @@ class triangle : public hittable {
              const vec2 &uv1 = vec2(0, 0), const vec2 &uv2 = vec2(0, 0),
              bool has_uvs = false)
         : v0(p0), v1(p1), v2(p2), uv0(uv0), uv1(uv1), uv2(uv2),
-          mat_ptr(std::move(m)), has_texcoords(has_uvs) {
+          has_texcoords(has_uvs), mat_ptr(std::move(m)) {
         edge1 = v1 - v0;
         edge2 = v2 - v0;
         face_normal = unit_vector(cross(edge1, edge2));
@@ -26,9 +26,9 @@ class triangle : public hittable {
              MaterialHandle m, const vec2 &uv0 = vec2(0, 0),
              const vec2 &uv1 = vec2(0, 0), const vec2 &uv2 = vec2(0, 0),
              bool has_uvs = false)
-        : v0(p0), v1(p1), v2(p2), n0(n0), n1(n1), n2(n2), uv0(uv0), uv1(uv1),
-          uv2(uv2), mat_ptr(std::move(m)), has_vertex_normals(true),
-          has_texcoords(has_uvs) {
+        : v0(p0), v1(p1), v2(p2), n0(n0), n1(n1), n2(n2),
+          has_vertex_normals(true), uv0(uv0), uv1(uv1), uv2(uv2),
+          has_texcoords(has_uvs), mat_ptr(std::move(m)) {
         edge1 = v1 - v0;
         edge2 = v2 - v0;
         face_normal = unit_vector(cross(edge1, edge2));
@@ -82,6 +82,17 @@ class triangle : public hittable {
         set_surface_derivatives(rec);
 
         return true;
+    }
+
+    bool occluded(const ray &r, double t_min, double t_max,
+                  RNG & /*rng*/) const override {
+        using namespace triangle_intersection;
+        TriangleKernelHit<double> intersection;
+        return intersect_triangle_kernel(
+            {r.origin().x(), r.origin().y(), r.origin().z()},
+            {r.direction().x(), r.direction().y(), r.direction().z()},
+            {v0.x(), v0.y(), v0.z()}, {v1.x(), v1.y(), v1.z()},
+            {v2.x(), v2.y(), v2.z()}, t_min, t_max, intersection);
     }
 
     bool bounding_box(double /*time0*/, double /*time1*/,

@@ -15,3 +15,5 @@ target_link_libraries(raytracer_lighting PUBLIC
     raytracer::materials
     raytracer::geometry
 )
+
+raytracer_enable_warnings(raytracer_lighting)

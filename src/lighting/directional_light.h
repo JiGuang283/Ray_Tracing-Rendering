@@ -10,7 +10,8 @@ public:
         : direction(unit_vector(dir)), L(c) {
     }
 
-    virtual LightSample sample(const point3& p, const vec2& u) const override {
+    virtual LightSample sample(const point3 & /*p*/,
+                                const vec2 & /*u*/) const override {
         LightSample s;
         s.wi = -direction;
         s.dist = infinity;

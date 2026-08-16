@@ -5,6 +5,7 @@
 #include "image_asset.h"
 #include "light.h"
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <numeric>
 
@@ -63,7 +64,8 @@ class Distribution2D {
   public:
     Distribution2D() = default;
 
-    Distribution2D(const std::vector<double> &data, int nu, int nv) {
+    Distribution2D(const std::vector<double> &data, int nu, int nv)
+        : m_nu(nu), m_nv(nv) {
         // 构建每行的条件分布
         conditional.reserve(nv);
         std::vector<double> marginal_func(nv);
@@ -95,24 +97,21 @@ class Distribution2D {
     }
 
     double pdf(double u, double v) const {
-        int iu = clamp(int(u * conditional[0].integral()), 0,
-                       int(conditional.size()) - 1);
-        int iv =
-            clamp(int(v * marginal.integral()), 0, int(conditional.size()) - 1);
-        // 这里需要重新计算
-        int nu = conditional.size() > 0 ? conditional[0].integral() : 0;
-        int nv = conditional.size();
-
-        if (nu == 0 || nv == 0)
+        if (m_nu == 0 || m_nv == 0) {
             return 0;
+        }
 
-        int u_idx = clamp(int(u * nu), 0, nu - 1);
-        int v_idx = clamp(int(v * nv), 0, nv - 1);
+        const int u_idx =
+            clamp(static_cast<int>(u * m_nu), 0, m_nu - 1);
+        const int v_idx =
+            clamp(static_cast<int>(v * m_nv), 0, m_nv - 1);
 
         return conditional[v_idx].pdf(u_idx) * marginal.pdf(v_idx);
     }
 
   private:
+    int m_nu = 0;
+    int m_nv = 0;
     std::vector<Distribution1D> conditional;
     Distribution1D marginal;
     friend class EnvironmentLight;
@@ -298,7 +297,7 @@ class EnvironmentLight : public Light {
     }
 
     // PDF for a given direction
-    virtual double pdf(const point3 &origin,
+    virtual double pdf(const point3 & /*origin*/,
                        const vec3 &direction) const override {
         if (width == 0 || height == 0)
             return 1.0 / (4.0 * pi);
@@ -356,14 +355,7 @@ class EnvironmentLight : public Light {
 
   private:
     double component(int x, int y, int channel) const {
-        double value = image->component(x, y, channel);
-        if (!image->is_hdr()) {
-            if (value <= 0.04045) {
-                return value / 12.92;
-            }
-            return pow((value + 0.055) / 1.055, 2.4);
-        }
-        return value;
+        return image->linear_component(x, y, channel);
     }
 
     std::shared_ptr<const ImageAsset> image;

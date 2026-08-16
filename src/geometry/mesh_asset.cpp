@@ -229,6 +229,58 @@ bool MeshAsset::intersect(const ray &object_ray, double t_min, double t_max,
     return found;
 }
 
+bool MeshAsset::occluded(const ray &object_ray, double t_min,
+                          double t_max) const {
+    if (m_nodes.empty()) {
+        for (std::uint32_t index = 0;
+             index < static_cast<std::uint32_t>(m_triangle_order.size());
+             ++index) {
+            MeshIntersection ignored;
+            if (intersect_triangle(m_triangle_order[index], object_ray, t_min,
+                                   t_max, ignored)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    std::array<std::uint32_t, kTraversalStackSize> stack;
+    std::size_t stack_size = 0;
+    std::uint32_t current = 0;
+    while (true) {
+        const MeshBVHNode &node = m_nodes[current];
+        if (!node.bounds.hit(object_ray, t_min, t_max)) {
+            if (stack_size == 0) {
+                return false;
+            }
+            current = stack[--stack_size];
+            continue;
+        }
+        if (node.is_leaf()) {
+            for (std::uint32_t local = 0; local < node.triangle_count;
+                 ++local) {
+                MeshIntersection ignored;
+                if (intersect_triangle(
+                        m_triangle_order[node.first_triangle + local],
+                        object_ray, t_min, t_max, ignored)) {
+                    return true;
+                }
+            }
+            if (stack_size == 0) {
+                return false;
+            }
+            current = stack[--stack_size];
+        } else {
+            if (stack_size == stack.size()) {
+                throw std::runtime_error(
+                    "Mesh BVH occlusion traversal stack overflow.");
+            }
+            stack[stack_size++] = node.second_child_offset;
+            current = current + 1;
+        }
+    }
+}
+
 const MeshVertex &MeshAsset::vertex(std::uint32_t index) const {
     return m_vertices.at(index);
 }

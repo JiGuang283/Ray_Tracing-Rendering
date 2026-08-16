@@ -27,3 +27,8 @@ bool box::hit(const ray &r, double t_min, double t_max, hit_record &rec,
               RNG &rng) const {
     return sides.hit(r, t_min, t_max, rec, rng);
 }
+
+bool box::occluded(const ray &r, double t_min, double t_max,
+                   RNG &rng) const {
+    return sides.occluded(r, t_min, t_max, rng);
+}

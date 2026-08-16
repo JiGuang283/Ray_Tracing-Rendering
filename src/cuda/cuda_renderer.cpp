@@ -18,13 +18,17 @@ namespace cuda_backend {
 class CudaRenderSession final : public IRenderSession {
   public:
     explicit CudaRenderSession(const SceneIR &ir)
-        : m_default_camera(ir.camera) {
+        : m_ir(ir), m_default_camera(ir.camera) {
         std::string unavailable_reason;
         if (!cuda_device_available(&unavailable_reason)) {
             throw std::runtime_error("CUDA backend unavailable: " +
                                      unavailable_reason);
         }
+        upload_scene(m_ir);
+        m_device_name = cuda_device_name();
+    }
 
+    void upload_scene(const SceneIR &ir) {
         const auto compile_begin = std::chrono::steady_clock::now();
         CompiledScene scene = compile_scene(ir);
         const auto compile_end = std::chrono::steady_clock::now();
@@ -34,7 +38,6 @@ class CudaRenderSession final : public IRenderSession {
         const DeviceSceneUploadStats upload = m_device_scene.upload(scene);
         m_preparation.upload_seconds = upload.milliseconds / 1000.0;
         m_preparation.scene_bytes = upload.bytes;
-        m_device_name = cuda_device_name();
     }
 
     const PreparationStats &preparation_stats() const noexcept override {
@@ -61,6 +64,13 @@ class CudaRenderSession final : public IRenderSession {
                               const CancellationToken &cancel,
                               PreviewSurface *preview) override {
         validate_render_frame_request(request);
+        if (request.revision.geometry != m_revision.geometry ||
+            request.revision.material != m_revision.material ||
+            request.revision.lighting != m_revision.lighting) {
+            upload_scene(m_ir);
+            m_revision = request.revision;
+            reset_history();
+        }
         DeviceSceneView scene = m_device_scene.view();
         scene.scene.camera = compile_packed_camera(
             request.camera, scene.scene.scene_time0, scene.scene.scene_time1);
@@ -116,7 +126,7 @@ class CudaRenderSession final : public IRenderSession {
             for (std::uint32_t x = 0; x < transport_settings.width; ++x) {
                 const CudaFilmPixel &pixel =
                     output.film[y * transport_settings.width + x];
-                beauty.set_pixel(
+                beauty.set_pixel_unchecked(
                     static_cast<int>(x), static_cast<int>(y),
                     color(pixel.radiance.x, pixel.radiance.y,
                           pixel.radiance.z),
@@ -133,45 +143,49 @@ class CudaRenderSession final : public IRenderSession {
         const auto end = std::chrono::steady_clock::now();
 
         RenderStats stats;
-        stats.seconds =
+        stats.base.seconds =
             std::chrono::duration<double>(end - begin).count();
-        stats.compile_seconds = m_preparation.compile_seconds;
-        stats.upload_seconds = m_preparation.upload_seconds;
-        stats.resolve_seconds =
+        stats.base.compile_seconds = m_preparation.compile_seconds;
+        stats.base.upload_seconds = m_preparation.upload_seconds;
+        stats.base.resolve_seconds =
             std::chrono::duration<double>(resolve_end - resolve_begin)
                 .count();
-        stats.width = static_cast<int>(request.extent.width);
-        stats.height = static_cast<int>(request.extent.height);
-        stats.samples_per_pixel =
+        stats.base.width = static_cast<int>(request.extent.width);
+        stats.base.height = static_cast<int>(request.extent.height);
+        stats.base.samples_per_pixel =
             static_cast<int>(request.samples_per_pixel);
-        stats.requested_samples =
+        stats.base.requested_samples =
             static_cast<std::uint64_t>(request.extent.pixel_count()) *
             request.samples_per_pixel;
-        stats.completed_samples = output.stats.sample_count;
-        stats.sample_count = stats.completed_samples;
-        stats.seed = request.seed;
-        stats.threads = 0;
-        stats.clamped_samples = output.stats.clamped_samples;
-        stats.invalid_samples = output.stats.invalid_samples;
-        stats.backend = "cuda";
-        stats.device_name = m_device_name;
-        stats.device_seconds = output.stats.milliseconds / 1000.0;
-        stats.scene_bytes = m_preparation.scene_bytes;
-        stats.workspace_bytes = output.stats.workspace_bytes;
-        stats.workspace_generation = output.stats.workspace_generation;
-        stats.workspace_pixel_capacity =
+        stats.base.completed_samples = output.stats.sample_count;
+        stats.base.sample_count = stats.base.completed_samples;
+        stats.base.seed = request.seed;
+        stats.cpu.threads = 0;
+        stats.base.clamped_samples = output.stats.clamped_samples;
+        stats.base.invalid_samples = output.stats.invalid_samples;
+        stats.base.backend = "cuda";
+        stats.cuda.device_name = m_device_name;
+        stats.cuda.device_seconds = output.stats.milliseconds / 1000.0;
+        stats.base.scene_bytes = m_preparation.scene_bytes;
+        stats.cuda.workspace_bytes = output.stats.workspace_bytes;
+        stats.cuda.workspace_generation = output.stats.workspace_generation;
+        stats.cuda.workspace_pixel_capacity =
             output.stats.workspace_pixel_capacity;
-        stats.workspace_path_capacity =
+        stats.cuda.workspace_path_capacity =
             output.stats.workspace_path_capacity;
-        stats.traversal_steps = output.stats.traversal_steps;
-        stats.shadow_rays = output.stats.shadow_rays;
-        stats.batch_size = static_cast<int>(output.stats.batch_size);
-        stats.batch_count = static_cast<int>(output.stats.batch_count);
-        stats.status_counts = output.stats.status_counts;
-        stats.cancelled = output.stats.cancelled ||
-                          stats.completed_samples < stats.requested_samples;
-        std::cout << "Rendering finished in " << stats.seconds
-                  << " seconds (CUDA device " << stats.device_seconds
+        stats.cuda.traversal_steps = output.stats.traversal_steps;
+        stats.cuda.shadow_rays = output.stats.shadow_rays;
+        stats.cuda.wavefront_advance_launches =
+            output.stats.advance_launches;
+        stats.cuda.wavefront_active_path_steps =
+            output.stats.active_path_steps;
+        stats.cuda.batch_size = static_cast<int>(output.stats.batch_size);
+        stats.cuda.batch_count = static_cast<int>(output.stats.batch_count);
+        stats.cuda.status_counts = output.stats.status_counts;
+        stats.base.cancelled = output.stats.cancelled ||
+                          stats.base.completed_samples < stats.base.requested_samples;
+        std::cout << "Rendering finished in " << stats.base.seconds
+                  << " seconds (CUDA device " << stats.cuda.device_seconds
                   << " seconds)." << std::endl;
         RenderResult result;
         result.film = std::move(beauty);
@@ -235,7 +249,7 @@ class CudaRenderSession final : public IRenderSession {
                         radiance.z + indirect.radiance.z,
                     };
                 }
-                beauty.set_pixel(
+                beauty.set_pixel_unchecked(
                     static_cast<int>(x), static_cast<int>(y),
                     color(radiance.x, radiance.y, radiance.z),
                     direct.sample_count);
@@ -251,37 +265,37 @@ class CudaRenderSession final : public IRenderSession {
         const auto end = std::chrono::steady_clock::now();
 
         RenderStats stats;
-        stats.seconds =
+        stats.base.seconds =
             std::chrono::duration<double>(end - begin).count();
-        stats.compile_seconds = m_preparation.compile_seconds;
-        stats.upload_seconds = m_preparation.upload_seconds;
-        stats.device_seconds = output.stats.milliseconds / 1000.0;
-        stats.resolve_seconds =
+        stats.base.compile_seconds = m_preparation.compile_seconds;
+        stats.base.upload_seconds = m_preparation.upload_seconds;
+        stats.cuda.device_seconds = output.stats.milliseconds / 1000.0;
+        stats.base.resolve_seconds =
             std::chrono::duration<double>(resolve_end - resolve_begin)
                 .count();
-        stats.width = static_cast<int>(frame.render.extent.width);
-        stats.height = static_cast<int>(frame.render.extent.height);
-        stats.samples_per_pixel =
+        stats.base.width = static_cast<int>(frame.render.extent.width);
+        stats.base.height = static_cast<int>(frame.render.extent.height);
+        stats.base.samples_per_pixel =
             static_cast<int>(frame.render.samples_per_pixel);
-        stats.requested_samples =
+        stats.base.requested_samples =
             static_cast<std::uint64_t>(frame.render.extent.pixel_count()) *
             frame.render.samples_per_pixel;
-        stats.completed_samples = output.stats.sample_count;
-        stats.sample_count = output.stats.sample_count;
-        stats.seed = frame.render.seed;
-        stats.clamped_samples = output.stats.di_clamped_samples +
+        stats.base.completed_samples = output.stats.sample_count;
+        stats.base.sample_count = output.stats.sample_count;
+        stats.base.seed = frame.render.seed;
+        stats.base.clamped_samples = output.stats.di_clamped_samples +
                                 output.stats.gi_clamped_samples;
-        stats.invalid_samples = output.stats.di_invalid_samples +
+        stats.base.invalid_samples = output.stats.di_invalid_samples +
                                 output.stats.gi_invalid_samples;
-        stats.backend = "cuda";
-        stats.device_name = m_device_name;
-        stats.scene_bytes = m_preparation.scene_bytes;
-        stats.workspace_bytes = output.stats.workspace.bytes;
-        stats.workspace_generation =
+        stats.base.backend = "cuda";
+        stats.cuda.device_name = m_device_name;
+        stats.base.scene_bytes = m_preparation.scene_bytes;
+        stats.cuda.workspace_bytes = output.stats.workspace.bytes;
+        stats.cuda.workspace_generation =
             output.stats.workspace.allocation_generation;
-        stats.workspace_pixel_capacity =
+        stats.cuda.workspace_pixel_capacity =
             output.stats.workspace.pixel_capacity;
-        stats.shadow_rays = output.stats.visibility_rays +
+        stats.cuda.shadow_rays = output.stats.visibility_rays +
                             output.stats.gi_visibility_rays +
                             output.stats.gi_suffix_shadow_rays;
         stats.restir.iterations = output.stats.completed_iterations;
@@ -350,11 +364,11 @@ class CudaRenderSession final : public IRenderSession {
             stats.restir.history_failures[index] =
                 output.stats.temporal_rejection[index];
         }
-        stats.cancelled = output.stats.cancelled ||
-                          stats.completed_samples < stats.requested_samples;
-        std::cout << "Rendering finished in " << stats.seconds
+        stats.base.cancelled = output.stats.cancelled ||
+                          stats.base.completed_samples < stats.base.requested_samples;
+        std::cout << "Rendering finished in " << stats.base.seconds
                   << " seconds (CUDA ReSTIR device "
-                  << stats.device_seconds << " seconds)." << std::endl;
+                  << stats.cuda.device_seconds << " seconds)." << std::endl;
         RenderResult result;
         result.film = std::move(beauty);
         result.display = std::move(display);
@@ -362,6 +376,8 @@ class CudaRenderSession final : public IRenderSession {
         return result;
     }
 
+    SceneIR m_ir;
+    SceneRevision m_revision;
     DeviceSceneStorage m_device_scene;
     CudaRenderWorkspace m_workspace;
     CudaRestirWorkspace m_restir_workspace;

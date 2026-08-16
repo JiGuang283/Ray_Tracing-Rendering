@@ -176,7 +176,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_bounds(
     return intersect_bounds(bounds, ray, t_min, t_max);
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle(
+template <bool kHostFast>
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle_impl(
     const CompiledSceneView &scene, const PackedMesh &mesh,
     std::uint32_t triangle_index, const PackedRay &object_ray, float t_min,
     float t_max, PackedHit &candidate) {
@@ -192,12 +193,23 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle(
     const Float3 v2{packed_v2.x, packed_v2.y, packed_v2.z};
     using namespace triangle_intersection;
     TriangleKernelHit<float> intersection;
-    if (!intersect_triangle_kernel(
-            {object_ray.origin.x, object_ray.origin.y, object_ray.origin.z},
-            {object_ray.direction.x, object_ray.direction.y,
-             object_ray.direction.z},
-            {v0.x, v0.y, v0.z}, {v1.x, v1.y, v1.z}, {v2.x, v2.y, v2.z},
-            t_min, t_max, intersection)) {
+    const bool hit_found =
+        kHostFast
+            ? intersect_triangle_kernel_host_fast(
+                  {object_ray.origin.x, object_ray.origin.y,
+                   object_ray.origin.z},
+                  {object_ray.direction.x, object_ray.direction.y,
+                   object_ray.direction.z},
+                  {v0.x, v0.y, v0.z}, {v1.x, v1.y, v1.z},
+                  {v2.x, v2.y, v2.z}, t_min, t_max, intersection)
+            : intersect_triangle_kernel(
+                  {object_ray.origin.x, object_ray.origin.y,
+                   object_ray.origin.z},
+                  {object_ray.direction.x, object_ray.direction.y,
+                   object_ray.direction.z},
+                  {v0.x, v0.y, v0.z}, {v1.x, v1.y, v1.z},
+                  {v2.x, v2.y, v2.z}, t_min, t_max, intersection);
+    if (!hit_found) {
         return false;
     }
     candidate.t = intersection.t;
@@ -208,7 +220,26 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle(
     return true;
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_mesh(
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle(
+    const CompiledSceneView &scene, const PackedMesh &mesh,
+    std::uint32_t triangle_index, const PackedRay &object_ray, float t_min,
+    float t_max, PackedHit &candidate) {
+    return intersect_triangle_impl<false>(scene, mesh, triangle_index,
+                                          object_ray, t_min, t_max,
+                                          candidate);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_triangle_host(
+    const CompiledSceneView &scene, const PackedMesh &mesh,
+    std::uint32_t triangle_index, const PackedRay &object_ray, float t_min,
+    float t_max, PackedHit &candidate) {
+    return intersect_triangle_impl<true>(scene, mesh, triangle_index,
+                                         object_ray, t_min, t_max,
+                                         candidate);
+}
+
+template <bool kHostFast>
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_mesh_impl(
     const CompiledSceneView &scene, const PackedMesh &mesh,
     const PackedRay &object_ray, float t_min, float t_max, PackedHit &hit,
     PackedTraversalStatus &status) {
@@ -229,9 +260,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_mesh(
             for (std::uint32_t local = 0; local < node.primitive_count();
                  ++local) {
                 PackedHit candidate{};
-                if (intersect_triangle(scene, mesh, node.first + local,
-                                       object_ray, t_min, t_max,
-                                       candidate)) {
+                if (intersect_triangle_impl<kHostFast>(
+                        scene, mesh, node.first + local, object_ray, t_min,
+                        t_max, candidate)) {
                     t_max = candidate.t;
                     hit = candidate;
                     found = true;
@@ -247,6 +278,22 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_mesh(
         stack[stack_size++] = node_index + 1;
     }
     return found;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_mesh(
+    const CompiledSceneView &scene, const PackedMesh &mesh,
+    const PackedRay &object_ray, float t_min, float t_max, PackedHit &hit,
+    PackedTraversalStatus &status) {
+    return intersect_mesh_impl<false>(scene, mesh, object_ray, t_min, t_max,
+                                      hit, status);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_mesh_host(
+    const CompiledSceneView &scene, const PackedMesh &mesh,
+    const PackedRay &object_ray, float t_min, float t_max, PackedHit &hit,
+    PackedTraversalStatus &status) {
+    return intersect_mesh_impl<true>(scene, mesh, object_ray, t_min, t_max,
+                                     hit, status);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE Float3 moving_sphere_center(
@@ -293,7 +340,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE std::uint32_t resolve_material(
     return scene.material_bindings[instance.material_bindings.offset + slot];
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_instance_surface(
+template <bool kHostIdentity>
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_instance_surface_impl(
     const CompiledSceneView &scene, std::uint32_t instance_id,
     const PackedRay &ray, float t_max, PackedHit &hit,
     PackedTraversalStatus &status) {
@@ -306,14 +354,18 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_instance_surface(
         return false;
     }
     const PackedTransform &transform = scene.transforms[instance.transform_id];
-    const PackedRay object_ray = transform_ray_to_object(ray, transform);
+    const PackedRay object_ray =
+        (kHostIdentity &&
+         (instance.flags & PACKED_INSTANCE_HOST_IDENTITY_TRANSFORM) != 0)
+            ? ray
+            : transform_ray_to_object(ray, transform);
     PackedHit candidate{};
     bool found = false;
     switch (instance.geometry_type) {
     case PackedGeometryType::Mesh:
-        found = intersect_mesh(scene, scene.meshes[instance.geometry_index],
-                               object_ray, ray.t_min, t_max, candidate,
-                               status);
+        found = intersect_mesh_impl<kHostIdentity>(
+            scene, scene.meshes[instance.geometry_index], object_ray,
+            ray.t_min, t_max, candidate, status);
         break;
     case PackedGeometryType::Sphere: {
         const PackedSphere &sphere = scene.spheres[instance.geometry_index];
@@ -343,7 +395,24 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_instance_surface(
     return true;
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_aggregate_surface(
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_instance_surface(
+    const CompiledSceneView &scene, std::uint32_t instance_id,
+    const PackedRay &ray, float t_max, PackedHit &hit,
+    PackedTraversalStatus &status) {
+    return intersect_instance_surface_impl<false>(scene, instance_id, ray,
+                                                  t_max, hit, status);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_instance_surface_host(
+    const CompiledSceneView &scene, std::uint32_t instance_id,
+    const PackedRay &ray, float t_max, PackedHit &hit,
+    PackedTraversalStatus &status) {
+    return intersect_instance_surface_impl<true>(scene, instance_id, ray,
+                                                 t_max, hit, status);
+}
+
+template <bool kHostIdentity>
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_aggregate_surface_impl(
     const CompiledSceneView &scene, std::uint32_t aggregate_id,
     const PackedRay &ray, PackedHit &hit, PackedTraversalStatus &status) {
     if (aggregate_id >= scene.aggregates.count) {
@@ -370,8 +439,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_aggregate_surface(
                 const std::uint32_t instance_id =
                     scene.aggregate_instance_indices[node.first + local];
                 PackedHit candidate{};
-                if (intersect_instance_surface(scene, instance_id, ray,
-                                               closest, candidate, status)) {
+                if (intersect_instance_surface_impl<kHostIdentity>(
+                        scene, instance_id, ray, closest, candidate, status)) {
                     closest = candidate.t;
                     hit = candidate;
                     found = true;
@@ -390,6 +459,20 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_aggregate_surface(
         stack[stack_size++] = node_index + 1;
     }
     return found;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_aggregate_surface(
+    const CompiledSceneView &scene, std::uint32_t aggregate_id,
+    const PackedRay &ray, PackedHit &hit, PackedTraversalStatus &status) {
+    return intersect_aggregate_surface_impl<false>(
+        scene, aggregate_id, ray, hit, status);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_aggregate_surface_host(
+    const CompiledSceneView &scene, std::uint32_t aggregate_id,
+    const PackedRay &ray, PackedHit &hit, PackedTraversalStatus &status) {
+    return intersect_aggregate_surface_impl<true>(
+        scene, aggregate_id, ray, hit, status);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_medium(
@@ -506,6 +589,174 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool intersect_aggregate(
         stack[stack_size++] = node_index + 1;
     }
     return found;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTraversalStatus
+intersect_compiled_scene_core(const CompiledSceneView &scene,
+                              const PackedRay &ray, PackedHit &hit,
+                              RNG *rng);
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTraversalStatus
+intersect_compiled_scene_core_host(const CompiledSceneView &scene,
+                                   const PackedRay &ray, PackedHit &hit,
+                                   RNG *rng) {
+    if (scene.media.count != 0) {
+        return intersect_compiled_scene_core(scene, ray, hit, rng);
+    }
+    if (scene.aggregates.count == 0 || !finite(ray.time) ||
+        ray.t_max < ray.t_min) {
+        return PackedTraversalStatus::InvalidInput;
+    }
+    PackedTraversalStatus status = PackedTraversalStatus::Miss;
+    const bool found =
+        intersect_aggregate_surface_host(scene, 0, ray, hit, status);
+    if (status == PackedTraversalStatus::StackOverflow) {
+        return status;
+    }
+    return found ? PackedTraversalStatus::Hit : PackedTraversalStatus::Miss;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTraversalStatus
+intersect_compiled_scene_core(const CompiledSceneView &scene,
+                              const PackedRay &ray, PackedHit &hit,
+                              RNG *rng);
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool occlude_mesh_host(
+    const CompiledSceneView &scene, const PackedMesh &mesh,
+    const PackedRay &object_ray, float t_min, float t_max,
+    PackedTraversalStatus &status) {
+    if (mesh.bvh_nodes.count == 0) {
+        for (std::uint32_t local = 0; local < mesh.triangles.count; ++local) {
+            PackedHit ignored{};
+            if (intersect_triangle_host(scene, mesh, local, object_ray,
+                                         t_min, t_max, ignored)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    std::uint32_t stack[kTraversalStackSize]{};
+    std::uint32_t stack_size = 0;
+    stack[stack_size++] = mesh.bvh_nodes.offset;
+    while (stack_size != 0) {
+        const std::uint32_t node_index = stack[--stack_size];
+        const PackedBVHNode &node = scene.bvh_nodes[node_index];
+        if (!intersect_bounds(node, object_ray, t_min, t_max)) {
+            continue;
+        }
+        if (node.is_leaf()) {
+            for (std::uint32_t local = 0; local < node.primitive_count();
+                 ++local) {
+                PackedHit candidate{};
+                if (intersect_triangle_host(scene, mesh, node.first + local,
+                                             object_ray, t_min, t_max,
+                                             candidate)) {
+                    return true;
+                }
+            }
+            continue;
+        }
+        if (stack_size + 2 > kTraversalStackSize) {
+            status = PackedTraversalStatus::StackOverflow;
+            return false;
+        }
+        stack[stack_size++] = node.first;
+        stack[stack_size++] = node_index + 1;
+    }
+    return false;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool occlude_instance_host(
+    const CompiledSceneView &scene, std::uint32_t instance_id,
+    const PackedRay &ray, float t_max, PackedTraversalStatus &status) {
+    const PackedInstance &instance = scene.instances[instance_id];
+    if (!intersect_bounds(instance.bounds_min, instance.bounds_max, ray,
+                          ray.t_min, t_max)) {
+        return false;
+    }
+    if (instance.geometry_type == PackedGeometryType::Medium) {
+        return false;
+    }
+    const PackedTransform &transform = scene.transforms[instance.transform_id];
+    const PackedRay object_ray =
+        (instance.flags & PACKED_INSTANCE_HOST_IDENTITY_TRANSFORM) != 0
+            ? ray
+            : transform_ray_to_object(ray, transform);
+    switch (instance.geometry_type) {
+    case PackedGeometryType::Mesh:
+        return occlude_mesh_host(scene, scene.meshes[instance.geometry_index],
+                                 object_ray, ray.t_min, t_max, status);
+    case PackedGeometryType::Sphere: {
+        const PackedSphere &sphere = scene.spheres[instance.geometry_index];
+        PackedHit ignored{};
+        return intersect_sphere(sphere.center, sphere.radius, object_ray,
+                                ray.t_min, t_max, ignored);
+    }
+    case PackedGeometryType::MovingSphere: {
+        const PackedMovingSphere &sphere =
+            scene.moving_spheres[instance.geometry_index];
+        PackedHit ignored{};
+        return intersect_sphere(moving_sphere_center(sphere, ray.time),
+                                sphere.radius, object_ray, ray.t_min, t_max,
+                                ignored);
+    }
+    case PackedGeometryType::Medium:
+        break;
+    }
+    return false;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool occluded_compiled_scene_core_host(
+    const CompiledSceneView &scene, const PackedRay &ray, RNG *rng,
+    PackedTraversalStatus &status) {
+    status = PackedTraversalStatus::Miss;
+    if (scene.aggregates.count == 0 || !finite(ray.time) ||
+        ray.t_max < ray.t_min) {
+        status = PackedTraversalStatus::InvalidInput;
+        return false;
+    }
+    if (scene.media.count != 0) {
+        PackedHit hit{};
+        status = intersect_compiled_scene_core(scene, ray, hit, rng);
+        return status == PackedTraversalStatus::Hit;
+    }
+    const PackedAggregate &aggregate = scene.aggregates[0];
+    if (aggregate.bvh_nodes.count == 0) {
+        return false;
+    }
+    std::uint32_t stack[kTraversalStackSize]{};
+    std::uint32_t stack_size = 0;
+    stack[stack_size++] = aggregate.bvh_nodes.offset;
+    while (stack_size != 0) {
+        const std::uint32_t node_index = stack[--stack_size];
+        const PackedBVHNode &node = scene.bvh_nodes[node_index];
+        if (!intersect_bounds(node, ray, ray.t_min, ray.t_max)) {
+            continue;
+        }
+        if (node.is_leaf()) {
+            for (std::uint32_t local = 0; local < node.primitive_count();
+                 ++local) {
+                const std::uint32_t instance_id =
+                    scene.aggregate_instance_indices[node.first + local];
+                if (occlude_instance_host(scene, instance_id, ray, ray.t_max,
+                                          status)) {
+                    status = PackedTraversalStatus::Hit;
+                    return true;
+                }
+                if (status == PackedTraversalStatus::StackOverflow) {
+                    return false;
+                }
+            }
+            continue;
+        }
+        if (stack_size + 2 > kTraversalStackSize) {
+            status = PackedTraversalStatus::StackOverflow;
+            return false;
+        }
+        stack[stack_size++] = node.first;
+        stack[stack_size++] = node_index + 1;
+    }
+    return false;
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE PackedTraversalStatus

@@ -18,6 +18,7 @@ using TextureCacheKey = std::pair<TextureIRId, TextureSemantic>;
 struct SceneResourceContext {
     std::string source_path;
     const SceneIR *scene_ir = nullptr;
+    bool strict_assets = false;
     std::map<TextureCacheKey, TextureHandle> textures;
     std::set<TextureCacheKey> textures_in_progress;
     MaterialMap materials;

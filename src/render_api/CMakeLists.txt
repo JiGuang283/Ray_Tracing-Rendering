@@ -18,3 +18,5 @@ target_link_libraries(raytracer_render_api PUBLIC
     raytracer::build_config
     raytracer::core
 )
+
+raytracer_enable_warnings(raytracer_render_api)

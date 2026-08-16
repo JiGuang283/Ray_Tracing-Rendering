@@ -8,10 +8,15 @@
 #include "shading.h"
 #include "vec3.h"
 
+#include <cstdint>
+
 struct IntegratorContext {
     RNG &rng;
     ShaderScratch &shader_scratch;
     const LightSampler *light_sampler = nullptr;
+    // Optional per-worker counters for backend-neutral statistics.
+    std::uint64_t *traversal_steps = nullptr;
+    std::uint64_t *shadow_rays = nullptr;
 };
 
 class Integrator {

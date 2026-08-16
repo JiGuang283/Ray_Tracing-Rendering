@@ -19,7 +19,7 @@ RenderResult Renderer::render(
     shared_ptr<hittable> world, shared_ptr<camera> cam,
     const color &background, const std::vector<shared_ptr<Light>> &lights,
     const RenderRequest &request, const CancellationToken &cancel,
-    PreviewSurface *preview) {
+    PreviewSurface *preview, const LightSampler *provided_light_sampler) {
     validate_render_request(request);
     if (!world || !cam) {
         throw std::invalid_argument("renderer requires a world and camera");
@@ -64,10 +64,15 @@ RenderResult Renderer::render(
         std::uint64_t completed_samples = 0;
         std::uint64_t clamped_samples = 0;
         std::uint64_t invalid_samples = 0;
+        std::uint64_t traversal_steps = 0;
+        std::uint64_t shadow_rays = 0;
     };
     std::vector<WorkerStats> worker_stats(
         static_cast<std::size_t>(num_threads));
-    const LightSampler light_sampler(lights);
+    const LightSampler fallback_light_sampler(lights);
+    const LightSampler &light_sampler = provided_light_sampler != nullptr
+                                            ? *provided_light_sampler
+                                            : fallback_light_sampler;
     std::atomic<bool> worker_failed{false};
     std::exception_ptr first_exception;
     std::mutex exception_mutex;
@@ -100,6 +105,7 @@ RenderResult Renderer::render(
                     for (int i = x_start; i < x_end && !should_cancel(); i++) {
                         const std::uint32_t pixel_index =
                             static_cast<std::uint32_t>(j * image_width + i);
+                        WorkerStats &stats = worker_stats[worker_id];
                         for (std::uint32_t s = 0;
                              s < request.samples_per_pixel; ++s) {
                             if ((s & 15u) == 0u && should_cancel()) {
@@ -108,7 +114,9 @@ RenderResult Renderer::render(
                             Sampler sampler(render_sample_seed(
                                 request.seed, pixel_index, s));
                             IntegratorContext integrator_context{
-                                sampler.rng(), shader_scratch, &light_sampler};
+                                sampler.rng(), shader_scratch, &light_sampler,
+                                &stats.traversal_steps,
+                                &stats.shadow_rays};
                             CameraSample sample = sampler.next_camera_sample(
                                 i, j, image_width, image_height);
                             ray r = cam->get_ray(sample.u, sample.v,
@@ -118,7 +126,6 @@ RenderResult Renderer::render(
                                     m_integrator->Li(r, *world, background,
                                                      integrator_context),
                                     request.sample_clamp);
-                            WorkerStats &stats = worker_stats[worker_id];
                             stats.completed_samples++;
                             stats.clamped_samples += filtered.clamped ? 1 : 0;
                             stats.invalid_samples += filtered.invalid ? 1 : 0;
@@ -176,24 +183,28 @@ RenderResult Renderer::render(
               << std::endl;
 
     RenderStats stats;
-    stats.seconds = elapsed.count();
-    stats.resolve_seconds =
+    stats.base.seconds = elapsed.count();
+    stats.base.resolve_seconds =
         std::chrono::duration<double>(resolve_end - resolve_begin).count();
-    stats.width = image_width;
-    stats.height = image_height;
-    stats.samples_per_pixel = static_cast<int>(request.samples_per_pixel);
-    stats.requested_samples =
+    stats.base.width = image_width;
+    stats.base.height = image_height;
+    stats.base.samples_per_pixel =
+        static_cast<int>(request.samples_per_pixel);
+    stats.base.requested_samples =
         static_cast<std::uint64_t>(image_width) * image_height *
         request.samples_per_pixel;
-    stats.seed = request.seed;
-    stats.threads = num_threads;
+    stats.base.seed = request.seed;
+    stats.cpu.threads = num_threads;
     for (const WorkerStats &worker : worker_stats) {
-        stats.completed_samples += worker.completed_samples;
-        stats.clamped_samples += worker.clamped_samples;
-        stats.invalid_samples += worker.invalid_samples;
+        stats.base.completed_samples += worker.completed_samples;
+        stats.base.clamped_samples += worker.clamped_samples;
+        stats.base.invalid_samples += worker.invalid_samples;
+        stats.cpu.traversal_steps += worker.traversal_steps;
+        stats.cpu.shadow_rays += worker.shadow_rays;
     }
-    stats.sample_count = stats.completed_samples;
-    stats.cancelled = stats.completed_samples < stats.requested_samples;
+    stats.base.sample_count = stats.base.completed_samples;
+    stats.base.cancelled =
+        stats.base.completed_samples < stats.base.requested_samples;
 
     RenderResult result;
     result.film = std::move(beauty);

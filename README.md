@@ -8,12 +8,42 @@
 
 | 功能模块 | 实现状态 |
 |---------|:-------:|
-| 多线程渲染 | ✅ 已完成 |
+| 多线程 CPU 路径追踪 | ✅ 已完成 |
 | 积分器改进（轮盘赌、直接光照采样、MIS） | ✅ 已完成 |
 | PBR 材质系统（Cook-Torrance 微表面模型） | ✅ 已完成 |
 | 多种光源（平行光、点光源、面光源、环境光贴图） | ✅ 已完成 |
-| 外部模型加载 | ❌ 未实现 |
-| 渲染管线优化及 GUI | ❌ 未实现 |
+| JSON 场景描述与 OBJ/glTF 模型加载 | ✅ 已完成 |
+| CUDA wavefront 渲染后端 | ✅ 已完成 |
+| CUDA ReSTIR DI / GI | ✅ 已完成 |
+| CPU packed 渲染后端（验证原型） | ✅ 原型可用 |
+| 交互窗口 GUI | ✅ 预览窗口（SDL） |
+
+---
+
+## 当前架构
+
+```text
+CLI / AppOptions
+      |
+      v
+JSON SceneIR
+      |
+      +-- CpuRenderSession ------ 多态 double 场景树 + 多线程 tile 渲染
+      |
+      +-- CpuPackedRenderSession -- CompiledScene + host packed transport
+      |                             （--cpu-packed，验证/优化中）
+      |
+      +-- CudaRenderSession ------- DeviceScene arena + wavefront kernel
+                                     + ReSTIR DI/GI scheduler
+```
+
+- 渲染入口统一为 `IRenderSession`（同步渲染，支持 cancellation、preview、
+  统计与 `render_frame` revision 协议）。
+- 结构化 benchmark：`--bench --bench-json PATH`；性能冒烟：
+  `python3 tools/perf_smoke.py --preset review-baseline`。
+- 构建 preset：`cpu-release`、`cpu-debug`、`cpu-sanitize`、
+  `cpu-lto-native`、`cuda-release`、`cuda-render-debug`。
+- 数值回归：CPU/CUDA 差分工具与 CTest（CPU 3 项、CUDA 35 项）。
 
 ---
 

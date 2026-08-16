@@ -17,49 +17,78 @@ __global__ void reference_shading_kernel(
     std::uint32_t width, std::uint32_t height,
     std::uint32_t iteration, std::uint32_t seed, float sample_clamp,
     CudaFilmPixel *film, DeviceRestirCounters *counters) {
+    __shared__ unsigned long long status_partial[8];
+    __shared__ unsigned long long traversal_partial;
+    __shared__ unsigned long long shadow_partial;
+    __shared__ unsigned long long invalid_partial;
+    __shared__ unsigned long long clamped_partial;
+
+    const unsigned thread = threadIdx.x;
+    if (thread < 8u) {
+        status_partial[thread] = 0;
+    }
+    if (thread == 0) {
+        traversal_partial = 0;
+        shadow_partial = 0;
+        invalid_partial = 0;
+        clamped_partial = 0;
+    }
+    __syncthreads();
+
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
-    if (pixel >= pixel_count) {
-        return;
-    }
-    RNG rng(packed_transport::packed_camera_sample_seed(seed, pixel,
-                                                        iteration));
-    const PackedRay ray =
-        packed_transport::generate_packed_camera_ray_core(
-            scene.scene.camera, pixel % width, pixel / width, width, height,
-            rng);
-    const PackedTransportResult traced =
-        packed_transport::trace_packed_path_core(scene.scene, ray, transport,
-                                                 rng);
-    std::uint32_t status_index =
-        static_cast<std::uint32_t>(traced.status);
-    if (status_index >= 8u) {
-        status_index = static_cast<std::uint32_t>(
-            PackedTransportStatus::InvalidInput);
-    }
-    atomicAdd(&counters->transport_status[status_index], 1ull);
-    atomicAdd(&counters->traversal_steps,
-              static_cast<unsigned long long>(traced.traversal_steps));
-    atomicAdd(&counters->shadow_rays,
-              static_cast<unsigned long long>(traced.shadow_rays));
-
-    Float3 radiance = traced.radiance;
-    if (traced.status != PackedTransportStatus::Success ||
-        !packed_transport::math::finite(radiance)) {
-        radiance = {};
-        atomicAdd(&counters->invalid_samples, 1ull);
-    } else if (sample_clamp > 0.0f) {
-        const float value = luminance(radiance);
-        if (value > sample_clamp) {
-            radiance = packed_transport::math::multiply(
-                radiance, sample_clamp / value);
-            atomicAdd(&counters->clamped_samples, 1ull);
+    if (pixel < pixel_count) {
+        RNG rng(packed_transport::packed_camera_sample_seed(seed, pixel,
+                                                            iteration));
+        const PackedRay ray =
+            packed_transport::generate_packed_camera_ray_core(
+                scene.scene.camera, pixel % width, pixel / width, width,
+                height, rng);
+        const PackedTransportResult traced =
+            packed_transport::trace_packed_path_core(scene.scene, ray,
+                                                     transport, rng);
+        std::uint32_t status_index =
+            static_cast<std::uint32_t>(traced.status);
+        if (status_index >= 8u) {
+            status_index = static_cast<std::uint32_t>(
+                PackedTransportStatus::InvalidInput);
         }
+        atomicAdd(&status_partial[status_index], 1ull);
+        atomicAdd(&traversal_partial,
+                  static_cast<unsigned long long>(traced.traversal_steps));
+        atomicAdd(&shadow_partial,
+                  static_cast<unsigned long long>(traced.shadow_rays));
+
+        Float3 radiance = traced.radiance;
+        if (traced.status != PackedTransportStatus::Success ||
+            !packed_transport::math::finite(radiance)) {
+            radiance = {};
+            atomicAdd(&invalid_partial, 1ull);
+        } else if (sample_clamp > 0.0f) {
+            const float value = luminance(radiance);
+            if (value > sample_clamp) {
+                radiance = packed_transport::math::multiply(
+                    radiance, sample_clamp / value);
+                atomicAdd(&clamped_partial, 1ull);
+            }
+        }
+        CudaFilmPixel &pixel_output = film[pixel];
+        pixel_output.radiance = packed_transport::math::add(
+            pixel_output.radiance, radiance);
+        ++pixel_output.sample_count;
     }
-    CudaFilmPixel &pixel_output = film[pixel];
-    pixel_output.radiance = packed_transport::math::add(
-        pixel_output.radiance, radiance);
-    ++pixel_output.sample_count;
+
+    __syncthreads();
+    if (thread == 0) {
+        for (unsigned index = 0; index < 8u; ++index) {
+            atomicAdd(&counters->transport_status[index],
+                      status_partial[index]);
+        }
+        atomicAdd(&counters->traversal_steps, traversal_partial);
+        atomicAdd(&counters->shadow_rays, shadow_partial);
+        atomicAdd(&counters->invalid_samples, invalid_partial);
+        atomicAdd(&counters->clamped_samples, clamped_partial);
+    }
 }
 
 __global__ void fallback_shading_kernel(
@@ -67,36 +96,50 @@ __global__ void fallback_shading_kernel(
     const restir::RestirSurface *surfaces, std::uint32_t width,
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     CudaFilmPixel *film, DeviceRestirCounters *counters) {
+    __shared__ unsigned long long invalid_partial;
+    __shared__ unsigned long long fallback_partial;
+
+    const unsigned thread = threadIdx.x;
+    if (thread == 0) {
+        invalid_partial = 0;
+        fallback_partial = 0;
+    }
+    __syncthreads();
+
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
-    if (pixel >= pixel_count) {
-        return;
-    }
-    const restir::RestirSurface &surface = surfaces[pixel];
-    constexpr std::uint32_t kFallbackMask =
-        restir::RESTIR_SURFACE_DELTA_ONLY |
-        restir::RESTIR_SURFACE_UNSUPPORTED_DOMAIN;
-    if (!surface.valid() || (surface.flags & kFallbackMask) == 0u) {
-        return;
+    if (pixel < pixel_count) {
+        const restir::RestirSurface &surface = surfaces[pixel];
+        constexpr std::uint32_t kFallbackMask =
+            restir::RESTIR_SURFACE_DELTA_ONLY |
+            restir::RESTIR_SURFACE_UNSUPPORTED_DOMAIN;
+        if (surface.valid() && (surface.flags & kFallbackMask) != 0u) {
+            RNG rng(packed_transport::packed_camera_sample_seed(
+                seed, pixel, iteration));
+            const PackedRay ray =
+                packed_transport::generate_packed_camera_ray_core(
+                    scene.scene.camera, pixel % width, pixel / width, width,
+                    height, rng);
+            const PackedTransportResult traced =
+                packed_transport::trace_packed_path_core(
+                    scene.scene, ray, transport, rng);
+            Float3 radiance = traced.radiance;
+            if (traced.status != PackedTransportStatus::Success ||
+                !packed_transport::math::finite(radiance)) {
+                radiance = {};
+                atomicAdd(&invalid_partial, 1ull);
+            }
+            film[pixel].radiance = packed_transport::math::add(
+                film[pixel].radiance, radiance);
+            atomicAdd(&fallback_partial, 1ull);
+        }
     }
 
-    RNG rng(packed_transport::packed_camera_sample_seed(seed, pixel,
-                                                        iteration));
-    const PackedRay ray = packed_transport::generate_packed_camera_ray_core(
-        scene.scene.camera, pixel % width, pixel / width, width, height,
-        rng);
-    const PackedTransportResult traced =
-        packed_transport::trace_packed_path_core(scene.scene, ray, transport,
-                                                 rng);
-    Float3 radiance = traced.radiance;
-    if (traced.status != PackedTransportStatus::Success ||
-        !packed_transport::math::finite(radiance)) {
-        radiance = {};
-        atomicAdd(&counters->gi_invalid_samples, 1ull);
+    __syncthreads();
+    if (thread == 0) {
+        atomicAdd(&counters->gi_invalid_samples, invalid_partial);
+        atomicAdd(&counters->gi_fallbacks, fallback_partial);
     }
-    film[pixel].radiance = packed_transport::math::add(
-        film[pixel].radiance, radiance);
-    atomicAdd(&counters->gi_fallbacks, 1ull);
 }
 
 } // namespace

@@ -49,6 +49,8 @@ void print_usage() {
         << "  --scene-file PATH    Load scene from a JSON file\n"
         << "  --integrator N       Select integrator for --scene-file mode\n"
         << "  --backend cpu|cuda   Select render backend (default cpu)\n"
+        << "  --cpu-packed         Use the packed CPU backend prototype\n"
+        << "  --strict-assets      Fail on missing/corrupt image assets\n"
         << "  --runs N             Benchmark run count\n"
         << "  --width N            Override image width\n"
         << "  --spp N              Override samples per pixel\n"
@@ -71,7 +73,8 @@ void print_usage() {
         << "  --restir-history MODE        reset, continue, or auto\n"
         << "  --save               Save final rendered image\n"
         << "  --save-image PATH    Save benchmark display image to PATH\n"
-        << "  --save-linear PATH   Save benchmark linear RGB film as PFM\n";
+        << "  --save-linear PATH   Save benchmark linear RGB film as PFM\n"
+        << "  --bench-json PATH    Write structured benchmark report as JSON\n";
 }
 
 AppOptions parse_options(int argc, char *args[]) {
@@ -93,6 +96,8 @@ AppOptions parse_options(int argc, char *args[]) {
             options.benchmark.image_output_path = args[++i];
         } else if (arg == "--save-linear" && i + 1 < argc) {
             options.benchmark.linear_output_path = args[++i];
+        } else if (arg == "--bench-json" && i + 1 < argc) {
+            options.benchmark.json_output_path = args[++i];
         } else if (arg == "--scene-file" && i + 1 < argc) {
             options.scene_file = args[++i];
         } else if (arg == "--integrator" && i + 1 < argc) {
@@ -101,6 +106,10 @@ AppOptions parse_options(int argc, char *args[]) {
                 fail("--integrator expects an integer in the range 0..7.");
                 break;
             }
+        } else if (arg == "--cpu-packed") {
+            options.render.cpu_packed = true;
+        } else if (arg == "--strict-assets") {
+            options.render.strict_assets = true;
         } else if (arg == "--backend" && i + 1 < argc) {
             const std::string backend = args[++i];
             if (backend == "cpu") {
@@ -277,9 +286,10 @@ AppOptions parse_options(int argc, char *args[]) {
         return options;
     }
     if ((!options.benchmark.image_output_path.empty() ||
-         !options.benchmark.linear_output_path.empty()) &&
+         !options.benchmark.linear_output_path.empty() ||
+         !options.benchmark.json_output_path.empty()) &&
         !options.benchmark.enabled) {
-        fail("--save-image and --save-linear require --bench.");
+        fail("--save-image, --save-linear, and --bench-json require --bench.");
         return options;
     }
     if (!options.scene_file.empty() && !positional.empty()) {

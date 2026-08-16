@@ -21,3 +21,5 @@ target_link_libraries(raytracer_geometry PUBLIC
     raytracer::shading
     raytracer::materials
 )
+
+raytracer_enable_warnings(raytracer_geometry)

@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <map>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -82,9 +83,13 @@ SceneConfig select_scene(int scene_id) {
 
 std::string scene_path(int scene_id) {
     const SceneCatalog &catalog = scene_catalog();
-    auto found = catalog.scene_paths.find(scene_id);
+    const auto found = catalog.scene_paths.find(scene_id);
     if (found == catalog.scene_paths.end()) {
-        found = catalog.scene_paths.find(catalog.default_scene_id);
+        std::ostringstream message;
+        message << "Scene catalog error: unknown scene id " << scene_id
+                << " (registered default is " << catalog.default_scene_id
+                << ").";
+        throw std::invalid_argument(message.str());
     }
     return found->second;
 }

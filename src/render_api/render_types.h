@@ -43,11 +43,10 @@ struct PreparationStats {
     std::size_t scene_bytes = 0;
 };
 
-struct RenderStats {
+struct RenderStatsBase {
     double seconds = 0.0;
     double compile_seconds = 0.0;
     double upload_seconds = 0.0;
-    double device_seconds = 0.0;
     double resolve_seconds = 0.0;
     int width = 0;
     int height = 0;
@@ -56,12 +55,22 @@ struct RenderStats {
     std::uint64_t completed_samples = 0;
     std::uint64_t sample_count = 0;
     unsigned seed = 1337;
-    int threads = 0;
     std::uint64_t clamped_samples = 0;
     std::uint64_t invalid_samples = 0;
     std::string backend = "cpu";
-    std::string device_name = "host";
     std::size_t scene_bytes = 0;
+    bool cancelled = false;
+};
+
+struct CpuRenderStats {
+    int threads = 0;
+    std::uint64_t traversal_steps = 0;
+    std::uint64_t shadow_rays = 0;
+};
+
+struct CudaRenderStats {
+    double device_seconds = 0.0;
+    std::string device_name = "host";
     std::size_t workspace_bytes = 0;
     std::uint64_t workspace_generation = 0;
     std::uint32_t workspace_pixel_capacity = 0;
@@ -70,9 +79,16 @@ struct RenderStats {
     std::uint64_t shadow_rays = 0;
     int batch_size = 0;
     int batch_count = 0;
+    std::uint64_t wavefront_advance_launches = 0;
+    std::uint64_t wavefront_active_path_steps = 0;
     std::array<std::uint64_t, 8> status_counts{};
+};
+
+struct RenderStats {
+    RenderStatsBase base;
+    CpuRenderStats cpu;
+    CudaRenderStats cuda;
     RestirStats restir;
-    bool cancelled = false;
 };
 
 class CancellationToken {

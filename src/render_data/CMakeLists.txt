@@ -9,6 +9,10 @@ add_library(raytracer_render_data STATIC
     packed_transport.cpp
     resource_compiler.cpp
     scene_compiler.cpp
+    scene_compiler_core.cpp
+    scene_compiler_geometry.cpp
+    scene_compiler_lights.cpp
+    scene_compiler_primitives.cpp
 )
 add_library(raytracer::render_data ALIAS raytracer_render_data)
 
@@ -25,3 +29,5 @@ target_link_libraries(raytracer_render_data PUBLIC
     raytracer::scene_ir
     raytracer::scene_resources
 )
+
+raytracer_enable_warnings(raytracer_render_data)

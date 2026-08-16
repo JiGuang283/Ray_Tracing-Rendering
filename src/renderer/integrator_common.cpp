@@ -40,10 +40,12 @@ color scattering_weight(const MaterialOutput &shading,
 }
 
 bool visible(const hittable &scene, const ray &shadow_ray,
-             double max_distance, RNG &rng) {
-    hit_record shadow_rec;
-    return !scene.hit(shadow_ray, 0.001, max_distance - 0.001, shadow_rec,
-                      rng);
+             double max_distance, RNG &rng,
+             std::uint64_t *shadow_rays) {
+    if (shadow_rays != nullptr) {
+        ++*shadow_rays;
+    }
+    return !scene.occluded(shadow_ray, 0.001, max_distance - 0.001, rng);
 }
 
 namespace {
@@ -62,7 +64,8 @@ color evaluate_direct_sample(const ShadedSurface &shaded,
                              const hittable &scene, const LightSample &sample,
                              double selection_pdf,
                              bool has_bsdf_competitor, RNG &rng,
-                             bool use_mis) {
+                             bool use_mis,
+                             std::uint64_t *shadow_rays) {
     if (sample.pdf <= 0.0 || selection_pdf <= 0.0 ||
         !std::isfinite(sample.pdf) || !std::isfinite(selection_pdf) ||
         !finite_color(sample.Li) || !finite_direction(sample.wi) ||
@@ -80,7 +83,7 @@ color evaluate_direct_sample(const ShadedSurface &shaded,
     }
 
     if (!visible(scene, shaded.surface.spawn_ray(sample.wi, shaded.time),
-                 sample.dist, rng)) {
+                 sample.dist, rng, shadow_rays)) {
         return color(0, 0, 0);
     }
 
@@ -100,7 +103,8 @@ color evaluate_direct_sample(const ShadedSurface &shaded,
 color sample_direct_lighting(const ShadedSurface &shaded,
                              const hittable &scene,
                              const LightSampler &light_sampler, RNG &rng,
-                             bool use_mis) {
+                             bool use_mis,
+                             std::uint64_t *shadow_rays) {
     if (light_sampler.empty() || shaded.shading.bsdf.empty()) {
         return color(0, 0, 0);
     }
@@ -110,7 +114,7 @@ color sample_direct_lighting(const ShadedSurface &shaded,
         const LightSample sample =
             light->sample(shaded.surface.p, vec2(rng.next(), rng.next()));
         result += evaluate_direct_sample(shaded, scene, sample, 1.0, false,
-                                         rng, use_mis);
+                                         rng, use_mis, shadow_rays);
     }
 
     if (light_sampler.has_non_delta_lights()) {
@@ -118,7 +122,7 @@ color sample_direct_lighting(const ShadedSurface &shaded,
             light_sampler.sample_non_delta(shaded.surface.p, rng);
         result += evaluate_direct_sample(
             shaded, scene, selected.sample, selected.selection_pdf,
-            selected.has_bsdf_competitor, rng, use_mis);
+            selected.has_bsdf_competitor, rng, use_mis, shadow_rays);
     }
     return result;
 }

@@ -40,6 +40,12 @@ bool MeshInstance::hit(const ray &world_ray, double t_min, double t_max,
     return hit(world_ray, t_min, t_max, record);
 }
 
+bool MeshInstance::occluded(const ray &world_ray, double t_min,
+                             double t_max, RNG & /*rng*/) const {
+    return m_asset->occluded(
+        m_object_to_world.ray_to_object(world_ray), t_min, t_max);
+}
+
 bool MeshInstance::bounding_box(double /*time0*/, double /*time1*/,
                                 aabb &output_box) const {
     output_box = m_world_bounds;

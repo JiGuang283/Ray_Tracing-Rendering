@@ -10,23 +10,38 @@ __global__ void build_restir_gbuffer_kernel(
     DeviceSceneView scene, std::uint32_t width, std::uint32_t height,
     std::uint32_t iteration, std::uint32_t seed,
     restir::RestirSurface *output, DeviceRestirCounters *counters) {
+    __shared__ unsigned long long status_partial[7];
+
+    const unsigned thread = threadIdx.x;
+    if (thread < 7u) {
+        status_partial[thread] = 0;
+    }
+    __syncthreads();
+
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
-    if (pixel >= pixel_count) {
-        return;
+    if (pixel < pixel_count) {
+        restir::RestirSurface surface;
+        const restir::RestirGBufferStatus status =
+            restir::build_primary_surface_core(
+                scene.scene, width, height, pixel, iteration, seed, surface);
+        output[pixel] = surface;
+        std::uint32_t status_index = static_cast<std::uint32_t>(status);
+        if (status_index >= 7u) {
+            status_index =
+                static_cast<std::uint32_t>(
+                    restir::RestirGBufferStatus::InvalidInput);
+        }
+        atomicAdd(&status_partial[status_index], 1ull);
     }
-    restir::RestirSurface surface;
-    const restir::RestirGBufferStatus status =
-        restir::build_primary_surface_core(scene.scene, width, height, pixel,
-                                           iteration, seed, surface);
-    output[pixel] = surface;
-    std::uint32_t status_index = static_cast<std::uint32_t>(status);
-    if (status_index >= 7u) {
-        status_index =
-            static_cast<std::uint32_t>(
-                restir::RestirGBufferStatus::InvalidInput);
+
+    __syncthreads();
+    if (thread == 0) {
+        for (unsigned index = 0; index < 7u; ++index) {
+            atomicAdd(&counters->gbuffer_status[index],
+                      status_partial[index]);
+        }
     }
-    atomicAdd(&counters->gbuffer_status[status_index], 1ull);
 }
 
 } // namespace

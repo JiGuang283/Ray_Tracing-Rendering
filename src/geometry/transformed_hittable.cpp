@@ -33,6 +33,12 @@ bool TransformedHittable::hit(const ray &world_ray, double t_min,
     return true;
 }
 
+bool TransformedHittable::occluded(const ray &world_ray, double t_min,
+                                   double t_max, RNG &rng) const {
+    const ray object_ray = m_object_to_world.ray_to_object(world_ray);
+    return m_child->occluded(object_ray, t_min, t_max, rng);
+}
+
 void TransformedHittable::transform_record(const ray &world_ray,
                                            hit_record &record) const {
     vec3 outward_geometry = record.front_face ? record.geometric_normal

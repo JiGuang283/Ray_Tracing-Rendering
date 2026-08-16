@@ -173,15 +173,17 @@ TextureChannel ImageTexture::channel() const {
 }
 
 TextureSample ImageTexture::texel(int x, int y) const {
-    color rgb(m_image->component(x, y, 0),
-              m_image->component(x, y, 1),
-              m_image->component(x, y, 2));
-    const double alpha = m_image->component(x, y, 3);
-
+    color rgb;
     if (m_color_space == ColorSpace::SRGB && !m_image->is_hdr()) {
-        rgb = color(srgb_to_linear(rgb.x()), srgb_to_linear(rgb.y()),
-                    srgb_to_linear(rgb.z()));
+        rgb = color(m_image->linear_component(x, y, 0),
+                    m_image->linear_component(x, y, 1),
+                    m_image->linear_component(x, y, 2));
+    } else {
+        rgb = color(m_image->component(x, y, 0),
+                    m_image->component(x, y, 1),
+                    m_image->component(x, y, 2));
     }
+    const double alpha = m_image->component(x, y, 3);
     if (m_channel != TextureChannel::RGB) {
         const double scalar = channel_value(rgb, alpha, m_channel);
         rgb = color(scalar, scalar, scalar);

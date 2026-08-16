@@ -2,7 +2,10 @@
 
 #include "raytracer/build_config.h"
 
+#include "benchmark_report.h"
+
 #include "WindowsApp.h"
+#include "cpu_packed_render_session.h"
 #include "cpu_render_session.h"
 #include "image_output.h"
 #include "preview_surface.h"
@@ -33,6 +36,7 @@
 namespace {
 
 void apply_overrides(SceneIR &ir, const AppOptions &options) {
+    ir.strict_assets = options.render.strict_assets;
     if (options.render.width_override > 0) {
         ir.preset.image_width = options.render.width_override;
     }
@@ -66,6 +70,16 @@ std::string log_token(std::string value) {
     return value;
 }
 
+std::uint64_t stat_traversal_steps(const RenderStats &stats) {
+    return stats.base.backend == "cuda" ? stats.cuda.traversal_steps
+                                        : stats.cpu.traversal_steps;
+}
+
+std::uint64_t stat_shadow_rays(const RenderStats &stats) {
+    return stats.base.backend == "cuda" ? stats.cuda.shadow_rays
+                                        : stats.cpu.shadow_rays;
+}
+
 #if !RAYTRACER_HAS_CUDA
 [[noreturn]] void throw_cuda_not_built() {
     throw std::runtime_error(
@@ -77,6 +91,10 @@ std::string log_token(std::string value) {
 std::shared_ptr<IRenderSession>
 make_render_session(const AppOptions &options, const SceneIR &ir) {
     if (options.render.backend == RenderBackend::CPU) {
+        if (options.render.cpu_packed) {
+            return std::shared_ptr<IRenderSession>(
+                make_cpu_packed_render_session(ir));
+        }
         return std::shared_ptr<IRenderSession>(make_cpu_render_session(ir));
     }
 #if RAYTRACER_HAS_CUDA
@@ -171,6 +189,8 @@ int run_benchmark(const AppOptions &options) {
     std::vector<double> device_seconds;
     device_seconds.reserve(options.benchmark.runs);
     RenderStats last_stats;
+    std::vector<RenderStats> run_stats;
+    run_stats.reserve(static_cast<std::size_t>(options.benchmark.runs));
     long long clamped_samples = 0;
     long long invalid_samples = 0;
     RestirStats restir_totals;
@@ -189,10 +209,11 @@ int run_benchmark(const AppOptions &options) {
     for (int run = 1; run <= options.benchmark.runs; ++run) {
         RenderResult result = session->render(request, {});
         last_stats = result.stats;
-        seconds.push_back(last_stats.seconds);
-        device_seconds.push_back(last_stats.device_seconds);
-        clamped_samples += last_stats.clamped_samples;
-        invalid_samples += last_stats.invalid_samples;
+        run_stats.push_back(last_stats);
+        seconds.push_back(last_stats.base.seconds);
+        device_seconds.push_back(last_stats.cuda.device_seconds);
+        clamped_samples += last_stats.base.clamped_samples;
+        invalid_samples += last_stats.base.invalid_samples;
         restir_totals.iterations += last_stats.restir.iterations;
         restir_totals.initial_candidates +=
             last_stats.restir.initial_candidates;
@@ -245,40 +266,44 @@ int run_benchmark(const AppOptions &options) {
         has_saved_result = true;
 
         double samples_per_second =
-            last_stats.seconds > 0.0
-                ? last_stats.sample_count / last_stats.seconds
+            last_stats.base.seconds > 0.0
+                ? last_stats.base.sample_count / last_stats.base.seconds
                 : 0.0;
         std::cout << "BENCH_RUN"
                   << " run=" << run << " scene=" << options.scene_id
-                  << " backend=" << last_stats.backend
+                  << " backend=" << last_stats.base.backend
                   << " integrator=" << options.integrator_id
-                  << " width=" << last_stats.width
-                  << " height=" << last_stats.height
-                  << " spp=" << last_stats.samples_per_pixel
-                  << " samples=" << last_stats.sample_count
-                  << " requested_samples=" << last_stats.requested_samples
-                  << " seconds=" << last_stats.seconds
+                  << " width=" << last_stats.base.width
+                  << " height=" << last_stats.base.height
+                  << " spp=" << last_stats.base.samples_per_pixel
+                  << " samples=" << last_stats.base.sample_count
+                  << " requested_samples=" << last_stats.base.requested_samples
+                  << " seconds=" << last_stats.base.seconds
                   << " samples_per_second=" << samples_per_second
-                  << " seed=" << last_stats.seed
-                  << " threads=" << last_stats.threads
-                  << " device=" << log_token(last_stats.device_name)
-                  << " compile_seconds=" << last_stats.compile_seconds
-                  << " upload_seconds=" << last_stats.upload_seconds
-                  << " device_seconds=" << last_stats.device_seconds
-                  << " scene_bytes=" << last_stats.scene_bytes
-                  << " workspace_bytes=" << last_stats.workspace_bytes
+                  << " seed=" << last_stats.base.seed
+                  << " threads=" << last_stats.cpu.threads
+                  << " device=" << log_token(last_stats.cuda.device_name)
+                  << " compile_seconds=" << last_stats.base.compile_seconds
+                  << " upload_seconds=" << last_stats.base.upload_seconds
+                  << " device_seconds=" << last_stats.cuda.device_seconds
+                  << " scene_bytes=" << last_stats.base.scene_bytes
+                  << " workspace_bytes=" << last_stats.cuda.workspace_bytes
                   << " workspace_generation="
-                  << last_stats.workspace_generation
+                  << last_stats.cuda.workspace_generation
                   << " workspace_pixel_capacity="
-                  << last_stats.workspace_pixel_capacity
+                  << last_stats.cuda.workspace_pixel_capacity
                   << " workspace_path_capacity="
-                  << last_stats.workspace_path_capacity
-                  << " batch_size=" << last_stats.batch_size
-                  << " batch_count=" << last_stats.batch_count
-                  << " traversal_steps=" << last_stats.traversal_steps
-                  << " shadow_rays=" << last_stats.shadow_rays
-                  << " clamped_samples=" << last_stats.clamped_samples
-                  << " invalid_samples=" << last_stats.invalid_samples
+                  << last_stats.cuda.workspace_path_capacity
+                  << " batch_size=" << last_stats.cuda.batch_size
+                  << " batch_count=" << last_stats.cuda.batch_count
+                  << " traversal_steps=" << stat_traversal_steps(last_stats)
+                  << " shadow_rays=" << stat_shadow_rays(last_stats)
+                  << " wavefront_advance_launches="
+                  << last_stats.cuda.wavefront_advance_launches
+                  << " wavefront_active_path_steps="
+                  << last_stats.cuda.wavefront_active_path_steps
+                  << " clamped_samples=" << last_stats.base.clamped_samples
+                  << " invalid_samples=" << last_stats.base.invalid_samples
                   << " restir_iterations=" << last_stats.restir.iterations
                   << " restir_initial_candidates="
                   << last_stats.restir.initial_candidates
@@ -331,7 +356,7 @@ int run_benchmark(const AppOptions &options) {
                   << last_stats.restir.gi_average_M
                   << " restir_gi_average_age="
                   << last_stats.restir.gi_average_age
-                  << " cancelled=" << (last_stats.cancelled ? 1 : 0)
+                  << " cancelled=" << (last_stats.base.cancelled ? 1 : 0)
                   << std::endl;
     }
 
@@ -342,33 +367,33 @@ int run_benchmark(const AppOptions &options) {
     const double median_device_seconds =
         device_seconds[device_seconds.size() / 2];
     double samples_per_second =
-        median > 0.0 ? last_stats.sample_count / median : 0.0;
+        median > 0.0 ? last_stats.base.sample_count / median : 0.0;
     std::cout << "BENCH_SUMMARY"
               << " runs=" << options.benchmark.runs
               << " scene=" << options.scene_id
-              << " backend=" << last_stats.backend
+              << " backend=" << last_stats.base.backend
               << " integrator=" << options.integrator_id
-              << " width=" << last_stats.width
-              << " height=" << last_stats.height
-              << " spp=" << last_stats.samples_per_pixel
+              << " width=" << last_stats.base.width
+              << " height=" << last_stats.base.height
+              << " spp=" << last_stats.base.samples_per_pixel
               << " median_seconds=" << median
               << " median_samples_per_second=" << samples_per_second
-              << " seed=" << last_stats.seed
-              << " threads=" << last_stats.threads
-              << " device=" << log_token(last_stats.device_name)
+              << " seed=" << last_stats.base.seed
+              << " threads=" << last_stats.cpu.threads
+              << " device=" << log_token(last_stats.cuda.device_name)
               << " compile_seconds=" << preparation.compile_seconds
               << " upload_seconds=" << preparation.upload_seconds
               << " median_device_seconds=" << median_device_seconds
-              << " scene_bytes=" << last_stats.scene_bytes
-              << " workspace_bytes=" << last_stats.workspace_bytes
+              << " scene_bytes=" << last_stats.base.scene_bytes
+              << " workspace_bytes=" << last_stats.cuda.workspace_bytes
               << " workspace_generation="
-              << last_stats.workspace_generation
+              << last_stats.cuda.workspace_generation
               << " workspace_pixel_capacity="
-              << last_stats.workspace_pixel_capacity
+              << last_stats.cuda.workspace_pixel_capacity
               << " workspace_path_capacity="
-              << last_stats.workspace_path_capacity
-              << " batch_size=" << last_stats.batch_size
-              << " batch_count=" << last_stats.batch_count
+              << last_stats.cuda.workspace_path_capacity
+              << " batch_size=" << last_stats.cuda.batch_size
+              << " batch_count=" << last_stats.cuda.batch_count
               << " clamped_samples=" << clamped_samples
               << " invalid_samples=" << invalid_samples
               << " restir_iterations=" << restir_totals.iterations
@@ -437,6 +462,19 @@ int run_benchmark(const AppOptions &options) {
     if (!options.benchmark.linear_output_path.empty() && has_saved_result) {
         save_linear_film_to(saved_result.film,
                             options.benchmark.linear_output_path);
+    }
+    if (!options.benchmark.json_output_path.empty()) {
+        BenchmarkReportInput report_input;
+        report_input.options = &options;
+        report_input.preparation = preparation;
+        report_input.runs = run_stats;
+        report_input.median_seconds = median;
+        report_input.median_device_seconds = median_device_seconds;
+        report_input.median_samples_per_second = samples_per_second;
+        write_benchmark_json_report(options.benchmark.json_output_path,
+                                    report_input);
+        std::cout << "Benchmark JSON report saved successfully to "
+                  << options.benchmark.json_output_path << std::endl;
     }
 
     return 0;

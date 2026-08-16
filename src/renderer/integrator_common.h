@@ -6,6 +6,8 @@
 #include "material.h"
 #include "shading.h"
 
+#include <cstdint>
+
 namespace integrator_common {
 
 struct ShadedSurface {
@@ -23,11 +25,13 @@ double scattering_cos_factor(const MaterialOutput &shading,
 color scattering_weight(const MaterialOutput &shading,
                         const BSDFSample &sample);
 bool visible(const hittable &scene, const ray &shadow_ray,
-             double max_distance, RNG &rng);
+             double max_distance, RNG &rng,
+             std::uint64_t *shadow_rays = nullptr);
 color sample_direct_lighting(const ShadedSurface &shaded,
                              const hittable &scene,
                              const LightSampler &light_sampler, RNG &rng,
-                             bool use_mis);
+                             bool use_mis,
+                             std::uint64_t *shadow_rays = nullptr);
 
 } // namespace integrator_common
 

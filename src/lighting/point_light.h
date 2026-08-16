@@ -11,7 +11,8 @@ class PointLight : public Light {
         : m_position(pos), m_intensity(intensity) {
     }
 
-    virtual LightSample sample(const point3 &p, const vec2 &u) const override {
+    virtual LightSample sample(const point3 &p,
+                                const vec2 & /*u*/) const override {
         LightSample ls;
 
         vec3 direction = m_position - p;

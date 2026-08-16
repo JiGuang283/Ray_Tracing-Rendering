@@ -22,6 +22,16 @@ bool hittable_list::hit(const ray &r, double t_min, double t_max,
     return hit_anything;
 }
 
+bool hittable_list::occluded(const ray &r, double t_min, double t_max,
+                              RNG &rng) const {
+    for (const auto &object : objects) {
+        if (object->occluded(r, t_min, t_max, rng)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool hittable_list::bounding_box(double time0, double time1,
                                  aabb &output_box) const {
     if (objects.empty()) {

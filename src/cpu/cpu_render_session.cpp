@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "cpu_path_integrator.h"
+#include "light_sampler.h"
 #include "renderer.h"
 #include "scene_loader.h"
 
@@ -14,9 +15,11 @@ namespace {
 
 class CpuRenderSession final : public IRenderSession {
   public:
-    explicit CpuRenderSession(const SceneIR &ir) {
+    explicit CpuRenderSession(const SceneIR &ir)
+        : m_ir(ir),
+          m_scene(build_scene_config(ir)),
+          m_light_sampler(m_scene.scene.lights) {
         const auto begin = std::chrono::steady_clock::now();
-        m_scene = build_scene_config(ir);
         m_time0 = ir.time0;
         m_time1 = ir.time1;
         m_camera = make_camera(ir.camera);
@@ -39,6 +42,13 @@ class CpuRenderSession final : public IRenderSession {
                               const CancellationToken &cancel,
                               PreviewSurface *preview) override {
         validate_render_frame_request(request);
+        if (request.revision.geometry != m_revision.geometry ||
+            request.revision.material != m_revision.material ||
+            request.revision.lighting != m_revision.lighting) {
+            m_scene = build_scene_config(m_ir);
+            m_light_sampler = LightSampler(m_scene.scene.lights);
+        }
+        m_revision = request.revision;
         return render_with_camera(request.render, make_camera(request.camera),
                                   cancel, preview);
     }
@@ -77,14 +87,18 @@ class CpuRenderSession final : public IRenderSession {
         m_renderer.set_integrator(make_cpu_integrator(request.integrator));
         RenderResult result = m_renderer.render(
             m_scene.scene.world, camera, m_scene.preset.background,
-            m_scene.scene.lights, request, cancel, preview);
-        result.stats.compile_seconds = m_preparation.compile_seconds;
-        result.stats.upload_seconds = m_preparation.upload_seconds;
-        result.stats.scene_bytes = m_preparation.scene_bytes;
+            m_scene.scene.lights, request, cancel, preview,
+            &m_light_sampler);
+        result.stats.base.compile_seconds = m_preparation.compile_seconds;
+        result.stats.base.upload_seconds = m_preparation.upload_seconds;
+        result.stats.base.scene_bytes = m_preparation.scene_bytes;
         return result;
     }
 
+    SceneIR m_ir;
+    SceneRevision m_revision;
     SceneConfig m_scene;
+    LightSampler m_light_sampler;
     std::shared_ptr<camera> m_camera;
     double m_time0 = 0.0;
     double m_time1 = 1.0;

@@ -19,6 +19,8 @@ class moving_sphere : public hittable {
 
     virtual bool hit(const ray &r, double t_min, double t_max,
                      hit_record &rec) const override;
+    virtual bool occluded(const ray &r, double t_min, double t_max,
+                          RNG &rng) const override;
     virtual bool bounding_box(double _time0, double _time1,
                               aabb &output_box) const override;
     point3 center(double time) const;
@@ -75,6 +77,25 @@ inline bool moving_sphere::hit(const ray &r, double t_min, double t_max,
     rec.mat_ptr = mat_ptr.get();
 
     return true;
+}
+
+inline bool moving_sphere::occluded(const ray &r, double t_min, double t_max,
+                                     RNG & /*rng*/) const {
+    const vec3 oc = r.origin() - center(r.time());
+    const double a = r.direction().length_squared();
+    const double half_b = dot(oc, r.direction());
+    const double c = oc.length_squared() - radius * radius;
+    const double discriminant = half_b * half_b - a * c;
+    if (discriminant < 0.0) {
+        return false;
+    }
+    const double sqrtd = sqrt(discriminant);
+    const double first = (-half_b - sqrtd) / a;
+    if (first >= t_min && first <= t_max) {
+        return true;
+    }
+    const double second = (-half_b + sqrtd) / a;
+    return second >= t_min && second <= t_max;
 }
 
 inline bool moving_sphere::bounding_box(double _time0, double _time1,

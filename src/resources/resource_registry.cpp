@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 
 std::shared_ptr<const ImageAsset>
 ResourceRegistry::load_image(const std::string &path) {
@@ -17,6 +18,10 @@ ResourceRegistry::load_image(const std::string &path) {
     std::string error;
     auto image = ImageAsset::load(normalized, error);
     if (!image) {
+        if (m_strict_assets) {
+            throw std::runtime_error("failed to load image resource '" +
+                                     path + "': " + error);
+        }
         std::cerr << "ERROR: Could not load image resource '" << path
                   << "': " << error << ". Using diagnostic texture.\n";
         image = ImageAsset::diagnostic();
@@ -36,6 +41,11 @@ std::shared_ptr<const ImageAsset> ResourceRegistry::load_image_from_memory(
     std::string error;
     auto image = ImageAsset::load_from_memory(data, size, error);
     if (!image) {
+        if (m_strict_assets) {
+            throw std::runtime_error(
+                "failed to load embedded image resource '" + resource_key +
+                "': " + error);
+        }
         std::cerr << "ERROR: Could not load embedded image resource '"
                   << resource_key << "': " << error
                   << ". Using diagnostic texture.\n";

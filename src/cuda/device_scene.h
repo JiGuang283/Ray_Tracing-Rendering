@@ -48,42 +48,10 @@ public:
     std::size_t allocated_bytes() const noexcept;
 
 private:
-    PackedCamera m_camera{};
-    Float3 m_background{};
-    float m_scene_time0 = 0.0f;
-    float m_scene_time1 = 1.0f;
-
-    DeviceBuffer<Float4> m_positions;
-    DeviceBuffer<Float4> m_normals;
-    DeviceBuffer<Float4> m_tangents;
-    DeviceBuffer<Float2> m_uv0;
-    DeviceBuffer<Float4> m_vertex_colors;
-    DeviceBuffer<PackedTriangle> m_triangles;
-    DeviceBuffer<PackedMesh> m_meshes;
-    DeviceBuffer<PackedSphere> m_spheres;
-    DeviceBuffer<PackedMovingSphere> m_moving_spheres;
-    DeviceBuffer<PackedTransform> m_transforms;
-    DeviceBuffer<PackedInstance> m_instances;
-    DeviceBuffer<std::uint32_t> m_material_bindings;
-    DeviceBuffer<std::uint32_t> m_emitter_bindings;
-    DeviceBuffer<PackedAggregate> m_aggregates;
-    DeviceBuffer<std::uint32_t> m_aggregate_instance_indices;
-    DeviceBuffer<PackedBVHNode> m_bvh_nodes;
-    DeviceBuffer<PackedMedium> m_media;
-    DeviceBuffer<PackedMaterial> m_materials;
-    DeviceBuffer<PackedTextureNode> m_texture_nodes;
-    DeviceBuffer<PackedImageDesc> m_images;
-    DeviceBuffer<float> m_image_texels;
-    DeviceBuffer<PackedPerlinDesc> m_perlin_tables;
-    DeviceBuffer<Float4> m_perlin_gradients;
-    DeviceBuffer<std::uint32_t> m_perlin_permutations;
-    DeviceBuffer<PackedLight> m_lights;
-    DeviceBuffer<std::uint32_t> m_delta_light_indices;
-    DeviceBuffer<std::uint32_t> m_non_delta_light_indices;
-    DeviceBuffer<float> m_light_selection_probabilities;
-    DeviceBuffer<float> m_light_cdf;
-    DeviceBuffer<std::uint32_t> m_light_element_indices;
-    DeviceBuffer<float> m_light_distributions;
+    // One device allocation holds every scene buffer. This avoids ~30
+    // cudaMalloc/cudaMemcpy pairs and keeps scene_bytes accounting exact.
+    DeviceBuffer<std::byte> m_storage;
+    CompiledSceneView m_view;
 };
 
 } // namespace cuda_backend

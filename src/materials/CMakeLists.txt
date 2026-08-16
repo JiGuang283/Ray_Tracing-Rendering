@@ -17,3 +17,5 @@ target_link_libraries(raytracer_materials PUBLIC
     raytracer::core
     raytracer::shading
 )
+
+raytracer_enable_warnings(raytracer_materials)

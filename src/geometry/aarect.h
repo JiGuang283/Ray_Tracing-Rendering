@@ -16,12 +16,14 @@ class xy_rect : public hittable {
 
     xy_rect(double _x0, double _x1, double _y0, double _y1, double _k,
             MaterialHandle mat)
-        : x0(_x0), x1(_x1), y0(_y0), y1(_y1), k(_k), mp(mat) {};
+        : mp(mat), x0(_x0), x1(_x1), y0(_y0), y1(_y1), k(_k) {};
 
     virtual bool hit(const ray &r, double t_min, double t_max,
                      hit_record &rec) const override;
+    virtual bool occluded(const ray &r, double t_min, double t_max,
+                          RNG &rng) const override;
 
-    virtual bool bounding_box(double time0, double time1,
+    virtual bool bounding_box(double /*time0*/, double /*time1*/, 
                               aabb &output_box) const override {
         output_box = aabb(point3(x0, y0, k - kAABBPadding),
                           point3(x1, y1, k + kAABBPadding));
@@ -40,11 +42,14 @@ class xz_rect : public hittable {
 
     xz_rect(double _x0, double _x1, double _z0, double _z1, double _k,
             MaterialHandle mat)
-        : x0(_x0), x1(_x1), z0(_z0), z1(_z1), k(_k), mp(mat) {};
+        : mp(mat), x0(_x0), x1(_x1), z0(_z0), z1(_z1), k(_k) {};
 
     virtual bool hit(const ray &r, double t0, double t1, hit_record &rec) const;
+    virtual bool occluded(const ray &r, double t_min, double t_max,
+                          RNG &rng) const override;
 
-    virtual bool bounding_box(double t0, double t1, aabb &output_box) const {
+    virtual bool bounding_box(double /*t0*/, double /*t1*/,
+                              aabb &output_box) const {
         output_box = aabb(vec3(x0, k - kAABBPadding, z0),
                           vec3(x1, k + kAABBPadding, z1));
         return true;
@@ -62,11 +67,14 @@ class yz_rect : public hittable {
 
     yz_rect(double _y0, double _y1, double _z0, double _z1, double _k,
             MaterialHandle mat)
-        : y0(_y0), y1(_y1), z0(_z0), z1(_z1), k(_k), mp(mat) {};
+        : mp(mat), y0(_y0), y1(_y1), z0(_z0), z1(_z1), k(_k) {};
 
     virtual bool hit(const ray &r, double t0, double t1, hit_record &rec) const;
+    virtual bool occluded(const ray &r, double t_min, double t_max,
+                          RNG &rng) const override;
 
-    virtual bool bounding_box(double t0, double t1, aabb &output_box) const {
+    virtual bool bounding_box(double /*t0*/, double /*t1*/,
+                              aabb &output_box) const {
         output_box = aabb(vec3(k - kAABBPadding, y0, z0),
                           vec3(k + kAABBPadding, y1, z1));
         return true;

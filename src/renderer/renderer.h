@@ -11,6 +11,8 @@
 #include <memory>
 #include <vector>
 
+class LightSampler;
+
 class Renderer {
   public:
     Renderer();
@@ -19,12 +21,16 @@ class Renderer {
         m_integrator = integrator;
     }
 
+    // light_sampler is an optional prebuilt scene-derived sampler. When
+    // null the renderer builds one from lights, preserving the standalone
+    // Renderer contract for tests and tools.
     RenderResult render(shared_ptr<hittable> world, shared_ptr<camera> cam,
                         const color &background,
                         const std::vector<shared_ptr<Light>> &lights,
                         const RenderRequest &request,
                         const CancellationToken &cancel = {},
-                        PreviewSurface *preview = nullptr);
+                        PreviewSurface *preview = nullptr,
+                        const LightSampler *light_sampler = nullptr);
 
     bool is_rendering() const {
         return m_is_rendering.load(std::memory_order_relaxed);

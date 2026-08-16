@@ -4,8 +4,15 @@
 #include <stdexcept>
 #include <vector>
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#endif
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 RenderBuffer::RenderBuffer(int width, int height)
     : m_width(width), m_height(height) {

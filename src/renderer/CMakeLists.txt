@@ -20,3 +20,5 @@ target_link_libraries(raytracer_renderer PUBLIC
     raytracer::lighting
     Threads::Threads
 )
+
+raytracer_enable_warnings(raytracer_renderer)

@@ -18,52 +18,108 @@ __global__ void spatial_gi_kernel(
     PackedTransportSettings transport,
     DeviceRestirCounters *counters,
     std::uint32_t *status_output) {
+    __shared__ unsigned long long status_partial[16];
+    __shared__ unsigned long long compatibility_partial[9];
+    __shared__ unsigned long long shift_partial[16];
+    __shared__ unsigned long long candidates_partial;
+    __shared__ unsigned long long accepted_partial;
+    __shared__ unsigned long long pairwise_partial;
+    __shared__ unsigned long long replay_evaluations_partial;
+    __shared__ unsigned long long replay_shadow_partial;
+    __shared__ unsigned long long replay_traversal_partial;
+
+    const unsigned thread = threadIdx.x;
+    if (thread < 16u) {
+        status_partial[thread] = 0;
+        shift_partial[thread] = 0;
+    }
+    if (thread < 9u) {
+        compatibility_partial[thread] = 0;
+    }
+    if (thread == 0) {
+        candidates_partial = 0;
+        accepted_partial = 0;
+        pairwise_partial = 0;
+        replay_evaluations_partial = 0;
+        replay_shadow_partial = 0;
+        replay_traversal_partial = 0;
+    }
+    __syncthreads();
+
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
-    if (pixel >= width * height) {
-        return;
+    if (pixel < width * height) {
+        restir::RestirGISpatialStats stats;
+        const restir::RestirGIStatus status = pairwise
+            ? restir::spatial_resample_gi_pairwise(
+                scene.scene, surfaces, source, width, height, pixel,
+                iteration, pass_index, seed, neighbor_count,
+                max_candidates, normal_threshold, depth_threshold,
+                transport, destination[pixel], stats)
+            : restir::spatial_resample_gi_basic(
+                scene.scene, surfaces, source, width, height, pixel,
+                iteration, pass_index, seed, neighbor_count,
+                max_candidates, normal_threshold, depth_threshold,
+                transport, destination[pixel], stats);
+        std::uint32_t status_index = static_cast<std::uint32_t>(status);
+        status_index = status_index < 16u ? status_index : 15u;
+        if (status_output != nullptr) {
+            status_output[pixel] = status_index;
+        }
+        atomicAdd(&status_partial[status_index], 1ull);
+        atomicAdd(&candidates_partial,
+                  static_cast<unsigned long long>(stats.candidates));
+        atomicAdd(&accepted_partial,
+                  static_cast<unsigned long long>(stats.accepted));
+        atomicAdd(&pairwise_partial,
+                  static_cast<unsigned long long>(
+                      stats.pairwise_fallbacks));
+        atomicAdd(&replay_evaluations_partial,
+                  static_cast<unsigned long long>(
+                      stats.replay_evaluations));
+        atomicAdd(&replay_shadow_partial,
+                  static_cast<unsigned long long>(
+                      stats.replay_shadow_rays));
+        atomicAdd(&replay_traversal_partial,
+                  static_cast<unsigned long long>(
+                      stats.replay_traversal_steps));
+        for (std::uint32_t index = 0u;
+             index < static_cast<std::uint32_t>(
+                         restir::RestirSpatialCompatibility::Count);
+             ++index) {
+            atomicAdd(&compatibility_partial[index],
+                      static_cast<unsigned long long>(
+                          stats.compatibility[index]));
+        }
+        for (std::uint32_t index = 0u;
+             index < kRestirShiftFailureBuckets; ++index) {
+            atomicAdd(&shift_partial[index],
+                      static_cast<unsigned long long>(
+                          stats.shift_failures[index]));
+        }
     }
-    restir::RestirGISpatialStats stats;
-    const restir::RestirGIStatus status = pairwise
-        ? restir::spatial_resample_gi_pairwise(
-            scene.scene, surfaces, source, width, height, pixel, iteration,
-            pass_index, seed, neighbor_count, max_candidates,
-            normal_threshold, depth_threshold, transport,
-            destination[pixel], stats)
-        : restir::spatial_resample_gi_basic(
-            scene.scene, surfaces, source, width, height, pixel, iteration,
-            pass_index, seed, neighbor_count, max_candidates,
-            normal_threshold, depth_threshold, transport,
-            destination[pixel], stats);
-    std::uint32_t status_index = static_cast<std::uint32_t>(status);
-    status_index = status_index < 16u ? status_index : 15u;
-    if (status_output != nullptr) {
-        status_output[pixel] = status_index;
-    }
-    atomicAdd(&counters->gi_spatial_status[status_index], 1ull);
-    atomicAdd(&counters->gi_spatial_candidates,
-              static_cast<unsigned long long>(stats.candidates));
-    atomicAdd(&counters->gi_spatial_accepted,
-              static_cast<unsigned long long>(stats.accepted));
-    atomicAdd(&counters->gi_spatial_pairwise_fallbacks,
-              static_cast<unsigned long long>(stats.pairwise_fallbacks));
-    atomicAdd(&counters->gi_replay_evaluations,
-              static_cast<unsigned long long>(stats.replay_evaluations));
-    atomicAdd(&counters->gi_replay_shadow_rays,
-              static_cast<unsigned long long>(stats.replay_shadow_rays));
-    atomicAdd(&counters->gi_replay_traversal_steps,
-              static_cast<unsigned long long>(
-                  stats.replay_traversal_steps));
-    for (std::uint32_t index = 0u;
-         index < static_cast<std::uint32_t>(
-                     restir::RestirSpatialCompatibility::Count);
-         ++index) {
-        atomicAdd(&counters->gi_spatial_compatibility[index],
-                  static_cast<unsigned long long>(stats.compatibility[index]));
-    }
-    for (std::uint32_t index = 0u;
-         index < kRestirShiftFailureBuckets; ++index) {
-        atomicAdd(&counters->gi_shift_failures[index],
-                  static_cast<unsigned long long>(stats.shift_failures[index]));
+
+    __syncthreads();
+    if (thread == 0) {
+        for (unsigned index = 0; index < 16u; ++index) {
+            atomicAdd(&counters->gi_spatial_status[index],
+                      status_partial[index]);
+            atomicAdd(&counters->gi_shift_failures[index],
+                      shift_partial[index]);
+        }
+        for (unsigned index = 0; index < 9u; ++index) {
+            atomicAdd(&counters->gi_spatial_compatibility[index],
+                      compatibility_partial[index]);
+        }
+        atomicAdd(&counters->gi_spatial_candidates, candidates_partial);
+        atomicAdd(&counters->gi_spatial_accepted, accepted_partial);
+        atomicAdd(&counters->gi_spatial_pairwise_fallbacks,
+                  pairwise_partial);
+        atomicAdd(&counters->gi_replay_evaluations,
+                  replay_evaluations_partial);
+        atomicAdd(&counters->gi_replay_shadow_rays,
+                  replay_shadow_partial);
+        atomicAdd(&counters->gi_replay_traversal_steps,
+                  replay_traversal_partial);
     }
 }
 

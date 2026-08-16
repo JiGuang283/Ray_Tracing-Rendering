@@ -116,24 +116,51 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus visibility(
     const PackedRay shadow =
         spawn_ray(surface, sample.wi, time, maximum_distance);
     PackedHit hit{};
-    const PackedTraversalStatus status =
+    const PackedTraversalStatus traversal_status =
         packed_intersector::intersect_compiled_scene_core(scene, shadow, hit,
                                                           &rng);
-    if (status == PackedTraversalStatus::StackOverflow ||
-        status == PackedTraversalStatus::InvalidInput) {
+    if (traversal_status == PackedTraversalStatus::StackOverflow ||
+        traversal_status == PackedTraversalStatus::InvalidInput) {
         return PackedTransportStatus::TraversalFailure;
     }
-    is_visible = status == PackedTraversalStatus::Miss;
+    is_visible = traversal_status == PackedTraversalStatus::Miss;
     return PackedTransportStatus::Success;
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus evaluate_direct_sample(
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus visibility_host_fast(
     const CompiledSceneView &scene,
-    const PackedSurfaceInteraction &surface,
-    const PackedMaterialOutput &material, Float3 wo,
-    const PackedLightSample &sample, float selection_probability,
-    bool use_mis, float time, RNG &rng, Float3 &contribution,
-    std::uint32_t &shadow_rays) {
+    const PackedSurfaceInteraction &surface, const PackedLightSample &sample,
+    float time, RNG &rng, bool &is_visible) {
+    is_visible = false;
+    float maximum_distance = FLT_MAX;
+    if (!sample.is_infinite() && sample.distance < FLT_MAX) {
+        maximum_distance = sample.distance - 0.001f;
+        if (!(maximum_distance > 0.001f)) {
+            return PackedTransportStatus::Success;
+        }
+    }
+    const PackedRay shadow =
+        spawn_ray(surface, sample.wi, time, maximum_distance);
+    PackedTraversalStatus traversal_status = PackedTraversalStatus::Miss;
+    const bool blocked = packed_intersector::occluded_compiled_scene_core_host(
+        scene, shadow, &rng, traversal_status);
+    if (traversal_status == PackedTraversalStatus::StackOverflow ||
+        traversal_status == PackedTraversalStatus::InvalidInput) {
+        return PackedTransportStatus::TraversalFailure;
+    }
+    is_visible = !blocked;
+    return PackedTransportStatus::Success;
+}
+
+template <bool kFastBsdf>
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus
+evaluate_direct_sample_impl(const CompiledSceneView &scene,
+                            const PackedSurfaceInteraction &surface,
+                            const PackedMaterialOutput &material, Float3 wo,
+                            const PackedLightSample &sample,
+                            float selection_probability, bool use_mis,
+                            float time, RNG &rng, Float3 &contribution,
+                            std::uint32_t &shadow_rays) {
     contribution = {};
     if (!(sample.pdf > 0.0f) || !(selection_probability > 0.0f) ||
         !math::finite(sample.pdf) ||
@@ -144,20 +171,26 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus evaluate_direct_sample(
     }
     Float3 f{};
     const PackedBSDFStatus eval_status =
-        packed_bsdf::eval_packed_bsdf_core(material, wo, sample.wi, f);
+        kFastBsdf
+            ? packed_bsdf::eval_packed_bsdf_core_fast(material, wo,
+                                                      sample.wi, f)
+            : packed_bsdf::eval_packed_bsdf_core(material, wo, sample.wi, f);
     if (eval_status != PackedBSDFStatus::Success) {
         return eval_status == PackedBSDFStatus::Empty
                    ? PackedTransportStatus::Success
                    : PackedTransportStatus::BSDFFailure;
     }
-    const float cosine = packed_bsdf::abs_cos_theta(material, sample.wi);
+    const float cosine =
+        packed_bsdf::abs_cos_theta(material, sample.wi);
     if (math::black(f) || !(cosine > 0.0f) || !math::finite(cosine)) {
         return PackedTransportStatus::Success;
     }
     ++shadow_rays;
     bool is_visible = false;
-    const PackedTransportStatus visibility_status = visibility(
-        scene, surface, sample, time, rng, is_visible);
+    const PackedTransportStatus visibility_status =
+        kFastBsdf ? visibility_host_fast(scene, surface, sample, time, rng,
+                                         is_visible)
+                  : visibility(scene, surface, sample, time, rng, is_visible);
     if (visibility_status != PackedTransportStatus::Success || !is_visible) {
         return visibility_status;
     }
@@ -169,8 +202,12 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus evaluate_direct_sample(
     if (!sample.is_delta() && use_mis && sample.is_bsdf_hittable()) {
         float bsdf_pdf = 0.0f;
         const PackedBSDFStatus pdf_status =
-            packed_bsdf::pdf_packed_bsdf_core(material, wo, sample.wi,
-                                               bsdf_pdf);
+            kFastBsdf
+                ? packed_bsdf::pdf_packed_bsdf_core_fast(material, wo,
+                                                         sample.wi,
+                                                         bsdf_pdf)
+                : packed_bsdf::pdf_packed_bsdf_core(material, wo, sample.wi,
+                                                    bsdf_pdf);
         if (pdf_status != PackedBSDFStatus::Success) {
             return PackedTransportStatus::BSDFFailure;
         }
@@ -182,11 +219,13 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus evaluate_direct_sample(
                                       : PackedTransportStatus::NonFinite;
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus sample_direct_lighting(
-    const CompiledSceneView &scene,
-    const PackedSurfaceInteraction &surface,
-    const PackedMaterialOutput &material, Float3 wo, bool use_mis,
-    float time, RNG &rng, Float3 &radiance, std::uint32_t &shadow_rays) {
+template <bool kFastBsdf>
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus
+sample_direct_lighting_impl(const CompiledSceneView &scene,
+                            const PackedSurfaceInteraction &surface,
+                            const PackedMaterialOutput &material, Float3 wo,
+                            bool use_mis, float time, RNG &rng,
+                            Float3 &radiance, std::uint32_t &shadow_rays) {
     radiance = {};
     if (material.closure_count == 0) {
         return PackedTransportStatus::Success;
@@ -206,9 +245,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus sample_direct_lighting(
             return PackedTransportStatus::LightFailure;
         }
         Float3 contribution{};
-        const PackedTransportStatus status = evaluate_direct_sample(
-            scene, surface, material, wo, sample, 1.0f, use_mis, time, rng,
-            contribution, shadow_rays);
+        const PackedTransportStatus status = evaluate_direct_sample_impl<
+            kFastBsdf>(scene, surface, material, wo, sample, 1.0f, use_mis,
+                       time, rng, contribution, shadow_rays);
         if (status != PackedTransportStatus::Success) {
             return status;
         }
@@ -225,10 +264,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus sample_direct_lighting(
         }
         if (light_status == PackedLightStatus::Success) {
             Float3 contribution{};
-            const PackedTransportStatus status = evaluate_direct_sample(
-                scene, surface, material, wo, selected.sample,
-                selected.selection_probability, use_mis, time, rng,
-                contribution, shadow_rays);
+            const PackedTransportStatus status =
+                evaluate_direct_sample_impl<kFastBsdf>(
+                    scene, surface, material, wo, selected.sample,
+                    selected.selection_probability, use_mis, time, rng,
+                    contribution, shadow_rays);
             if (status != PackedTransportStatus::Success) {
                 return status;
             }
@@ -350,7 +390,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE void finish_packed_path(
     }
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
+template <bool kFastBsdf>
+RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core_impl(
     const CompiledSceneView &scene,
     const PackedTransportSettings &settings, PackedPathState &state) {
     if (!state.active()) {
@@ -366,8 +407,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
     ++state.traversal_steps;
     PackedHit hit{};
     const PackedTraversalStatus traversal =
-        packed_intersector::intersect_compiled_scene_core(
-            scene, state.ray, hit, &rng);
+        kFastBsdf
+            ? packed_intersector::intersect_compiled_scene_core_host(
+                  scene, state.ray, hit, &rng)
+            : packed_intersector::intersect_compiled_scene_core(
+                  scene, state.ray, hit, &rng);
     if (traversal == PackedTraversalStatus::Miss) {
         Float3 miss{};
         const PackedTransportStatus status = miss_radiance(
@@ -388,8 +432,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
 
     PackedSurfaceInteraction surface{};
     const PackedShadingStatus reconstruction =
-        packed_reconstruction::reconstruct_compiled_hit_core(
-            scene, state.ray, hit, surface);
+        kFastBsdf
+            ? packed_reconstruction::reconstruct_compiled_hit_core_host(
+                  scene, state.ray, hit, surface)
+            : packed_reconstruction::reconstruct_compiled_hit_core(
+                  scene, state.ray, hit, surface);
     if (reconstruction != PackedShadingStatus::Success) {
         finish_packed_path(
             state, PackedTransportStatus::ReconstructionFailure, rng);
@@ -420,10 +467,9 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
     if (settings.policy.uses_direct_lighting() &&
         material.closure_count != 0 && scene.lights.count != 0) {
         Float3 direct{};
-        status = sample_direct_lighting(
-            scene, surface, material, wo,
-            settings.policy.uses_mis(), state.ray.time, rng,
-            direct, state.shadow_rays);
+        status = sample_direct_lighting_impl<kFastBsdf>(
+            scene, surface, material, wo, settings.policy.uses_mis(),
+            state.ray.time, rng, direct, state.shadow_rays);
         if (status != PackedTransportStatus::Success) {
             finish_packed_path(state, status, rng);
             return;
@@ -439,7 +485,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
 
     PackedBSDFSample sample{};
     const PackedBSDFStatus bsdf_status =
-        packed_bsdf::sample_packed_bsdf_core(material, wo, rng, sample);
+        kFastBsdf
+            ? packed_bsdf::sample_packed_bsdf_core_fast(material, wo, rng,
+                                                        sample)
+            : packed_bsdf::sample_packed_bsdf_core(material, wo, rng,
+                                                   sample);
     if (bsdf_status == PackedBSDFStatus::Empty ||
         bsdf_status == PackedBSDFStatus::NoSample) {
         finish_packed_path(state, PackedTransportStatus::Success, rng);
@@ -463,7 +513,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
         state.flags &= ~PACKED_PATH_DELTA_BOUNCE;
         state.previous_bsdf_pdf = sample.pdf;
     }
-    const float cosine = packed_bsdf::abs_cos_theta(material, sample.wi);
+    const float cosine =
+        packed_bsdf::abs_cos_theta(material, sample.wi);
     state.throughput = math::multiply(
         state.throughput, math::multiply(sample.f, cosine / sample.pdf));
     if (sample.is_transmission()) {
@@ -498,6 +549,64 @@ RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
     }
 }
 
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus evaluate_direct_sample(
+    const CompiledSceneView &scene,
+    const PackedSurfaceInteraction &surface,
+    const PackedMaterialOutput &material, Float3 wo,
+    const PackedLightSample &sample, float selection_probability,
+    bool use_mis, float time, RNG &rng, Float3 &contribution,
+    std::uint32_t &shadow_rays) {
+    return evaluate_direct_sample_impl<false>(
+        scene, surface, material, wo, sample, selection_probability, use_mis,
+        time, rng, contribution, shadow_rays);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus
+evaluate_direct_sample_fast(
+    const CompiledSceneView &scene,
+    const PackedSurfaceInteraction &surface,
+    const PackedMaterialOutput &material, Float3 wo,
+    const PackedLightSample &sample, float selection_probability,
+    bool use_mis, float time, RNG &rng, Float3 &contribution,
+    std::uint32_t &shadow_rays) {
+    return evaluate_direct_sample_impl<true>(
+        scene, surface, material, wo, sample, selection_probability, use_mis,
+        time, rng, contribution, shadow_rays);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus sample_direct_lighting(
+    const CompiledSceneView &scene,
+    const PackedSurfaceInteraction &surface,
+    const PackedMaterialOutput &material, Float3 wo, bool use_mis,
+    float time, RNG &rng, Float3 &radiance, std::uint32_t &shadow_rays) {
+    return sample_direct_lighting_impl<false>(
+        scene, surface, material, wo, use_mis, time, rng, radiance,
+        shadow_rays);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportStatus
+sample_direct_lighting_fast(const CompiledSceneView &scene,
+                            const PackedSurfaceInteraction &surface,
+                            const PackedMaterialOutput &material, Float3 wo,
+                            bool use_mis, float time, RNG &rng,
+                            Float3 &radiance, std::uint32_t &shadow_rays) {
+    return sample_direct_lighting_impl<true>(
+        scene, surface, material, wo, use_mis, time, rng, radiance,
+        shadow_rays);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core(
+    const CompiledSceneView &scene,
+    const PackedTransportSettings &settings, PackedPathState &state) {
+    advance_packed_path_core_impl<false>(scene, settings, state);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE void advance_packed_path_core_fast(
+    const CompiledSceneView &scene,
+    const PackedTransportSettings &settings, PackedPathState &state) {
+    advance_packed_path_core_impl<true>(scene, settings, state);
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportResult packed_path_result(
     const PackedPathState &state) {
     PackedTransportResult result{};
@@ -517,6 +626,20 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportResult trace_packed_path_core(
                                  state);
     while (state.active()) {
         advance_packed_path_core(scene, settings, state);
+    }
+    rng.state = state.rng_state;
+    return packed_path_result(state);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedTransportResult
+trace_packed_path_core_fast(const CompiledSceneView &scene, PackedRay ray,
+                           const PackedTransportSettings &settings,
+                           RNG &rng) {
+    PackedPathState state{};
+    initialize_packed_path_state(scene, ray, settings, rng.state, 0, 0,
+                                 state);
+    while (state.active()) {
+        advance_packed_path_core_fast(scene, settings, state);
     }
     rng.state = state.rng_state;
     return packed_path_result(state);

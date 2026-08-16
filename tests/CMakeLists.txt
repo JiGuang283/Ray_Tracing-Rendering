@@ -4,6 +4,7 @@ add_executable(raytracer_tests
     test_core.cpp
     test_light_sampler.cpp
     test_main.cpp
+    test_occluded.cpp
     test_material.cpp
     test_mesh_asset.cpp
     test_model_asset.cpp
@@ -13,6 +14,7 @@ add_executable(raytracer_tests
     test_packed_transport.cpp
     test_restir_frame.cpp
     test_restir_reservoir.cpp
+    test_render_revision.cpp
     test_render_runtime.cpp
     test_sample_filter.cpp
     test_scene_ir.cpp
@@ -27,6 +29,7 @@ target_include_directories(raytracer_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_link_libraries(raytracer_tests PRIVATE
+    raytracer::cpu_backend
     raytracer::core
     raytracer::render_api
     raytracer::shading
@@ -49,6 +52,18 @@ add_test(
 set_tests_properties(packed_transport_check PROPERTIES
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
 )
+
+if(TARGET CGAssignment4)
+    add_test(
+        NAME cpu_packed_session_check
+        COMMAND $<TARGET_FILE:CGAssignment4> 23 4 --bench
+                --cpu-packed --width 32 --spp 2 --max-depth 4
+                --seed 123 --runs 1
+    )
+    set_tests_properties(cpu_packed_session_check PROPERTIES
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    )
+endif()
 
 if(RAYTRACER_ENABLE_CUDA)
     if(TARGET CGAssignment4)
@@ -247,3 +262,5 @@ if(RAYTRACER_ENABLE_CUDA)
             SKIP_RETURN_CODE 77
     )
 endif()
+
+raytracer_enable_warnings(raytracer_tests)

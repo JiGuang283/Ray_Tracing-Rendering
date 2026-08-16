@@ -24,6 +24,17 @@ bool xy_rect::hit(const ray &r, double t_min, double t_max,
     return true;
 }
 
+bool xy_rect::occluded(const ray &r, double t_min, double t_max,
+                       RNG & /*rng*/) const {
+    const double t = (k - r.origin().z()) / r.direction().z();
+    if (t < t_min || t > t_max) {
+        return false;
+    }
+    const double x = r.origin().x() + t * r.direction().x();
+    const double y = r.origin().y() + t * r.direction().y();
+    return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+}
+
 bool xz_rect::hit(const ray &r, double t_min, double t_max,
                   hit_record &rec) const {
     auto t = (k - r.origin().y()) / r.direction().y();
@@ -47,6 +58,17 @@ bool xz_rect::hit(const ray &r, double t_min, double t_max,
     return true;
 }
 
+bool xz_rect::occluded(const ray &r, double t_min, double t_max,
+                       RNG & /*rng*/) const {
+    const double t = (k - r.origin().y()) / r.direction().y();
+    if (t < t_min || t > t_max) {
+        return false;
+    }
+    const double x = r.origin().x() + t * r.direction().x();
+    const double z = r.origin().z() + t * r.direction().z();
+    return x >= x0 && x <= x1 && z >= z0 && z <= z1;
+}
+
 bool yz_rect::hit(const ray &r, double t_min, double t_max,
                   hit_record &rec) const {
     auto t = (k - r.origin().x()) / r.direction().x();
@@ -68,4 +90,14 @@ bool yz_rect::hit(const ray &r, double t_min, double t_max,
     rec.mat_ptr = mp.get();
     rec.p = r.at(t);
     return true;
+}
+bool yz_rect::occluded(const ray &r, double t_min, double t_max,
+                       RNG & /*rng*/) const {
+    const double t = (k - r.origin().x()) / r.direction().x();
+    if (t < t_min || t > t_max) {
+        return false;
+    }
+    const double y = r.origin().y() + t * r.direction().y();
+    const double z = r.origin().z() + t * r.direction().z();
+    return y >= y0 && y <= y1 && z >= z0 && z <= z1;
 }

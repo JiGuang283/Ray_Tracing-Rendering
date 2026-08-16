@@ -455,6 +455,69 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus pdf_packed_bsdf_core(
     return PackedBSDFStatus::Success;
 }
 
+// Distinct fast variants used only by the host fast transport path.
+// Callers guarantee finite, normalized unit directions.
+RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus
+eval_packed_bsdf_core_fast(const PackedMaterialOutput &output, Float3 wo,
+                           Float3 wi, Float3 &result) {
+    result = {};
+    if (output.closure_count == 0) {
+        return PackedBSDFStatus::Empty;
+    }
+    if (!output_is_phase(output) &&
+        !valid_event(output, wo, wi,
+                     PACKED_BSDF_REFLECTION | PACKED_BSDF_GLOSSY)) {
+        return PackedBSDFStatus::Success;
+    }
+    for (std::uint32_t index = 0; index < output.closure_count; ++index) {
+        const PackedClosure &closure = output.closures[index];
+        result = math::add(
+            result,
+            math::multiply(closure_eval(closure, output.frame, wo, wi),
+                           closure.contribution_weight));
+    }
+    return math::finite(result) ? PackedBSDFStatus::Success
+                                : PackedBSDFStatus::NonFinite;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus
+pdf_packed_bsdf_core_fast(const PackedMaterialOutput &output, Float3 wo,
+                          Float3 wi, float &result) {
+    result = 0.0f;
+    if (output.closure_count == 0) {
+        return PackedBSDFStatus::Empty;
+    }
+    const float total_weight = total_sample_weight(output);
+    if (!(total_weight > 0.0f)) {
+        return PackedBSDFStatus::InvalidInput;
+    }
+    if (!output_is_phase(output) &&
+        !valid_event(output, wo, wi,
+                     PACKED_BSDF_REFLECTION | PACKED_BSDF_GLOSSY)) {
+        return PackedBSDFStatus::Success;
+    }
+    for (std::uint32_t index = 0; index < output.closure_count; ++index) {
+        const PackedClosure &closure = output.closures[index];
+        const float selection_pdf =
+            math::maximum(closure.sample_weight, 0.0f) / total_weight;
+        result += selection_pdf *
+                  closure_pdf(closure, output.frame, wo, wi);
+    }
+    if (!math::finite(result) || result < 0.0f) {
+        result = 0.0f;
+        return PackedBSDFStatus::NonFinite;
+    }
+    return PackedBSDFStatus::Success;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE float abs_cos_theta_fast(
+    const PackedMaterialOutput &output, Float3 direction) {
+    if (output_is_phase(output)) {
+        return 1.0f;
+    }
+    return math::absolute(math::dot(direction, output.frame.normal));
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus sample_closure(
     const PackedClosure &closure, const PackedShadingFrame &frame,
     Float3 wo, RNG &rng, PackedBSDFSample &sample) {
@@ -569,9 +632,10 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus sample_closure(
                : PackedBSDFStatus::NonFinite;
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus sample_packed_bsdf_core(
-    const PackedMaterialOutput &output, Float3 wo, RNG &rng,
-    PackedBSDFSample &sample) {
+template <bool kFastBsdf>
+RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus
+sample_packed_bsdf_core_impl(const PackedMaterialOutput &output, Float3 wo,
+                             RNG &rng, PackedBSDFSample &sample) {
     sample = {};
     if (output.closure_count > PackedMaterialOutput::kMaxClosures ||
         !math::finite(wo) || !math::finite(output.geometry_normal)) {
@@ -617,6 +681,19 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus sample_packed_bsdf_core(
         sample.f =
             math::multiply(sample.f, closure.contribution_weight);
         sample.pdf *= selection_pdf;
+    } else if constexpr (kFastBsdf) {
+        status = eval_packed_bsdf_core_fast(output, wo, sample.wi, sample.f);
+        if (status != PackedBSDFStatus::Success) {
+            sample = {};
+            return status;
+        }
+        status = pdf_packed_bsdf_core_fast(output, wo, sample.wi, sample.pdf);
+        if (status != PackedBSDFStatus::Success || !(sample.pdf > 0.0f)) {
+            sample = {};
+            return status == PackedBSDFStatus::Success
+                       ? PackedBSDFStatus::NoSample
+                       : status;
+        }
     } else {
         status = eval_packed_bsdf_core(output, wo, sample.wi, sample.f);
         if (status != PackedBSDFStatus::Success) {
@@ -637,6 +714,18 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus sample_packed_bsdf_core(
         return PackedBSDFStatus::NonFinite;
     }
     return PackedBSDFStatus::Success;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus sample_packed_bsdf_core(
+    const PackedMaterialOutput &output, Float3 wo, RNG &rng,
+    PackedBSDFSample &sample) {
+    return sample_packed_bsdf_core_impl<false>(output, wo, rng, sample);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedBSDFStatus
+sample_packed_bsdf_core_fast(const PackedMaterialOutput &output, Float3 wo,
+                             RNG &rng, PackedBSDFSample &sample) {
+    return sample_packed_bsdf_core_impl<true>(output, wo, rng, sample);
 }
 
 RT_HOST_DEVICE RT_FORCE_INLINE float abs_cos_theta(

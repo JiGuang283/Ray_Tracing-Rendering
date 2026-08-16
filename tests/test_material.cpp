@@ -1,4 +1,5 @@
 #include "material_programs.h"
+#include "resource_registry.h"
 #include "scene_ir.h"
 #include "test_harness.h"
 
@@ -228,4 +229,16 @@ TEST_CASE(scene_ir_rejects_unknown_material_types) {
         },
         "objects": []
     })"));
+}
+
+TEST_CASE(strict_asset_registry_rejects_missing_image) {
+    ResourceRegistry registry;
+    registry.set_strict_assets(true);
+    bool thrown = false;
+    try {
+        (void)registry.load_image("/definitely/missing/texture.png");
+    } catch (const std::exception &) {
+        thrown = true;
+    }
+    REQUIRE(thrown);
 }

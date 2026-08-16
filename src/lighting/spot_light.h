@@ -13,7 +13,8 @@ public:
         cos_cutoff = cos(r);
     }
 
-    virtual LightSample sample(const point3& p, const vec2& u) const override {
+    virtual LightSample sample(const point3 &p,
+                                const vec2 & /*u*/) const override {
         LightSample s;
         vec3 d = position - p;
         double dist2 = d.length_squared();

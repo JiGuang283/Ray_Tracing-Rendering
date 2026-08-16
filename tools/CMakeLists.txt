@@ -5,6 +5,7 @@ function(raytracer_add_cpu_tool target)
     )
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(${target} PRIVATE raytracer::render_data)
+    raytracer_enable_warnings(${target})
 endfunction()
 
 raytracer_add_cpu_tool(scene_data_check)
@@ -31,6 +32,7 @@ if(RAYTRACER_ENABLE_CUDA)
             ${CMAKE_CURRENT_SOURCE_DIR}
         )
         target_link_libraries(${target} PRIVATE raytracer::cuda)
+        raytracer_enable_warnings(${target})
     endfunction()
 
     raytracer_add_cuda_tool(cuda_scene_check)
@@ -55,4 +57,7 @@ if(RAYTRACER_ENABLE_CUDA)
     target_compile_options(cuda_restir_check PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
     )
+    raytracer_enable_warnings(cuda_restir_check)
 endif()
+
+raytracer_enable_warnings(restir_reservoir_check)

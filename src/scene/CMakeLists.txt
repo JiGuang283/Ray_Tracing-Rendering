@@ -54,3 +54,7 @@ target_link_libraries(raytracer_scene_runtime PUBLIC
     raytracer::resources
     raytracer::lighting
 )
+
+raytracer_enable_warnings(raytracer_scene_ir)
+raytracer_enable_warnings(raytracer_scene_resources)
+raytracer_enable_warnings(raytracer_scene_runtime)

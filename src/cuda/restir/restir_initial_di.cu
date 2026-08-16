@@ -25,23 +25,49 @@ __global__ void generate_initial_di_candidates_kernel(
     std::uint32_t candidate_count,
     restir::RestirDIReservoir *reservoirs,
     DeviceRestirCounters *counters) {
+    __shared__ unsigned long long status_partial[11];
+    __shared__ unsigned long long initial_partial;
+    __shared__ unsigned long long represented_partial;
+    __shared__ unsigned long long rejected_partial;
+
+    const unsigned thread = threadIdx.x;
+    if (thread < 11u) {
+        status_partial[thread] = 0;
+    }
+    if (thread == 0) {
+        initial_partial = 0;
+        represented_partial = 0;
+        rejected_partial = 0;
+    }
+    __syncthreads();
+
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
-    if (pixel >= pixel_count) {
-        return;
+    if (pixel < pixel_count) {
+        restir::RestirDICandidateStats stats;
+        const restir::RestirDIStatus status =
+            restir::generate_initial_di_reservoir(
+                scene.scene, surfaces[pixel], width, height, pixel, iteration,
+                seed, candidate_count, reservoirs[pixel], stats);
+        atomicAdd(&status_partial[status_index(status)], 1ull);
+        atomicAdd(&initial_partial,
+                  static_cast<unsigned long long>(stats.attempted));
+        atomicAdd(&represented_partial,
+                  static_cast<unsigned long long>(stats.represented));
+        atomicAdd(&rejected_partial,
+                  static_cast<unsigned long long>(stats.rejected));
     }
-    restir::RestirDICandidateStats stats;
-    const restir::RestirDIStatus status =
-        restir::generate_initial_di_reservoir(
-            scene.scene, surfaces[pixel], width, height, pixel, iteration,
-            seed, candidate_count, reservoirs[pixel], stats);
-    atomicAdd(&counters->di_generation_status[status_index(status)], 1ull);
-    atomicAdd(&counters->initial_candidates,
-              static_cast<unsigned long long>(stats.attempted));
-    atomicAdd(&counters->represented_candidates,
-              static_cast<unsigned long long>(stats.represented));
-    atomicAdd(&counters->rejected_candidates,
-              static_cast<unsigned long long>(stats.rejected));
+
+    __syncthreads();
+    if (thread == 0) {
+        for (unsigned index = 0; index < 11u; ++index) {
+            atomicAdd(&counters->di_generation_status[index],
+                      status_partial[index]);
+        }
+        atomicAdd(&counters->initial_candidates, initial_partial);
+        atomicAdd(&counters->represented_candidates, represented_partial);
+        atomicAdd(&counters->rejected_candidates, rejected_partial);
+    }
 }
 
 __global__ void shade_initial_di_kernel(
@@ -50,58 +76,97 @@ __global__ void shade_initial_di_kernel(
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     float sample_clamp, CudaFilmPixel *film,
     DeviceRestirCounters *counters) {
+    __shared__ unsigned long long status_partial[11];
+    __shared__ unsigned long long valid_partial;
+    __shared__ unsigned long long M_partial;
+    __shared__ unsigned long long age_partial;
+    __shared__ double effective_M_partial;
+    __shared__ unsigned long long visibility_partial;
+    __shared__ unsigned long long invalid_partial;
+    __shared__ unsigned long long clamped_partial;
+
+    const unsigned thread = threadIdx.x;
+    if (thread < 11u) {
+        status_partial[thread] = 0;
+    }
+    if (thread == 0) {
+        valid_partial = 0;
+        M_partial = 0;
+        age_partial = 0;
+        effective_M_partial = 0.0;
+        visibility_partial = 0;
+        invalid_partial = 0;
+        clamped_partial = 0;
+    }
+    __syncthreads();
+
     const std::uint32_t pixel = blockIdx.x * blockDim.x + threadIdx.x;
     const std::uint32_t pixel_count = width * height;
-    if (pixel >= pixel_count) {
-        return;
-    }
-    Float3 radiance{};
-    std::uint32_t visibility_rays = 0;
-    const restir::RestirDIStatus status =
-        restir::shade_initial_di_reservoir(
-            scene.scene, surfaces[pixel], reservoirs[pixel], width, height,
-            pixel, iteration, seed, radiance, visibility_rays);
-    if (restir::reservoir_is_usable(reservoirs[pixel])) {
-        atomicAdd(&counters->valid_reservoirs, 1ull);
-        atomicAdd(&counters->reservoir_M_sum,
-                  static_cast<unsigned long long>(reservoirs[pixel].M));
-        atomicAdd(&counters->reservoir_age_sum,
-                  static_cast<unsigned long long>(reservoirs[pixel].age));
-        atomicAdd(&counters->reservoir_effective_M_sum,
-                  static_cast<double>(reservoirs[pixel].effective_M));
-    }
-    atomicAdd(&counters->visibility_rays,
-              static_cast<unsigned long long>(visibility_rays));
-
-    atomicAdd(&counters->di_shading_status[status_index(status)], 1ull);
-    constexpr std::uint32_t kFallbackMask =
-        restir::RESTIR_SURFACE_DELTA_ONLY |
-        restir::RESTIR_SURFACE_UNSUPPORTED_DOMAIN;
-    if ((surfaces[pixel].flags & kFallbackMask) != 0u) {
-        radiance = {};
-    }
-    const bool expected_empty =
-        status == restir::RestirDIStatus::NoSurface ||
-        status == restir::RestirDIStatus::UnsupportedSurface ||
-        status == restir::RestirDIStatus::ReservoirEmpty;
-    if (status != restir::RestirDIStatus::Success && !expected_empty) {
-        radiance = {};
-        atomicAdd(&counters->di_invalid_samples, 1ull);
-    } else if (!packed_transport::math::finite(radiance)) {
-        radiance = {};
-        atomicAdd(&counters->di_invalid_samples, 1ull);
-    } else if (sample_clamp > 0.0f) {
-        const float value = luminance(radiance);
-        if (value > sample_clamp) {
-            radiance = packed_transport::math::multiply(
-                radiance, sample_clamp / value);
-            atomicAdd(&counters->di_clamped_samples, 1ull);
+    if (pixel < pixel_count) {
+        Float3 radiance{};
+        std::uint32_t visibility_rays = 0;
+        const restir::RestirDIStatus status =
+            restir::shade_initial_di_reservoir(
+                scene.scene, surfaces[pixel], reservoirs[pixel], width,
+                height, pixel, iteration, seed, radiance, visibility_rays);
+        if (restir::reservoir_is_usable(reservoirs[pixel])) {
+            atomicAdd(&valid_partial, 1ull);
+            atomicAdd(&M_partial,
+                      static_cast<unsigned long long>(reservoirs[pixel].M));
+            atomicAdd(&age_partial,
+                      static_cast<unsigned long long>(reservoirs[pixel].age));
+            atomicAdd(&effective_M_partial,
+                      static_cast<double>(reservoirs[pixel].effective_M));
         }
+        atomicAdd(&visibility_partial,
+                  static_cast<unsigned long long>(visibility_rays));
+
+        atomicAdd(&status_partial[status_index(status)], 1ull);
+        constexpr std::uint32_t kFallbackMask =
+            restir::RESTIR_SURFACE_DELTA_ONLY |
+            restir::RESTIR_SURFACE_UNSUPPORTED_DOMAIN;
+        if ((surfaces[pixel].flags & kFallbackMask) != 0u) {
+            radiance = {};
+        }
+        const bool expected_empty =
+            status == restir::RestirDIStatus::NoSurface ||
+            status == restir::RestirDIStatus::UnsupportedSurface ||
+            status == restir::RestirDIStatus::ReservoirEmpty;
+        if (status != restir::RestirDIStatus::Success && !expected_empty) {
+            radiance = {};
+            atomicAdd(&invalid_partial, 1ull);
+        } else if (!packed_transport::math::finite(radiance)) {
+            radiance = {};
+            atomicAdd(&invalid_partial, 1ull);
+        } else if (sample_clamp > 0.0f) {
+            const float value = luminance(radiance);
+            if (value > sample_clamp) {
+                radiance = packed_transport::math::multiply(
+                    radiance, sample_clamp / value);
+                atomicAdd(&clamped_partial, 1ull);
+            }
+        }
+        CudaFilmPixel &output = film[pixel];
+        output.radiance =
+            packed_transport::math::add(output.radiance, radiance);
+        ++output.sample_count;
     }
-    CudaFilmPixel &output = film[pixel];
-    output.radiance = packed_transport::math::add(output.radiance,
-                                                  radiance);
-    ++output.sample_count;
+
+    __syncthreads();
+    if (thread == 0) {
+        for (unsigned index = 0; index < 11u; ++index) {
+            atomicAdd(&counters->di_shading_status[index],
+                      status_partial[index]);
+        }
+        atomicAdd(&counters->valid_reservoirs, valid_partial);
+        atomicAdd(&counters->reservoir_M_sum, M_partial);
+        atomicAdd(&counters->reservoir_age_sum, age_partial);
+        atomicAdd(&counters->reservoir_effective_M_sum,
+                  effective_M_partial);
+        atomicAdd(&counters->visibility_rays, visibility_partial);
+        atomicAdd(&counters->di_invalid_samples, invalid_partial);
+        atomicAdd(&counters->di_clamped_samples, clamped_partial);
+    }
 }
 
 } // namespace

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -73,10 +74,49 @@ decode_memory(const std::uint8_t *data, std::size_t size,
 
 } // namespace
 
+namespace {
+
+float srgb_texel_to_linear(float value) {
+    if (value <= 0.04045f) {
+        return value / 12.92f;
+    }
+    return std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+} // namespace
+
 ImageAsset::ImageAsset(int width, int height, int channels,
                        std::vector<float> pixels, bool hdr)
     : m_width(width), m_height(height), m_channels(channels), m_hdr(hdr),
       m_pixels(std::move(pixels)) {
+    if (m_hdr) {
+        return;
+    }
+    const std::size_t texel_count =
+        static_cast<std::size_t>(m_width) * m_height;
+    m_linear_pixels.resize(texel_count * 3u);
+    for (std::size_t y = 0; y < static_cast<std::size_t>(m_height); ++y) {
+        for (std::size_t x = 0; x < static_cast<std::size_t>(m_width); ++x) {
+            const std::size_t output =
+                (y * static_cast<std::size_t>(m_width) + x) * 3u;
+            for (int channel = 0; channel < 3; ++channel) {
+                int source_channel = channel;
+                if (m_channels == 1) {
+                    source_channel = 0;
+                } else if (m_channels == 2) {
+                    source_channel = channel == 3 ? 1 : 0;
+                } else if (channel >= m_channels) {
+                    source_channel = 0;
+                }
+                const std::size_t input =
+                    (y * static_cast<std::size_t>(m_width) + x) *
+                        static_cast<std::size_t>(m_channels) +
+                    static_cast<std::size_t>(source_channel);
+                m_linear_pixels[output + channel] =
+                    srgb_texel_to_linear(m_pixels[input]);
+            }
+        }
+    }
 }
 
 std::shared_ptr<const ImageAsset>
@@ -181,6 +221,18 @@ bool ImageAsset::is_hdr() const {
 
 const std::vector<float> &ImageAsset::pixels() const {
     return m_pixels;
+}
+
+float ImageAsset::linear_component(int x, int y, int channel) const {
+    if (m_hdr || channel >= 3 || m_linear_pixels.empty()) {
+        return component(x, y, channel);
+    }
+    x = std::max(0, std::min(x, m_width - 1));
+    y = std::max(0, std::min(y, m_height - 1));
+    const std::size_t index =
+        (static_cast<std::size_t>(y) * m_width + x) * 3u +
+        static_cast<std::size_t>(channel);
+    return m_linear_pixels[index];
 }
 
 float ImageAsset::component(int x, int y, int channel) const {

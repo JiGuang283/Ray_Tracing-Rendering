@@ -14,14 +14,16 @@ int Film::height() const {
 }
 
 void Film::add_sample(int x, int y, const color &radiance) {
-    m_beauty.add_sample(x, y, radiance);
+    // Film dimensions are validated at construction and the renderer only
+    // visits in-bounds pixels, so the unchecked BeautyFilm path is safe.
+    m_beauty.add_sample_unchecked(x, y, radiance);
 }
 
 void Film::finalize_pixel(int x, int y) {
     if (m_preview == nullptr) {
         return;
     }
-    const BeautyFilmPixel &pixel = m_beauty.pixel(x, y);
+    const BeautyFilmPixel &pixel = m_beauty.pixel_unchecked(x, y);
     if (pixel.sample_count != 0) {
         m_preview->publish_pixel(
             x, y,

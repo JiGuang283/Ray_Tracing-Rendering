@@ -13,13 +13,13 @@
 class constant_medium : public hittable {
   public:
     constant_medium(shared_ptr<hittable> b, double d, TextureHandle a)
-        : boundary(b), neg_inv_density(-1 / d),
-          phase_function(make_isotropic_material(std::move(a))) {
+        : boundary(b), phase_function(make_isotropic_material(std::move(a))),
+          neg_inv_density(-1 / d) {
     }
 
     constant_medium(shared_ptr<hittable> b, double d, color c)
-        : boundary(b), neg_inv_density(-1 / d),
-          phase_function(make_isotropic_material(c)) {
+        : boundary(b), phase_function(make_isotropic_material(c)),
+          neg_inv_density(-1 / d) {
     }
 
     virtual bool hit(const ray &r, double t_min, double t_max,

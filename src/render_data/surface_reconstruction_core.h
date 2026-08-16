@@ -86,7 +86,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE bool finite(
            packed_intersector::finite(surface.vertex_alpha);
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle(
+template <bool kHostIdentity>
+RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle_impl(
     const CompiledSceneView &scene, const PackedRay &ray,
     const PackedHit &hit, const PackedInstance &instance,
     const PackedTransform &transform, PackedSurfaceInteraction &surface) {
@@ -101,10 +102,14 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle(
     const Float3 object_v2 = packed_position(scene, mesh, triangle.vertex2);
     const Float3 object_edge1 = subtract(object_v1, object_v0);
     const Float3 object_edge2 = subtract(object_v2, object_v0);
+    const bool identity = kHostIdentity &&
+        (instance.flags & PACKED_INSTANCE_HOST_IDENTITY_TRANSFORM) != 0;
     const Float3 world_edge1 =
-        transform_vector(transform.object_to_world, object_edge1);
+        identity ? object_edge1
+                 : transform_vector(transform.object_to_world, object_edge1);
     const Float3 world_edge2 =
-        transform_vector(transform.object_to_world, object_edge2);
+        identity ? object_edge2
+                 : transform_vector(transform.object_to_world, object_edge2);
     Float3 outward = normalized(cross_product(world_edge1, world_edge2));
     Float3 object_shading =
         normalized(cross_product(object_edge1, object_edge2));
@@ -115,7 +120,10 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle(
             packed_normal(scene, mesh, triangle.vertex1),
             packed_normal(scene, mesh, triangle.vertex2),
             hit.barycentric_u, hit.barycentric_v));
-        shading = normalized(transform_normal(transform, object_shading));
+        shading = identity
+                      ? object_shading
+                      : normalized(transform_normal(transform,
+                                                    object_shading));
         if (dot_product(shading, outward) < 0.0f) {
             shading = multiply(shading, -1.0f);
         }
@@ -180,10 +188,14 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle(
         front_face ? outward : multiply(outward, -1.0f);
     surface.shading_normal =
         front_face ? shading : multiply(shading, -1.0f);
-    surface.dpdu =
-        transform_vector(transform.object_to_world, object_dpdu);
-    surface.dpdv =
-        transform_vector(transform.object_to_world, object_dpdv);
+    surface.dpdu = identity
+                        ? object_dpdu
+                        : transform_vector(transform.object_to_world,
+                                           object_dpdu);
+    surface.dpdv = identity
+                        ? object_dpdv
+                        : transform_vector(transform.object_to_world,
+                                           object_dpdv);
     surface.uv = (triangle.flags & PACKED_TRIANGLE_HAS_UV) != 0
                      ? interpolate(uv0, uv1, uv2, hit.barycentric_u,
                                    hit.barycentric_v)
@@ -210,6 +222,22 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle(
                            : PackedShadingStatus::NonFinite;
 }
 
+RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle(
+    const CompiledSceneView &scene, const PackedRay &ray,
+    const PackedHit &hit, const PackedInstance &instance,
+    const PackedTransform &transform, PackedSurfaceInteraction &surface) {
+    return reconstruct_triangle_impl<false>(scene, ray, hit, instance,
+                                            transform, surface);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_triangle_host(
+    const CompiledSceneView &scene, const PackedRay &ray,
+    const PackedHit &hit, const PackedInstance &instance,
+    const PackedTransform &transform, PackedSurfaceInteraction &surface) {
+    return reconstruct_triangle_impl<true>(scene, ray, hit, instance,
+                                           transform, surface);
+}
+
 RT_HOST_DEVICE RT_FORCE_INLINE void sphere_uv(Float3 normal, Float2 &uv) {
     constexpr float pi_f = 3.14159265358979323846f;
     const float clamped_y =
@@ -219,7 +247,8 @@ RT_HOST_DEVICE RT_FORCE_INLINE void sphere_uv(Float3 normal, Float2 &uv) {
     uv = {phi / (2.0f * pi_f), theta / pi_f};
 }
 
-RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere(
+template <bool kHostIdentity>
+RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere_impl(
     const CompiledSceneView &scene, const PackedRay &ray,
     const PackedHit &hit, const PackedInstance &instance,
     const PackedTransform &transform, PackedSurfaceInteraction &surface) {
@@ -247,7 +276,10 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere(
     if (!(radius > 0.0f)) {
         return PackedShadingStatus::InvalidInput;
     }
-    const PackedRay object_ray = transform_ray_to_object(ray, transform);
+    const bool identity = kHostIdentity &&
+        (instance.flags & PACKED_INSTANCE_HOST_IDENTITY_TRANSFORM) != 0;
+    const PackedRay object_ray =
+        identity ? ray : transform_ray_to_object(ray, transform);
     const Float3 object_position = ray_at(object_ray, hit.t);
     Float3 object_outward =
         multiply(subtract(object_position, center), 1.0f / radius);
@@ -257,8 +289,11 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere(
         object_outward = multiply(object_outward, -1.0f);
     }
     sphere_uv(object_outward, surface.uv);
-    Float3 outward = normalized(transform_normal(transform, object_outward));
-    if (linear_determinant(transform) < 0.0f) {
+    Float3 outward = identity
+                          ? object_outward
+                          : normalized(transform_normal(transform,
+                                                        object_outward));
+    if (!identity && linear_determinant(transform) < 0.0f) {
         outward = multiply(outward, -1.0f);
     }
     if ((instance.flags & PACKED_INSTANCE_FLIP_FACE) != 0) {
@@ -286,10 +321,14 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere(
         multiply({cos_alpha * cos_theta, sin_theta,
                   -sin_alpha * cos_theta},
                  pi_f * signed_radius);
-    surface.dpdu =
-        transform_vector(transform.object_to_world, object_dpdu);
-    surface.dpdv =
-        transform_vector(transform.object_to_world, object_dpdv);
+    surface.dpdu = identity
+                        ? object_dpdu
+                        : transform_vector(transform.object_to_world,
+                                           object_dpdu);
+    surface.dpdv = identity
+                        ? object_dpdv
+                        : transform_vector(transform.object_to_world,
+                                           object_dpdv);
     surface.flags = PACKED_HIT_SPHERE |
                     (front_face ? PACKED_HIT_FRONT_FACE : 0u);
     surface.material_id = resolve_material(scene, instance, 0);
@@ -302,10 +341,28 @@ RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere(
                            : PackedShadingStatus::NonFinite;
 }
 
+RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere(
+    const CompiledSceneView &scene, const PackedRay &ray,
+    const PackedHit &hit, const PackedInstance &instance,
+    const PackedTransform &transform, PackedSurfaceInteraction &surface) {
+    return reconstruct_sphere_impl<false>(scene, ray, hit, instance,
+                                          transform, surface);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus reconstruct_sphere_host(
+    const CompiledSceneView &scene, const PackedRay &ray,
+    const PackedHit &hit, const PackedInstance &instance,
+    const PackedTransform &transform, PackedSurfaceInteraction &surface) {
+    return reconstruct_sphere_impl<true>(scene, ray, hit, instance,
+                                         transform, surface);
+}
+
+template <bool kHostIdentity>
 RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus
-reconstruct_compiled_hit_core(const CompiledSceneView &scene,
-                              const PackedRay &ray, const PackedHit &hit,
-                              PackedSurfaceInteraction &surface) {
+reconstruct_compiled_hit_core_impl(const CompiledSceneView &scene,
+                                   const PackedRay &ray,
+                                   const PackedHit &hit,
+                                   PackedSurfaceInteraction &surface) {
     if (hit.instance_id >= scene.instances.count ||
         !packed_intersector::finite(hit.t)) {
         return PackedShadingStatus::InvalidInput;
@@ -318,12 +375,18 @@ reconstruct_compiled_hit_core(const CompiledSceneView &scene,
     surface.instance_id = hit.instance_id;
     const PackedTransform &transform = scene.transforms[instance.transform_id];
     if ((hit.flags & PACKED_HIT_TRIANGLE) != 0) {
-        return reconstruct_triangle(scene, ray, hit, instance, transform,
-                                    surface);
+        return kHostIdentity
+                   ? reconstruct_triangle_host(scene, ray, hit, instance,
+                                               transform, surface)
+                   : reconstruct_triangle(scene, ray, hit, instance,
+                                          transform, surface);
     }
     if ((hit.flags & PACKED_HIT_SPHERE) != 0) {
-        return reconstruct_sphere(scene, ray, hit, instance, transform,
-                                  surface);
+        return kHostIdentity
+                   ? reconstruct_sphere_host(scene, ray, hit, instance,
+                                             transform, surface)
+                   : reconstruct_sphere(scene, ray, hit, instance,
+                                        transform, surface);
     }
     if ((hit.flags & PACKED_HIT_MEDIUM) != 0) {
         if (instance.geometry_index >= scene.media.count) {
@@ -345,6 +408,23 @@ reconstruct_compiled_hit_core(const CompiledSceneView &scene,
                                : PackedShadingStatus::NonFinite;
     }
     return PackedShadingStatus::InvalidInput;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus
+reconstruct_compiled_hit_core(const CompiledSceneView &scene,
+                              const PackedRay &ray, const PackedHit &hit,
+                              PackedSurfaceInteraction &surface) {
+    return reconstruct_compiled_hit_core_impl<false>(scene, ray, hit,
+                                                     surface);
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE PackedShadingStatus
+reconstruct_compiled_hit_core_host(const CompiledSceneView &scene,
+                                   const PackedRay &ray,
+                                   const PackedHit &hit,
+                                   PackedSurfaceInteraction &surface) {
+    return reconstruct_compiled_hit_core_impl<true>(scene, ray, hit,
+                                                    surface);
 }
 
 } // namespace packed_reconstruction

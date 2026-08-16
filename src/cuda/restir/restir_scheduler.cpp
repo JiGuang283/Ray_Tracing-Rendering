@@ -419,7 +419,11 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 buffers.film.data(), buffers.counters.data(),
                 settings.block_size);
         }
-        RT_CUDA_CHECK(cudaStreamSynchronize(nullptr));
+        // History commits only update host-side buffer indices. Kernels are
+        // ordered by the default stream and every next iteration receives
+        // explicit pointers, so no mid-iteration device sync is needed for an
+        // offline render. Cancellation still synchronizes at pass boundaries,
+        // and the final event sync orders all host reads below.
         restir::RestirHistoryCommit commit;
         commit.gbuffer = write_gbuffer;
         commit.di_reservoir = final_reservoir;

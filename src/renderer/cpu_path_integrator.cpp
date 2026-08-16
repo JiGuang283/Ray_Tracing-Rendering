@@ -92,6 +92,9 @@ color CpuPathIntegrator::Li(const ray &r, const hittable &scene,
 
     for (int depth = 0; depth < m_max_depth; ++depth) {
         hit_record record;
+        if (context.traversal_steps != nullptr) {
+            ++*context.traversal_steps;
+        }
         if (!scene.hit(current_ray, 0.001, infinity, record, rng)) {
             radiance += throughput *
                         miss_radiance(current_ray, background, light_sampler,
@@ -112,7 +115,8 @@ color CpuPathIntegrator::Li(const ray &r, const hittable &scene,
             radiance +=
                 throughput * integrator_common::sample_direct_lighting(
                                  shaded, scene, light_sampler, rng,
-                                 m_policy.uses_mis());
+                                 m_policy.uses_mis(),
+                                 context.shadow_rays);
         }
 
         if (depth + 1 >= m_max_depth) {

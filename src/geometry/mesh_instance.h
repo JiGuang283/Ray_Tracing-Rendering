@@ -19,6 +19,8 @@ class MeshInstance final : public hittable {
              hit_record &record) const override;
     bool hit(const ray &world_ray, double t_min, double t_max,
              hit_record &record, RNG &rng) const override;
+    bool occluded(const ray &world_ray, double t_min, double t_max,
+                  RNG &rng) const override;
     bool bounding_box(double time0, double time1,
                       aabb &output_box) const override;
 

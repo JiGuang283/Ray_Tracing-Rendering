@@ -159,7 +159,10 @@ enum PackedPathFlags : std::uint32_t {
 
 enum PackedInstanceFlags : std::uint32_t {
     PACKED_INSTANCE_NONE = 0,
-    PACKED_INSTANCE_FLIP_FACE = 1u << 0
+    PACKED_INSTANCE_FLIP_FACE = 1u << 0,
+    // Only the host fast transport path consumes this bit. Safe CUDA kernels
+    // deliberately ignore it, preserving bit-identical device behavior.
+    PACKED_INSTANCE_HOST_IDENTITY_TRANSFORM = 1u << 1
 };
 
 enum PackedTriangleFlags : std::uint32_t {

@@ -11,3 +11,5 @@ target_link_libraries(raytracer_shading PUBLIC
     raytracer::build_config
     raytracer::core
 )
+
+raytracer_enable_warnings(raytracer_shading)
