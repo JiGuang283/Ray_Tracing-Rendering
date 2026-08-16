@@ -20,6 +20,7 @@ struct RenderOptions {
     bool strict_assets = false;
     RenderBackend backend = RenderBackend::CPU;
     unsigned cuda_batch_size = 0;
+    unsigned cuda_samples_per_launch = 0;
     RestirSettings restir;
 };
 

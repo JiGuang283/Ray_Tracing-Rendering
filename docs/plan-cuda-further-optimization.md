@@ -348,7 +348,15 @@ iteration/seed/buffer 索引变化。
 - 交互模式总帧时间下降；
 - 取消与同步语义保持。
 
-## 7. 工具与观测
+## 7. 实施进度
+
+- Phase A / W1：已完成。`samples_per_launch` 默认 8，PFM 与旧逐 sample
+  launch 逐位一致；CUDA 35/35 通过。
+  - 64x36 spp64 CLI 验证：`--cuda-samples-per-launch 16` 时 batch_count=4。
+  - depth4/depth50 device 中位 0.0173s / 0.0197s（优化前 0.0199/0.0227）。
+  - 新增 CLI：`--cuda-samples-per-launch N`。
+
+## 8. 工具与观测
 
 - `nsys profile` 生成 timeline，验证 launch 数量与 gap；
 - `ncu` 需要授权性能计数器；无法授权时使用 nsys 的 kernel 时间与

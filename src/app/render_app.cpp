@@ -118,6 +118,8 @@ RenderRequest make_render_request(const CameraConfig &camera,
     request.seed = options.render.seed;
     request.threads = static_cast<std::uint32_t>(options.render.threads);
     request.cuda_batch_size = options.render.cuda_batch_size;
+    request.cuda_samples_per_launch =
+        options.render.cuda_samples_per_launch;
     request.sample_clamp = preset.sample_clamp;
     request.color_pipeline = preset.color_pipeline;
     request.restir = options.render.restir;

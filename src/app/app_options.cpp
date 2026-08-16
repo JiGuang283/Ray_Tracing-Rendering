@@ -59,6 +59,7 @@ void print_usage() {
         << "  --threads N          Set render worker count (default hardware)\n"
         << "  --sample-clamp N     Clamp camera-sample luminance (0 disables)\n"
         << "  --cuda-batch-size N  Override CUDA active-path batch size\n"
+        << "  --cuda-samples-per-launch N  Samples processed per wavefront launch\n"
         << "  --restir-light-candidates N  Initial DI candidates per pixel\n"
         << "  --restir-gi-candidates N     Initial GI paths per pixel\n"
         << "  --restir-spatial-neighbors N Spatial neighbors (max 64)\n"
@@ -180,6 +181,14 @@ AppOptions parse_options(int argc, char *args[]) {
             }
             options.render.cuda_batch_size =
                 static_cast<unsigned>(batch_size);
+        } else if (arg == "--cuda-samples-per-launch" && i + 1 < argc) {
+            int value = 0;
+            if (!parse_int_arg(args[++i], value) || value <= 0) {
+                fail("--cuda-samples-per-launch expects a positive integer.");
+                break;
+            }
+            options.render.cuda_samples_per_launch =
+                static_cast<unsigned>(value);
         } else if (arg == "--restir-light-candidates" && i + 1 < argc) {
             int value = 0;
             if (!parse_int_arg(args[++i], value) || value <= 0) {

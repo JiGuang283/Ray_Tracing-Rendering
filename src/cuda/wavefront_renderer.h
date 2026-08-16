@@ -26,6 +26,7 @@ struct CudaRenderSettings {
     std::uint32_t width = 1;
     std::uint32_t height = 1;
     std::uint32_t samples_per_pixel = 1;
+    std::uint32_t samples_per_launch = 0; // 0 selects a default
     std::uint32_t seed = 1337;
     std::uint32_t batch_size = 0;
     std::uint32_t block_size = 128;
@@ -43,6 +44,7 @@ struct CudaRenderStats {
     std::uint64_t active_path_steps = 0;
     std::uint32_t batch_size = 0;
     std::uint32_t batch_count = 0;
+    std::uint32_t samples_per_launch = 0;
     std::size_t workspace_bytes = 0;
     std::uint64_t workspace_generation = 0;
     std::uint32_t workspace_pixel_capacity = 0;

@@ -30,6 +30,7 @@ struct RenderRequest {
     std::uint32_t seed = 1337;
     std::uint32_t threads = 0;
     std::uint32_t cuda_batch_size = 0;
+    std::uint32_t cuda_samples_per_launch = 0;
     double sample_clamp = 0.0;
     ColorPipelineSettings color_pipeline;
     RestirSettings restir;
@@ -81,6 +82,7 @@ struct CudaRenderStats {
     int batch_count = 0;
     std::uint64_t wavefront_advance_launches = 0;
     std::uint64_t wavefront_active_path_steps = 0;
+    std::uint32_t samples_per_launch = 0;
     std::array<std::uint64_t, 8> status_counts{};
 };
 

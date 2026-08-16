@@ -61,9 +61,9 @@ __global__ void render_paths_kernel(
     DeviceSceneView scene, PackedTransportSettings transport,
     std::uint32_t width, std::uint32_t height,
     std::uint32_t pixel_offset, std::uint32_t path_count,
-    std::uint32_t sample_index, std::uint32_t seed,
-    PackedPathState *states, float sample_clamp, CudaFilmPixel *film,
-    DeviceRenderCounters *counters) {
+    std::uint32_t sample_begin, std::uint32_t sample_end,
+    std::uint32_t seed, PackedPathState *states, float sample_clamp,
+    CudaFilmPixel *film, DeviceRenderCounters *counters) {
     extern __shared__ unsigned char dynamic_shared[];
     unsigned *queues = reinterpret_cast<unsigned *>(dynamic_shared);
 
@@ -95,94 +95,107 @@ __global__ void render_paths_kernel(
     const std::uint32_t local_index =
         blockIdx.x * blockDim.x + threadIdx.x;
     const bool valid = local_index < path_count;
-    if (valid) {
-        const std::uint32_t pixel_index = pixel_offset + local_index;
-        const std::uint32_t pixel_x = pixel_index % width;
-        const std::uint32_t pixel_y = pixel_index / width;
-        const std::uint32_t sample_seed =
-            packed_transport::packed_camera_sample_seed(
-                seed, pixel_index, sample_index);
-        RNG rng(sample_seed);
-        const PackedRay ray =
-            packed_transport::generate_packed_camera_ray_core(
-                scene.scene.camera, pixel_x, pixel_y, width, height, rng);
-        packed_transport::initialize_packed_path_state(
-            scene.scene, ray, transport, rng.state, pixel_index,
-            sample_index, states[local_index]);
-        if (states[local_index].active()) {
-            const std::uint32_t slot = atomicAdd(&counts[0], 1u);
-            queues[slot] = local_index;
-        }
-    }
-    __syncthreads();
+    const std::uint32_t pixel_index = pixel_offset + local_index;
+    const std::uint32_t pixel_x = pixel_index % width;
+    const std::uint32_t pixel_y = pixel_index / width;
 
-    std::uint32_t active = counts[0];
-    std::uint32_t parity = 0;
-    while (active != 0u) {
-        const std::uint32_t next_parity = parity ^ 1u;
-        const unsigned *source_queue = queues + parity * blockDim.x;
-        unsigned *next_queue = queues + next_parity * blockDim.x;
-        if (thread < active) {
-            const std::uint32_t path_index = source_queue[thread];
-            PackedPathState state = states[path_index];
-            packed_transport::advance_packed_path_core(scene.scene, transport,
-                                                       state);
-            states[path_index] = state;
-            if (state.active()) {
-                const std::uint32_t output_index =
-                    atomicAdd(&counts[next_parity], 1u);
-                next_queue[output_index] = path_index;
+    // One launch advances a contiguous sample range for every path slot.
+    // Per-sample block-wide barriers preserve the original wavefront order,
+    // so film updates remain race-free and bit-identical to one launch per
+    // sample.
+    for (std::uint32_t sample = sample_begin; sample < sample_end;
+         ++sample) {
+        if (valid) {
+            const std::uint32_t sample_seed =
+                packed_transport::packed_camera_sample_seed(
+                    seed, pixel_index, sample);
+            RNG rng(sample_seed);
+            const PackedRay ray =
+                packed_transport::generate_packed_camera_ray_core(
+                    scene.scene.camera, pixel_x, pixel_y, width, height,
+                    rng);
+            packed_transport::initialize_packed_path_state(
+                scene.scene, ray, transport, rng.state, pixel_index,
+                sample, states[local_index]);
+            if (states[local_index].active()) {
+                const std::uint32_t slot = atomicAdd(&counts[0], 1u);
+                queues[slot] = local_index;
             }
         }
         __syncthreads();
-        active = counts[next_parity];
+
+        std::uint32_t active = counts[0];
+        std::uint32_t parity = 0;
+        while (active != 0u) {
+            const std::uint32_t next_parity = parity ^ 1u;
+            const unsigned *source_queue = queues + parity * blockDim.x;
+            unsigned *next_queue = queues + next_parity * blockDim.x;
+            if (thread < active) {
+                const std::uint32_t path_index = source_queue[thread];
+                PackedPathState state = states[path_index];
+                packed_transport::advance_packed_path_core(
+                    scene.scene, transport, state);
+                states[path_index] = state;
+                if (state.active()) {
+                    const std::uint32_t output_index =
+                        atomicAdd(&counts[next_parity], 1u);
+                    next_queue[output_index] = path_index;
+                }
+            }
+            __syncthreads();
+            active = counts[next_parity];
+            __syncthreads();
+            if (thread == 0) {
+                depth_steps_partial += 1u;
+                active_path_partial += active;
+                counts[next_parity] = 0;
+            }
+            __syncthreads();
+            parity = next_parity;
+        }
+        __syncthreads();
+
+        if (valid) {
+            const PackedPathState &state = states[local_index];
+            Float3 radiance = state.radiance;
+            std::uint32_t status_index =
+                static_cast<std::uint32_t>(state.status);
+            if (status_index >= 8) {
+                status_index = static_cast<std::uint32_t>(
+                    PackedTransportStatus::InvalidInput);
+            }
+
+            atomicAdd(&status_partials[status_index], 1ull);
+            atomicAdd(&traversal_partial,
+                      static_cast<unsigned long long>(state.traversal_steps));
+            atomicAdd(&shadow_partial,
+                      static_cast<unsigned long long>(state.shadow_rays));
+
+            if (state.status != PackedTransportStatus::Success ||
+                !packed_transport::math::finite(radiance)) {
+                radiance = {};
+                atomicAdd(&invalid_partial, 1ull);
+            } else if (sample_clamp > 0.0f) {
+                const float sample_luminance = luminance(radiance);
+                if (sample_luminance > sample_clamp) {
+                    const float scale = sample_clamp / sample_luminance;
+                    radiance =
+                        packed_transport::math::multiply(radiance, scale);
+                    atomicAdd(&clamped_partial, 1ull);
+                }
+            }
+
+            CudaFilmPixel &pixel = film[state.pixel_index];
+            pixel.radiance =
+                packed_transport::math::add(pixel.radiance, radiance);
+            ++pixel.sample_count;
+        }
         __syncthreads();
         if (thread == 0) {
-            depth_steps_partial += 1u;
-            active_path_partial += active;
-            counts[next_parity] = 0;
+            counts[0] = 0;
+            counts[1] = 0;
         }
         __syncthreads();
-        parity = next_parity;
-    }
-    __syncthreads();
-
-    // Every path slot belongs to exactly one block, so the film update needs
-    // no atomic. Counter updates are reduced per block first.
-    if (valid) {
-        const PackedPathState &state = states[local_index];
-        Float3 radiance = state.radiance;
-        std::uint32_t status_index =
-            static_cast<std::uint32_t>(state.status);
-        if (status_index >= 8) {
-            status_index = static_cast<std::uint32_t>(
-                PackedTransportStatus::InvalidInput);
-        }
-
-        atomicAdd(&status_partials[status_index], 1ull);
-        atomicAdd(&traversal_partial,
-                  static_cast<unsigned long long>(state.traversal_steps));
-        atomicAdd(&shadow_partial,
-                  static_cast<unsigned long long>(state.shadow_rays));
-
-        if (state.status != PackedTransportStatus::Success ||
-            !packed_transport::math::finite(radiance)) {
-            radiance = {};
-            atomicAdd(&invalid_partial, 1ull);
-        } else if (sample_clamp > 0.0f) {
-            const float sample_luminance = luminance(radiance);
-            if (sample_luminance > sample_clamp) {
-                const float scale = sample_clamp / sample_luminance;
-                radiance =
-                    packed_transport::math::multiply(radiance, scale);
-                atomicAdd(&clamped_partial, 1ull);
-            }
-        }
-
-        CudaFilmPixel &pixel = film[state.pixel_index];
-        pixel.radiance =
-            packed_transport::math::add(pixel.radiance, radiance);
-        ++pixel.sample_count;
     }
 
     __syncthreads();
@@ -221,6 +234,13 @@ void validate_settings(const CudaRenderSettings &settings) {
     if (pixel_count > std::numeric_limits<std::uint32_t>::max()) {
         throw std::overflow_error("CUDA film exceeds uint32 capacity");
     }
+}
+
+std::uint32_t choose_samples_per_launch(
+    const CudaRenderSettings &settings) {
+    const std::uint32_t requested =
+        settings.samples_per_launch == 0 ? 8u : settings.samples_per_launch;
+    return std::max(1u, std::min(requested, settings.samples_per_pixel));
 }
 
 std::uint32_t choose_batch_size(const CudaRenderSettings &settings,
@@ -328,8 +348,14 @@ CudaRenderOutput render_wavefront_cuda(
     const std::size_t shared_bytes =
         static_cast<std::size_t>(2) * settings.block_size *
         sizeof(std::uint32_t);
+    const std::uint32_t samples_per_launch =
+        choose_samples_per_launch(settings);
     for (std::uint32_t sample = 0;
-         sample < settings.samples_per_pixel && !cancelled; ++sample) {
+         sample < settings.samples_per_pixel && !cancelled;
+         sample += samples_per_launch) {
+        const std::uint32_t sample_end =
+            std::min(sample + samples_per_launch,
+                     settings.samples_per_pixel);
         for (std::uint32_t offset = 0; offset < pixel_count;
              offset += batch_size) {
             if (cancel != nullptr && cancel->load()) {
@@ -343,13 +369,14 @@ CudaRenderOutput render_wavefront_cuda(
                 (count + settings.block_size - 1) / settings.block_size;
             render_paths_kernel<<<grid, settings.block_size, shared_bytes>>>(
                 scene, settings.transport, settings.width, settings.height,
-                offset, count, sample, settings.seed, buffers.states.data(),
+                offset, count, sample, sample_end, settings.seed,
+                buffers.states.data(),
                 static_cast<float>(settings.sample_clamp),
                 buffers.film.data(), buffers.counters.data());
             RT_CUDA_CHECK(cudaGetLastError());
-            // One kernel owns a complete batch. The default stream orders all
-            // batches, so the final event sync is the only required host
-            // synchronization point.
+            // One kernel owns a complete pixel batch and sample group. The
+            // default stream orders all batches, so the final event sync is
+            // the only required host synchronization point.
         }
     }
     RT_CUDA_CHECK(cudaEventRecord(end));
@@ -367,6 +394,7 @@ CudaRenderOutput render_wavefront_cuda(
     output.stats.invalid_samples = counter.invalid_samples;
     output.stats.batch_size = batch_size;
     output.stats.batch_count = batch_count;
+    output.stats.samples_per_launch = samples_per_launch;
     output.stats.advance_launches = counter.depth_steps;
     output.stats.active_path_steps = counter.active_path_steps;
     const CudaWorkspaceInfo workspace_info = workspace.info();

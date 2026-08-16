@@ -86,6 +86,7 @@ json render_stats_json(const RenderStats &stats) {
         stats.cuda.wavefront_active_path_steps;
     result["batch_size"] = stats.cuda.batch_size;
     result["batch_count"] = stats.cuda.batch_count;
+    result["samples_per_launch"] = stats.cuda.samples_per_launch;
     result["status_counts"] = stats.cuda.status_counts;
     result["cancelled"] = stats.base.cancelled;
     result["restir"] = restir_stats_json(stats.restir);
