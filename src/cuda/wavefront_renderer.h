@@ -29,7 +29,12 @@ struct CudaRenderSettings {
     std::uint32_t samples_per_launch = 0; // 0 selects a default
     std::uint32_t seed = 1337;
     std::uint32_t batch_size = 0;
-    std::uint32_t block_size = 128;
+    // 0 selects an occupancy-based default. When autotune_block_size is
+    // enabled, the first matching render measures the candidate block sizes
+    // on a small representative image and caches the result in the
+    // workspace.
+    std::uint32_t block_size = 0;
+    bool autotune_block_size = false;
     float sample_clamp = 0.0f;
 };
 
@@ -45,6 +50,7 @@ struct CudaRenderStats {
     std::uint32_t batch_size = 0;
     std::uint32_t batch_count = 0;
     std::uint32_t samples_per_launch = 0;
+    std::uint32_t block_size = 0;
     std::size_t workspace_bytes = 0;
     std::uint64_t workspace_generation = 0;
     std::uint32_t workspace_pixel_capacity = 0;
@@ -78,6 +84,11 @@ class CudaRenderWorkspace {
     CudaRenderWorkspace &operator=(CudaRenderWorkspace &&) noexcept;
 
     CudaWorkspaceInfo info() const noexcept;
+
+    // Scene uploads may reuse device pointers while replacing their
+    // contents, so the cached empirical block-size choice must be discarded
+    // whenever a new scene revision is uploaded.
+    void invalidate_block_size_tuning() noexcept;
 
   private:
     struct Impl;

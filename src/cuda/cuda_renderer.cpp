@@ -36,6 +36,7 @@ class CudaRenderSession final : public IRenderSession {
             std::chrono::duration<double>(compile_end - compile_begin)
                 .count();
         const DeviceSceneUploadStats upload = m_device_scene.upload(scene);
+        m_workspace.invalidate_block_size_tuning();
         m_preparation.upload_seconds = upload.milliseconds / 1000.0;
         m_preparation.scene_bytes = upload.bytes;
     }
@@ -116,6 +117,9 @@ class CudaRenderSession final : public IRenderSession {
         transport_settings.samples_per_pixel = request.samples_per_pixel;
         transport_settings.seed = request.seed;
         transport_settings.batch_size = request.cuda_batch_size;
+        transport_settings.block_size = request.cuda_block_size;
+        transport_settings.autotune_block_size =
+            request.cuda_autotune_block_size;
         transport_settings.samples_per_launch =
             request.cuda_samples_per_launch;
         transport_settings.sample_clamp =
@@ -184,6 +188,7 @@ class CudaRenderSession final : public IRenderSession {
         stats.cuda.batch_size = static_cast<int>(output.stats.batch_size);
         stats.cuda.batch_count = static_cast<int>(output.stats.batch_count);
         stats.cuda.samples_per_launch = output.stats.samples_per_launch;
+        stats.cuda.block_size = static_cast<int>(output.stats.block_size);
         stats.cuda.status_counts = output.stats.status_counts;
         stats.base.cancelled = output.stats.cancelled ||
                           stats.base.completed_samples < stats.base.requested_samples;

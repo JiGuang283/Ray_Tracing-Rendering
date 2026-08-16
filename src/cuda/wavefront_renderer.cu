@@ -10,13 +10,20 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <string>
 
 namespace cuda_backend {
 namespace {
 
 constexpr std::uint32_t kDefaultBatchSize = 256u * 1024u;
+constexpr std::uint32_t kBlockSizeFallback = 128u;
+constexpr std::uint32_t kAutotuneTargetWidth = 256u;
+constexpr std::uint32_t kAutotuneMeasurementRuns = 3u;
+constexpr std::array<std::uint32_t, 5> kBlockSizeCandidates{
+    128u, 192u, 256u, 384u, 512u};
 
 struct alignas(16) DeviceRenderCounters {
     unsigned long long traversal_steps = 0;
@@ -213,6 +220,26 @@ __global__ void render_paths_kernel(
     }
 }
 
+std::size_t wavefront_shared_bytes(std::uint32_t block_size) {
+    return 2u * static_cast<std::size_t>(block_size) * sizeof(std::uint32_t);
+}
+
+int wavefront_active_blocks_per_sm(std::uint32_t block_size) {
+    int active_blocks = 0;
+    const cudaError_t status =
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &active_blocks, render_paths_kernel,
+            static_cast<int>(block_size), wavefront_shared_bytes(block_size));
+    if (status != cudaSuccess || active_blocks == 0) {
+        return -1;
+    }
+    return active_blocks;
+}
+
+bool wavefront_block_size_launchable(std::uint32_t block_size) {
+    return wavefront_active_blocks_per_sm(block_size) > 0;
+}
+
 void validate_settings(const CudaRenderSettings &settings) {
     if (settings.width == 0 || settings.height == 0 ||
         settings.samples_per_pixel == 0) {
@@ -223,7 +250,7 @@ void validate_settings(const CudaRenderSettings &settings) {
         !valid_integrator_policy(settings.transport.policy)) {
         throw std::invalid_argument("invalid CUDA transport settings");
     }
-    if (settings.block_size == 0 || settings.block_size > 1024) {
+    if (settings.block_size > 1024) {
         throw std::invalid_argument("invalid CUDA render block size");
     }
     if (!(settings.sample_clamp >= 0.0f)) {
@@ -251,6 +278,257 @@ std::uint32_t choose_batch_size(const CudaRenderSettings &settings,
     return std::max(1u, std::min(requested, pixel_count));
 }
 
+std::uint32_t choose_block_size_heuristic() {
+    std::uint32_t best = kBlockSizeFallback;
+    int best_occupancy = 0;
+    for (const std::uint32_t candidate : kBlockSizeCandidates) {
+        const int active_blocks = wavefront_active_blocks_per_sm(candidate);
+        if (active_blocks <= 0) {
+            continue;
+        }
+        const int occupancy =
+            active_blocks * static_cast<int>(candidate);
+        // Maximize resident threads. On the current kernel all candidate
+        // sizes that fit are register-limited; when occupancy ties, more
+        // smaller blocks per SM hide latency and tail effects better than
+        // fewer larger blocks, so ties keep the first (smallest) candidate.
+        if (occupancy > best_occupancy) {
+            best_occupancy = occupancy;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+struct WavefrontLaunchResult {
+    float milliseconds = 0.0f;
+    std::uint32_t batch_count = 0;
+    bool cancelled = false;
+};
+
+WavefrontLaunchResult launch_wavefront_kernels(
+    DeviceSceneView scene, const CudaRenderSettings &settings,
+    const std::atomic<bool> *cancel, std::uint32_t block_size,
+    std::uint32_t pixel_count, std::uint32_t batch_size,
+    std::uint32_t samples_per_launch, CudaFilmPixel *film,
+    PackedPathState *states, DeviceRenderCounters *counters) {
+    RT_CUDA_CHECK(cudaMemset(film, 0,
+                             static_cast<std::size_t>(pixel_count) *
+                                 sizeof(CudaFilmPixel)));
+    RT_CUDA_CHECK(cudaMemset(counters, 0,
+                             sizeof(DeviceRenderCounters)));
+
+    CudaEvent begin;
+    CudaEvent end;
+    RT_CUDA_CHECK(cudaEventRecord(begin));
+
+    WavefrontLaunchResult result;
+    const std::size_t shared_bytes = wavefront_shared_bytes(block_size);
+    for (std::uint32_t sample = 0;
+         sample < settings.samples_per_pixel && !result.cancelled;
+         sample += samples_per_launch) {
+        const std::uint32_t sample_end =
+            std::min(sample + samples_per_launch,
+                     settings.samples_per_pixel);
+        for (std::uint32_t offset = 0; offset < pixel_count;
+             offset += batch_size) {
+            if (cancel != nullptr && cancel->load()) {
+                result.cancelled = true;
+                break;
+            }
+            ++result.batch_count;
+            const std::uint32_t count =
+                std::min(batch_size, pixel_count - offset);
+            const std::uint32_t grid =
+                (count + block_size - 1) / block_size;
+            render_paths_kernel<<<grid, block_size, shared_bytes>>>(
+                scene, settings.transport, settings.width, settings.height,
+                offset, count, sample, sample_end, settings.seed, states,
+                static_cast<float>(settings.sample_clamp), film, counters);
+            RT_CUDA_CHECK(cudaGetLastError());
+            // One kernel owns a complete pixel batch and sample group. The
+            // default stream orders all batches, so the final event sync is
+            // the only required host synchronization point.
+        }
+    }
+    RT_CUDA_CHECK(cudaEventRecord(end));
+    RT_CUDA_CHECK(cudaEventSynchronize(end));
+    RT_CUDA_CHECK(cudaEventElapsedTime(&result.milliseconds, begin, end));
+    return result;
+}
+
+std::uint32_t float_bits(float value) {
+    std::uint32_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(value));
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+struct WavefrontBlockTuningKey {
+    int device = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t samples_per_pixel = 0;
+    std::uint32_t samples_per_launch = 0;
+    std::uint32_t batch_size = 0;
+    std::uint32_t max_depth = 0;
+    std::uint32_t policy_kind = 0;
+    std::uint32_t policy_flags = 0;
+    std::uint32_t rr_start_depth = 0;
+    std::uint32_t rr_min_survival_bits = 0;
+    std::uint32_t sample_clamp_bits = 0;
+    std::uintptr_t bvh_nodes = 0;
+    std::uintptr_t aggregate_nodes = 0;
+    std::uintptr_t triangles = 0;
+    std::uintptr_t materials = 0;
+};
+
+WavefrontBlockTuningKey make_block_tuning_key(
+    const CudaRenderSettings &settings, std::uint32_t batch_size,
+    std::uint32_t samples_per_launch, DeviceSceneView scene) {
+    WavefrontBlockTuningKey key;
+    RT_CUDA_CHECK(cudaGetDevice(&key.device));
+    key.width = settings.width;
+    key.height = settings.height;
+    key.samples_per_pixel = settings.samples_per_pixel;
+    key.samples_per_launch = samples_per_launch;
+    key.batch_size = batch_size;
+    key.max_depth = settings.transport.max_depth;
+    key.policy_kind =
+        static_cast<std::uint32_t>(settings.transport.policy.kind);
+    key.policy_flags = settings.transport.policy.flags;
+    key.rr_start_depth = settings.transport.policy.rr_start_depth;
+    key.rr_min_survival_bits =
+        float_bits(settings.transport.policy.rr_min_survival);
+    key.sample_clamp_bits = float_bits(settings.sample_clamp);
+    key.bvh_nodes =
+        reinterpret_cast<std::uintptr_t>(scene.scene.bvh_nodes.data);
+    key.aggregate_nodes =
+        reinterpret_cast<std::uintptr_t>(scene.scene.aggregates.data);
+    key.triangles =
+        reinterpret_cast<std::uintptr_t>(scene.scene.triangles.data);
+    key.materials =
+        reinterpret_cast<std::uintptr_t>(scene.scene.materials.data);
+    return key;
+}
+
+bool same_tuning_key(const WavefrontBlockTuningKey &lhs,
+                     const WavefrontBlockTuningKey &rhs) {
+    return lhs.device == rhs.device && lhs.width == rhs.width &&
+           lhs.height == rhs.height &&
+           lhs.samples_per_pixel == rhs.samples_per_pixel &&
+           lhs.samples_per_launch == rhs.samples_per_launch &&
+           lhs.batch_size == rhs.batch_size &&
+           lhs.max_depth == rhs.max_depth &&
+           lhs.policy_kind == rhs.policy_kind &&
+           lhs.policy_flags == rhs.policy_flags &&
+           lhs.rr_start_depth == rhs.rr_start_depth &&
+           lhs.rr_min_survival_bits == rhs.rr_min_survival_bits &&
+           lhs.sample_clamp_bits == rhs.sample_clamp_bits &&
+           lhs.bvh_nodes == rhs.bvh_nodes &&
+           lhs.aggregate_nodes == rhs.aggregate_nodes &&
+           lhs.triangles == rhs.triangles &&
+           lhs.materials == rhs.materials;
+}
+
+std::size_t workspace_bytes(std::uint32_t pixel_count,
+                            std::uint32_t batch_size);
+
+std::uint32_t autotune_block_size(
+    DeviceSceneView scene, const CudaRenderSettings &settings,
+    const std::atomic<bool> *cancel) {
+    // Keep the tuning image small, but wide enough that even the largest
+    // candidate can fill the whole GPU grid. A pure 64x36 image would bias
+    // the result towards the smallest block size.
+    const std::uint32_t tune_width =
+        std::min(settings.width, kAutotuneTargetWidth);
+    const std::uint32_t tune_height = std::max(
+        1u, std::min(settings.height,
+                     static_cast<std::uint32_t>(
+                         static_cast<std::uint64_t>(settings.height) *
+                         tune_width / settings.width)));
+    const std::uint32_t tune_pixel_count = tune_width * tune_height;
+    const std::uint32_t tune_batch_size =
+        choose_batch_size(settings, tune_pixel_count);
+
+    CudaRenderSettings tune_settings = settings;
+    tune_settings.width = tune_width;
+    tune_settings.height = tune_height;
+    tune_settings.samples_per_pixel = 1;
+    tune_settings.samples_per_launch = 1;
+    tune_settings.batch_size = tune_batch_size;
+    tune_settings.block_size = kBlockSizeFallback;
+    tune_settings.autotune_block_size = false;
+
+    const std::size_t required =
+        workspace_bytes(tune_pixel_count, tune_batch_size);
+    ensure_cuda_workspace_fits(required, 0,
+                               "CUDA block-size autotune workspace");
+    DeviceBuffer<CudaFilmPixel> tune_film;
+    DeviceBuffer<PackedPathState> tune_states;
+    DeviceBuffer<DeviceRenderCounters> tune_counters;
+    tune_film.allocate(tune_pixel_count);
+    tune_states.allocate(tune_batch_size);
+    tune_counters.allocate(1);
+
+    auto run_candidate = [&](std::uint32_t candidate) {
+        return launch_wavefront_kernels(
+            scene, tune_settings, cancel, candidate, tune_pixel_count,
+            tune_batch_size, 1, tune_film.data(), tune_states.data(),
+            tune_counters.data());
+    };
+
+    auto is_cancelled = [&]() {
+        return cancel != nullptr && cancel->load();
+    };
+
+    // Warm every launchable candidate before timing so the first
+    // candidate does not pay the GPU clock/frequency ramp cost.
+    for (const std::uint32_t candidate : kBlockSizeCandidates) {
+        if (!wavefront_block_size_launchable(candidate)) {
+            continue;
+        }
+        if (is_cancelled()) {
+            return kBlockSizeFallback;
+        }
+        run_candidate(candidate);
+    }
+
+    std::uint32_t best_block_size = kBlockSizeFallback;
+    float best_milliseconds = std::numeric_limits<float>::infinity();
+    for (const std::uint32_t candidate : kBlockSizeCandidates) {
+        if (!wavefront_block_size_launchable(candidate)) {
+            continue;
+        }
+        float candidate_milliseconds =
+            std::numeric_limits<float>::infinity();
+        for (std::uint32_t run = 0;
+             run < kAutotuneMeasurementRuns; ++run) {
+            if (is_cancelled()) {
+                return best_milliseconds ==
+                               std::numeric_limits<float>::infinity()
+                           ? kBlockSizeFallback
+                           : best_block_size;
+            }
+            const WavefrontLaunchResult measurement = run_candidate(candidate);
+            if (measurement.cancelled) {
+                return best_milliseconds ==
+                               std::numeric_limits<float>::infinity()
+                           ? kBlockSizeFallback
+                           : best_block_size;
+            }
+            candidate_milliseconds =
+                std::min(candidate_milliseconds,
+                         measurement.milliseconds);
+        }
+        if (candidate_milliseconds < best_milliseconds) {
+            best_milliseconds = candidate_milliseconds;
+            best_block_size = candidate;
+        }
+    }
+    return best_block_size;
+}
+
 std::size_t workspace_bytes(std::uint32_t pixel_count,
                             std::uint32_t batch_size) {
     return static_cast<std::size_t>(pixel_count) * sizeof(CudaFilmPixel) +
@@ -265,6 +543,12 @@ struct CudaRenderWorkspace::Impl {
     DeviceBuffer<PackedPathState> states;
     DeviceBuffer<DeviceRenderCounters> counters;
     std::uint64_t generation = 0;
+
+    struct BlockSizeTuning {
+        WavefrontBlockTuningKey key;
+        std::uint32_t block_size = 0;
+    };
+    BlockSizeTuning block_size_tuning;
 
     std::size_t allocated_bytes() const noexcept {
         return film.bytes() + states.bytes() + counters.bytes();
@@ -321,6 +605,12 @@ CudaWorkspaceInfo CudaRenderWorkspace::info() const noexcept {
     return m_impl ? m_impl->info() : CudaWorkspaceInfo{};
 }
 
+void CudaRenderWorkspace::invalidate_block_size_tuning() noexcept {
+    if (m_impl) {
+        m_impl->block_size_tuning = {};
+    }
+}
+
 CudaRenderOutput render_wavefront_cuda(
     DeviceSceneView scene, const CudaRenderSettings &settings,
     CudaRenderWorkspace &workspace, const std::atomic<bool> *cancel) {
@@ -332,69 +622,58 @@ CudaRenderOutput render_wavefront_cuda(
     const std::uint32_t pixel_count = settings.width * settings.height;
     const std::uint32_t batch_size =
         choose_batch_size(settings, pixel_count);
-    workspace.m_impl->ensure_capacity(pixel_count, batch_size);
-    CudaRenderWorkspace::Impl &buffers = *workspace.m_impl;
-    RT_CUDA_CHECK(cudaMemset(buffers.film.data(), 0,
-                             static_cast<std::size_t>(pixel_count) *
-                                 sizeof(CudaFilmPixel)));
-    RT_CUDA_CHECK(cudaMemset(buffers.counters.data(), 0,
-                             sizeof(DeviceRenderCounters)));
-
-    CudaEvent begin;
-    CudaEvent end;
-    RT_CUDA_CHECK(cudaEventRecord(begin));
-    std::uint32_t batch_count = 0;
-    bool cancelled = false;
-    const std::size_t shared_bytes =
-        static_cast<std::size_t>(2) * settings.block_size *
-        sizeof(std::uint32_t);
     const std::uint32_t samples_per_launch =
         choose_samples_per_launch(settings);
-    for (std::uint32_t sample = 0;
-         sample < settings.samples_per_pixel && !cancelled;
-         sample += samples_per_launch) {
-        const std::uint32_t sample_end =
-            std::min(sample + samples_per_launch,
-                     settings.samples_per_pixel);
-        for (std::uint32_t offset = 0; offset < pixel_count;
-             offset += batch_size) {
-            if (cancel != nullptr && cancel->load()) {
-                cancelled = true;
-                break;
+    CudaRenderWorkspace::Impl &buffers = *workspace.m_impl;
+
+    std::uint32_t block_size = settings.block_size;
+    if (block_size == 0) {
+        if (settings.autotune_block_size) {
+            const WavefrontBlockTuningKey key = make_block_tuning_key(
+                settings, batch_size, samples_per_launch, scene);
+            if (buffers.block_size_tuning.block_size != 0 &&
+                same_tuning_key(buffers.block_size_tuning.key, key)) {
+                block_size = buffers.block_size_tuning.block_size;
+            } else {
+                block_size = autotune_block_size(scene, settings, cancel);
+                if (!wavefront_block_size_launchable(block_size)) {
+                    throw std::runtime_error(
+                        "CUDA block-size autotune found no launchable "
+                        "wavefront block size");
+                }
+                buffers.block_size_tuning = {key, block_size};
             }
-            ++batch_count;
-            const std::uint32_t count =
-                std::min(batch_size, pixel_count - offset);
-            const std::uint32_t grid =
-                (count + settings.block_size - 1) / settings.block_size;
-            render_paths_kernel<<<grid, settings.block_size, shared_bytes>>>(
-                scene, settings.transport, settings.width, settings.height,
-                offset, count, sample, sample_end, settings.seed,
-                buffers.states.data(),
-                static_cast<float>(settings.sample_clamp),
-                buffers.film.data(), buffers.counters.data());
-            RT_CUDA_CHECK(cudaGetLastError());
-            // One kernel owns a complete pixel batch and sample group. The
-            // default stream orders all batches, so the final event sync is
-            // the only required host synchronization point.
+        } else {
+            block_size = choose_block_size_heuristic();
         }
     }
-    RT_CUDA_CHECK(cudaEventRecord(end));
-    RT_CUDA_CHECK(cudaEventSynchronize(end));
+    if (!wavefront_block_size_launchable(block_size)) {
+        throw std::invalid_argument(
+            "CUDA render block size " + std::to_string(block_size) +
+            " cannot launch with the current wavefront kernel");
+    }
+
+    workspace.m_impl->ensure_capacity(pixel_count, batch_size);
+
+    const WavefrontLaunchResult launch = launch_wavefront_kernels(
+        scene, settings, cancel, block_size, pixel_count, batch_size,
+        samples_per_launch, buffers.film.data(), buffers.states.data(),
+        buffers.counters.data());
 
     CudaRenderOutput output;
     buffers.film.download_prefix(output.film, pixel_count);
     std::vector<DeviceRenderCounters> host_counters;
     buffers.counters.download_prefix(host_counters, 1);
     const DeviceRenderCounters &counter = host_counters.front();
-    RT_CUDA_CHECK(cudaEventElapsedTime(&output.stats.milliseconds, begin, end));
+    output.stats.milliseconds = launch.milliseconds;
     output.stats.traversal_steps = counter.traversal_steps;
     output.stats.shadow_rays = counter.shadow_rays;
     output.stats.clamped_samples = counter.clamped_samples;
     output.stats.invalid_samples = counter.invalid_samples;
     output.stats.batch_size = batch_size;
-    output.stats.batch_count = batch_count;
+    output.stats.batch_count = launch.batch_count;
     output.stats.samples_per_launch = samples_per_launch;
+    output.stats.block_size = block_size;
     output.stats.advance_launches = counter.depth_steps;
     output.stats.active_path_steps = counter.active_path_steps;
     const CudaWorkspaceInfo workspace_info = workspace.info();
@@ -402,7 +681,7 @@ CudaRenderOutput render_wavefront_cuda(
     output.stats.workspace_generation = workspace_info.generation;
     output.stats.workspace_pixel_capacity = workspace_info.pixel_capacity;
     output.stats.workspace_path_capacity = workspace_info.path_capacity;
-    output.stats.cancelled = cancelled;
+    output.stats.cancelled = launch.cancelled;
     for (std::size_t index = 0; index < output.stats.status_counts.size();
          ++index) {
         output.stats.status_counts[index] = counter.status_counts[index];

@@ -87,6 +87,7 @@ json render_stats_json(const RenderStats &stats) {
     result["batch_size"] = stats.cuda.batch_size;
     result["batch_count"] = stats.cuda.batch_count;
     result["samples_per_launch"] = stats.cuda.samples_per_launch;
+    result["block_size"] = stats.cuda.block_size;
     result["status_counts"] = stats.cuda.status_counts;
     result["cancelled"] = stats.base.cancelled;
     result["restir"] = restir_stats_json(stats.restir);
@@ -163,6 +164,11 @@ void write_benchmark_json_report(const std::string &path,
         {"threads", options.render.threads},
         {"max_depth", options.render.max_depth},
         {"cuda_batch_size", options.render.cuda_batch_size},
+        {"cuda_block_size", options.render.cuda_block_size},
+        {"cuda_autotune_block_size",
+         options.render.cuda_autotune_block_size},
+        {"cuda_samples_per_launch",
+         options.render.cuda_samples_per_launch},
         {"benchmark_runs", options.benchmark.runs},
     };
     root["preparation"] = {

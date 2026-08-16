@@ -356,6 +356,25 @@ iteration/seed/buffer 索引变化。
   - depth4/depth50 device 中位 0.0173s / 0.0197s（优化前 0.0199/0.0227）。
   - 新增 CLI：`--cuda-samples-per-launch N`。
 
+- Phase A / W4：已完成。
+  - `--cuda-block-size N` 可显式指定 block size；`0` 使用 occupancy
+    启发式。新增 `--cuda-autotune-block-size`：首次渲染时在代表性小图
+    （最大 256x144）上实测 128/192/256/384/512 中可启动的候选，选择
+    最速 block size 并缓存到 `CudaRenderWorkspace`；缓存按设备、渲染
+    设置和场景 buffer 地址生成 key，场景重新上传时失效。
+  - 512 在当前 kernel 寄存器压力下不可启动，已被候选过滤和显式参数
+    校验处理，不再出现 `too many resources requested for launch`。
+  - 顺带修复 W4 半成品中 `settings.block_size=0` 时 dynamic shared
+    memory 按 0 字节启动的问题。
+  - 场景 23、400x225、spp8、depth4、7 次运行 device 中位：
+    128=0.00968s，192=0.01008s，256=0.01346s，384=0.01137s。
+    实测 128/192/384 的 resident threads 同为 384，更小的 block 更快，
+    因此 occupancy 启发式在 tie 时保留较小 block；当前 auto 与 autotune
+    均选 128。autotune 首次 wall time 约 0.036s，之后命中缓存约
+    0.0146s。
+  - PFM 逐位一致：128/192/256/384/auto/autotune 的 SHA-256 均相同；
+    CUDA 35/35 通过。
+
 ## 8. 工具与观测
 
 - `nsys profile` 生成 timeline，验证 launch 数量与 gap；
