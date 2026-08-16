@@ -15,7 +15,9 @@ void launch_restir_gbuffer(DeviceSceneView scene, std::uint32_t width,
                            std::uint32_t seed,
                            restir::RestirSurface *output,
                            DeviceRestirCounters *counters,
-                           std::uint32_t block_size);
+                           std::uint32_t block_size,
+                           CudaRestirStatsLevel stats_level =
+                               CudaRestirStatsLevel::Full);
 
 } // namespace cuda_backend
 

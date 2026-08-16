@@ -15,14 +15,16 @@ void launch_restir_reference_shading(
     std::uint32_t width, std::uint32_t height,
     std::uint32_t iteration, std::uint32_t seed, float sample_clamp,
     CudaFilmPixel *film, DeviceRestirCounters *counters,
-    std::uint32_t block_size);
+    std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 void launch_restir_fallback_shading(
     DeviceSceneView scene, PackedTransportSettings transport,
     const restir::RestirSurface *surfaces, std::uint32_t width,
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     CudaFilmPixel *film, DeviceRestirCounters *counters,
-    std::uint32_t block_size);
+    std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 } // namespace cuda_backend
 

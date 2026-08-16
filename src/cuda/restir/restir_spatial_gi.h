@@ -21,7 +21,8 @@ void launch_restir_spatial_gi(
     float depth_threshold, bool pairwise,
     const PackedTransportSettings &transport,
     DeviceRestirCounters *counters,
-    std::uint32_t block_size, std::uint32_t *status_output = nullptr);
+    std::uint32_t block_size, std::uint32_t *status_output = nullptr,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 } // namespace cuda_backend
 

@@ -24,13 +24,16 @@ __global__ void spatial_di_basic_kernel(
     std::uint32_t pass_index, std::uint32_t seed,
     std::uint32_t neighbor_count, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold,
-    DeviceRestirCounters *counters) {
+    DeviceRestirCounters *counters,
+    CudaRestirStatsLevel stats_level) {
     __shared__ unsigned long long status_partial[11];
     __shared__ unsigned long long compatibility_partial[9];
     __shared__ unsigned long long candidates_partial;
     __shared__ unsigned long long accepted_partial;
     __shared__ unsigned long long rejected_partial;
 
+    const bool collect_any = restir_collects_any_stats(stats_level);
+    const bool collect_full = restir_collects_full_stats(stats_level);
     const unsigned thread = threadIdx.x;
     if (thread < 11u) {
         status_partial[thread] = 0;
@@ -54,38 +57,46 @@ __global__ void spatial_di_basic_kernel(
                 iteration, pass_index, seed, neighbor_count,
                 max_candidates, normal_threshold, depth_threshold,
                 destination[pixel], stats);
-        atomicAdd(&status_partial[spatial_status_index(status)], 1ull);
-        atomicAdd(&candidates_partial,
-                  static_cast<unsigned long long>(stats.candidates));
-        atomicAdd(&accepted_partial,
-                  static_cast<unsigned long long>(stats.accepted));
-        atomicAdd(&rejected_partial,
-                  static_cast<unsigned long long>(stats.rejected));
-        for (std::uint32_t index = 0;
-             index < static_cast<std::uint32_t>(
-                         restir::RestirSpatialCompatibility::Count);
-             ++index) {
-            if (stats.compatibility[index] != 0u) {
-                atomicAdd(&compatibility_partial[index],
-                          static_cast<unsigned long long>(
-                              stats.compatibility[index]));
+        if (collect_full) {
+            atomicAdd(&status_partial[spatial_status_index(status)], 1ull);
+            for (std::uint32_t index = 0;
+                 index < static_cast<std::uint32_t>(
+                             restir::RestirSpatialCompatibility::Count);
+                 ++index) {
+                if (stats.compatibility[index] != 0u) {
+                    atomicAdd(&compatibility_partial[index],
+                              static_cast<unsigned long long>(
+                                  stats.compatibility[index]));
+                }
             }
+        }
+        if (collect_any) {
+            atomicAdd(&candidates_partial,
+                      static_cast<unsigned long long>(stats.candidates));
+            atomicAdd(&accepted_partial,
+                      static_cast<unsigned long long>(stats.accepted));
+            atomicAdd(&rejected_partial,
+                      static_cast<unsigned long long>(stats.rejected));
         }
     }
 
     __syncthreads();
     if (thread == 0) {
-        for (unsigned index = 0; index < 11u; ++index) {
-            atomicAdd(&counters->di_spatial_status[index],
-                      status_partial[index]);
+        if (collect_full) {
+            for (unsigned index = 0; index < 11u; ++index) {
+                atomicAdd(&counters->di_spatial_status[index],
+                          status_partial[index]);
+            }
+            for (unsigned index = 0; index < 9u; ++index) {
+                atomicAdd(&counters->spatial_compatibility[index],
+                          compatibility_partial[index]);
+            }
         }
-        for (unsigned index = 0; index < 9u; ++index) {
-            atomicAdd(&counters->spatial_compatibility[index],
-                      compatibility_partial[index]);
+        if (collect_any) {
+            atomicAdd(&counters->spatial_candidates, candidates_partial);
+            atomicAdd(&counters->spatial_accepted, accepted_partial);
+            atomicAdd(&counters->spatial_rejected, rejected_partial);
         }
-        atomicAdd(&counters->spatial_candidates, candidates_partial);
-        atomicAdd(&counters->spatial_accepted, accepted_partial);
-        atomicAdd(&counters->spatial_rejected, rejected_partial);
     }
 }
 
@@ -97,7 +108,8 @@ __global__ void spatial_di_pairwise_kernel(
     std::uint32_t pass_index, std::uint32_t seed,
     std::uint32_t neighbor_count, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold,
-    DeviceRestirCounters *counters) {
+    DeviceRestirCounters *counters,
+    CudaRestirStatsLevel stats_level) {
     __shared__ unsigned long long status_partial[11];
     __shared__ unsigned long long compatibility_partial[9];
     __shared__ unsigned long long candidates_partial;
@@ -105,6 +117,8 @@ __global__ void spatial_di_pairwise_kernel(
     __shared__ unsigned long long rejected_partial;
     __shared__ unsigned long long pairwise_partial;
 
+    const bool collect_any = restir_collects_any_stats(stats_level);
+    const bool collect_full = restir_collects_full_stats(stats_level);
     const unsigned thread = threadIdx.x;
     if (thread < 11u) {
         status_partial[thread] = 0;
@@ -129,41 +143,50 @@ __global__ void spatial_di_pairwise_kernel(
                 iteration, pass_index, seed, neighbor_count,
                 max_candidates, normal_threshold, depth_threshold,
                 destination[pixel], stats);
-        atomicAdd(&status_partial[spatial_status_index(status)], 1ull);
-        atomicAdd(&candidates_partial,
-                  static_cast<unsigned long long>(stats.candidates));
-        atomicAdd(&accepted_partial,
-                  static_cast<unsigned long long>(stats.accepted));
-        atomicAdd(&rejected_partial,
-                  static_cast<unsigned long long>(stats.rejected));
-        atomicAdd(&pairwise_partial,
-                  static_cast<unsigned long long>(stats.pairwise_fallbacks));
-        for (std::uint32_t index = 0;
-             index < static_cast<std::uint32_t>(
-                         restir::RestirSpatialCompatibility::Count);
-             ++index) {
-            if (stats.compatibility[index] != 0u) {
-                atomicAdd(&compatibility_partial[index],
-                          static_cast<unsigned long long>(
-                              stats.compatibility[index]));
+        if (collect_full) {
+            atomicAdd(&status_partial[spatial_status_index(status)], 1ull);
+            for (std::uint32_t index = 0;
+                 index < static_cast<std::uint32_t>(
+                             restir::RestirSpatialCompatibility::Count);
+                 ++index) {
+                if (stats.compatibility[index] != 0u) {
+                    atomicAdd(&compatibility_partial[index],
+                              static_cast<unsigned long long>(
+                                  stats.compatibility[index]));
+                }
             }
+        }
+        if (collect_any) {
+            atomicAdd(&candidates_partial,
+                      static_cast<unsigned long long>(stats.candidates));
+            atomicAdd(&accepted_partial,
+                      static_cast<unsigned long long>(stats.accepted));
+            atomicAdd(&rejected_partial,
+                      static_cast<unsigned long long>(stats.rejected));
+            atomicAdd(&pairwise_partial,
+                      static_cast<unsigned long long>(
+                          stats.pairwise_fallbacks));
         }
     }
 
     __syncthreads();
     if (thread == 0) {
-        for (unsigned index = 0; index < 11u; ++index) {
-            atomicAdd(&counters->di_spatial_status[index],
-                      status_partial[index]);
+        if (collect_full) {
+            for (unsigned index = 0; index < 11u; ++index) {
+                atomicAdd(&counters->di_spatial_status[index],
+                          status_partial[index]);
+            }
+            for (unsigned index = 0; index < 9u; ++index) {
+                atomicAdd(&counters->spatial_compatibility[index],
+                          compatibility_partial[index]);
+            }
         }
-        for (unsigned index = 0; index < 9u; ++index) {
-            atomicAdd(&counters->spatial_compatibility[index],
-                      compatibility_partial[index]);
+        if (collect_any) {
+            atomicAdd(&counters->spatial_candidates, candidates_partial);
+            atomicAdd(&counters->spatial_accepted, accepted_partial);
+            atomicAdd(&counters->spatial_rejected, rejected_partial);
+            atomicAdd(&counters->pairwise_fallbacks, pairwise_partial);
         }
-        atomicAdd(&counters->spatial_candidates, candidates_partial);
-        atomicAdd(&counters->spatial_accepted, accepted_partial);
-        atomicAdd(&counters->spatial_rejected, rejected_partial);
-        atomicAdd(&counters->pairwise_fallbacks, pairwise_partial);
     }
 }
 
@@ -177,14 +200,15 @@ void launch_restir_spatial_di_basic(
     std::uint32_t pass_index, std::uint32_t seed,
     std::uint32_t neighbor_count, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold,
-    DeviceRestirCounters *counters, std::uint32_t block_size) {
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
     spatial_di_basic_kernel<<<grid, block_size>>>(
         scene, surfaces, source, destination, width, height, iteration,
         pass_index, seed, neighbor_count, max_candidates, normal_threshold,
-        depth_threshold, counters);
+        depth_threshold, counters, stats_level);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 
@@ -196,14 +220,15 @@ void launch_restir_spatial_di_pairwise(
     std::uint32_t pass_index, std::uint32_t seed,
     std::uint32_t neighbor_count, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold,
-    DeviceRestirCounters *counters, std::uint32_t block_size) {
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
     spatial_di_pairwise_kernel<<<grid, block_size>>>(
         scene, surfaces, source, destination, width, height, iteration,
         pass_index, seed, neighbor_count, max_candidates, normal_threshold,
-        depth_threshold, counters);
+        depth_threshold, counters, stats_level);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 

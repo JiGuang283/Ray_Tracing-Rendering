@@ -375,6 +375,39 @@ iteration/seed/buffer 索引变化。
   - PFM 逐位一致：128/192/256/384/auto/autotune 的 SHA-256 均相同；
     CUDA 35/35 通过。
 
+- Phase B / R2：已完成。
+  - 新增 `restir_fused_stages.{h,cu}`，保留原 stage launch 函数作为回滚
+    路径；`CudaRestirSkeletonSettings.fused_stages` 默认开启，CLI
+    `--restir-no-fused-stages` 可切回未融合调度。
+  - 融合 `gbuffer + initial DI candidates`；`generate_reference=true`
+    时融合 `fallback + reference`，否则融合 `initial DI shading +
+    fallback`。
+  - 场景 65、320x180、spp8、temporal+spatial 全开：单 iteration
+    kernel 数从 6 降到 4，单次渲染 launch 数从 48 降到 32。
+  - 融合与未融合的 PFM/film/gbuffer/reservoir 在
+    `cuda_restir_check --mode stats-level` 中逐位一致。
+  - 新增 `CudaRestirSchedulerStats.kernel_launches` 与
+    `RestirStats.kernel_launches`，bench JSON/BENCH_RUN 输出
+    `restir_kernel_launches`。
+
+- Phase B / R4：已完成。
+  - 新增 `CudaRestirStatsLevel::{None,Summary,Full}`。
+    `None` 完全关闭 device counter 更新；`Summary` 只保留标量
+    sample/visibility/workload 计数；`Full` 额外保留全部
+    status/compatibility/rejection 桶。
+  - 诊断工具 `cuda_restir_check` 默认仍为 Full；普通 app 渲染默认
+    Summary。CLI 新增 `--restir-stats-level none|summary|full`。
+  - 新增 `cuda_restir_stats_none_check` / `cuda_restir_stats_summary_check`：
+    逐位比较 None/Summary 与 Full 输出，并同时逐位比较 fused 与
+    unfused 路径。
+  - 场景 65 320x180 spp8 7 次运行 device 中位：
+    fused+summary=0.01358s，fused+full=0.01307s，
+    unfused+summary=0.01252s，unfused+full=0.01309s；当前阶段收益
+    主要是 launch 数下降，device 时间在噪声范围内。
+  - 四种配置保存的 PFM SHA-256 全部相同；CUDA 测试从 35/35 增至
+    37/37 全绿。
+  - Phase B 的 S4 双流为可选项，本轮未实施，留待交互模式基准驱动。
+
 ## 8. 工具与观测
 
 - `nsys profile` 生成 timeline，验证 launch 数量与 gap；

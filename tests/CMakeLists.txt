@@ -92,6 +92,18 @@ if(RAYTRACER_ENABLE_CUDA)
         COMMAND cuda_restir_check --mode gbuffer --width 32 --height 18
                 --spp 1 --max-depth 6 --seed 123
     )
+    add_test(NAME cuda_restir_stats_none_check
+        COMMAND cuda_restir_check --mode stats-level
+                --scene-file assets/scenes/scene_065_restir_many_light.json
+                --width 32 --height 18 --spp 1 --max-depth 4 --seed 123
+                --stats-level none
+    )
+    add_test(NAME cuda_restir_stats_summary_check
+        COMMAND cuda_restir_check --mode stats-level
+                --scene-file assets/scenes/scene_065_restir_many_light.json
+                --width 32 --height 18 --spp 1 --max-depth 4 --seed 123
+                --stats-level summary
+    )
     add_test(NAME cuda_restir_quad_check
         COMMAND cuda_restir_check --mode gbuffer
                 --scene-file assets/scenes/scene_065_restir_many_light.json
@@ -237,6 +249,8 @@ if(RAYTRACER_ENABLE_CUDA)
         cuda_transport_policy_4
         cuda_restir_reservoir_check
         cuda_restir_gbuffer_check
+        cuda_restir_stats_none_check
+        cuda_restir_stats_summary_check
         cuda_restir_quad_check
         cuda_restir_initial_gi_check
         cuda_restir_gi_reuse_check

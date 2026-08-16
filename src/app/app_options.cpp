@@ -63,6 +63,10 @@ void print_usage() {
         << "  --cuda-block-size N     CUDA wavefront block size (0 = auto)\n"
         << "  --cuda-autotune-block-size\n"
         << "                         Measure 128..512 on a small image and cache the best\n"
+        << "  --restir-no-fused-stages\n"
+        << "                         Use the original separate ReSTIR stage kernels\n"
+        << "  --restir-stats-level none|summary|full\n"
+        << "                         CUDA ReSTIR device counter collection level\n"
         << "  --restir-light-candidates N  Initial DI candidates per pixel\n"
         << "  --restir-gi-candidates N     Initial GI paths per pixel\n"
         << "  --restir-spatial-neighbors N Spatial neighbors (max 64)\n"
@@ -195,6 +199,23 @@ AppOptions parse_options(int argc, char *args[]) {
                 static_cast<unsigned>(value);
         } else if (arg == "--cuda-autotune-block-size") {
             options.render.cuda_autotune_block_size = true;
+        } else if (arg == "--restir-no-fused-stages") {
+            options.render.cuda_restir_fused_stages = false;
+        } else if (arg == "--restir-stats-level" && i + 1 < argc) {
+            const std::string level = args[++i];
+            if (level == "none") {
+                options.render.cuda_restir_stats_level =
+                    CudaRestirStatsLevel::None;
+            } else if (level == "summary") {
+                options.render.cuda_restir_stats_level =
+                    CudaRestirStatsLevel::Summary;
+            } else if (level == "full") {
+                options.render.cuda_restir_stats_level =
+                    CudaRestirStatsLevel::Full;
+            } else {
+                fail("--restir-stats-level expects none, summary, or full.");
+                break;
+            }
         } else if (arg == "--cuda-samples-per-launch" && i + 1 < argc) {
             int value = 0;
             if (!parse_int_arg(args[++i], value) || value <= 0) {

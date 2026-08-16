@@ -24,12 +24,15 @@ __global__ void generate_initial_di_candidates_kernel(
     std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t candidate_count,
     restir::RestirDIReservoir *reservoirs,
-    DeviceRestirCounters *counters) {
+    DeviceRestirCounters *counters,
+    CudaRestirStatsLevel stats_level) {
     __shared__ unsigned long long status_partial[11];
     __shared__ unsigned long long initial_partial;
     __shared__ unsigned long long represented_partial;
     __shared__ unsigned long long rejected_partial;
 
+    const bool collect_any = restir_collects_any_stats(stats_level);
+    const bool collect_full = restir_collects_full_stats(stats_level);
     const unsigned thread = threadIdx.x;
     if (thread < 11u) {
         status_partial[thread] = 0;
@@ -49,24 +52,33 @@ __global__ void generate_initial_di_candidates_kernel(
             restir::generate_initial_di_reservoir(
                 scene.scene, surfaces[pixel], width, height, pixel, iteration,
                 seed, candidate_count, reservoirs[pixel], stats);
-        atomicAdd(&status_partial[status_index(status)], 1ull);
-        atomicAdd(&initial_partial,
-                  static_cast<unsigned long long>(stats.attempted));
-        atomicAdd(&represented_partial,
-                  static_cast<unsigned long long>(stats.represented));
-        atomicAdd(&rejected_partial,
-                  static_cast<unsigned long long>(stats.rejected));
+        if (collect_full) {
+            atomicAdd(&status_partial[status_index(status)], 1ull);
+        }
+        if (collect_any) {
+            atomicAdd(&initial_partial,
+                      static_cast<unsigned long long>(stats.attempted));
+            atomicAdd(&represented_partial,
+                      static_cast<unsigned long long>(stats.represented));
+            atomicAdd(&rejected_partial,
+                      static_cast<unsigned long long>(stats.rejected));
+        }
     }
 
     __syncthreads();
     if (thread == 0) {
-        for (unsigned index = 0; index < 11u; ++index) {
-            atomicAdd(&counters->di_generation_status[index],
-                      status_partial[index]);
+        if (collect_full) {
+            for (unsigned index = 0; index < 11u; ++index) {
+                atomicAdd(&counters->di_generation_status[index],
+                          status_partial[index]);
+            }
         }
-        atomicAdd(&counters->initial_candidates, initial_partial);
-        atomicAdd(&counters->represented_candidates, represented_partial);
-        atomicAdd(&counters->rejected_candidates, rejected_partial);
+        if (collect_any) {
+            atomicAdd(&counters->initial_candidates, initial_partial);
+            atomicAdd(&counters->represented_candidates,
+                      represented_partial);
+            atomicAdd(&counters->rejected_candidates, rejected_partial);
+        }
     }
 }
 
@@ -75,7 +87,8 @@ __global__ void shade_initial_di_kernel(
     const restir::RestirDIReservoir *reservoirs, std::uint32_t width,
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     float sample_clamp, CudaFilmPixel *film,
-    DeviceRestirCounters *counters) {
+    DeviceRestirCounters *counters,
+    CudaRestirStatsLevel stats_level) {
     __shared__ unsigned long long status_partial[11];
     __shared__ unsigned long long valid_partial;
     __shared__ unsigned long long M_partial;
@@ -85,6 +98,8 @@ __global__ void shade_initial_di_kernel(
     __shared__ unsigned long long invalid_partial;
     __shared__ unsigned long long clamped_partial;
 
+    const bool collect_any = restir_collects_any_stats(stats_level);
+    const bool collect_full = restir_collects_full_stats(stats_level);
     const unsigned thread = threadIdx.x;
     if (thread < 11u) {
         status_partial[thread] = 0;
@@ -109,7 +124,7 @@ __global__ void shade_initial_di_kernel(
             restir::shade_initial_di_reservoir(
                 scene.scene, surfaces[pixel], reservoirs[pixel], width,
                 height, pixel, iteration, seed, radiance, visibility_rays);
-        if (restir::reservoir_is_usable(reservoirs[pixel])) {
+        if (collect_any && restir::reservoir_is_usable(reservoirs[pixel])) {
             atomicAdd(&valid_partial, 1ull);
             atomicAdd(&M_partial,
                       static_cast<unsigned long long>(reservoirs[pixel].M));
@@ -118,10 +133,13 @@ __global__ void shade_initial_di_kernel(
             atomicAdd(&effective_M_partial,
                       static_cast<double>(reservoirs[pixel].effective_M));
         }
-        atomicAdd(&visibility_partial,
-                  static_cast<unsigned long long>(visibility_rays));
-
-        atomicAdd(&status_partial[status_index(status)], 1ull);
+        if (collect_any) {
+            atomicAdd(&visibility_partial,
+                      static_cast<unsigned long long>(visibility_rays));
+        }
+        if (collect_full) {
+            atomicAdd(&status_partial[status_index(status)], 1ull);
+        }
         constexpr std::uint32_t kFallbackMask =
             restir::RESTIR_SURFACE_DELTA_ONLY |
             restir::RESTIR_SURFACE_UNSUPPORTED_DOMAIN;
@@ -134,16 +152,22 @@ __global__ void shade_initial_di_kernel(
             status == restir::RestirDIStatus::ReservoirEmpty;
         if (status != restir::RestirDIStatus::Success && !expected_empty) {
             radiance = {};
-            atomicAdd(&invalid_partial, 1ull);
+            if (collect_any) {
+                atomicAdd(&invalid_partial, 1ull);
+            }
         } else if (!packed_transport::math::finite(radiance)) {
             radiance = {};
-            atomicAdd(&invalid_partial, 1ull);
+            if (collect_any) {
+                atomicAdd(&invalid_partial, 1ull);
+            }
         } else if (sample_clamp > 0.0f) {
             const float value = luminance(radiance);
             if (value > sample_clamp) {
                 radiance = packed_transport::math::multiply(
                     radiance, sample_clamp / value);
-                atomicAdd(&clamped_partial, 1ull);
+                if (collect_any) {
+                    atomicAdd(&clamped_partial, 1ull);
+                }
             }
         }
         CudaFilmPixel &output = film[pixel];
@@ -154,18 +178,22 @@ __global__ void shade_initial_di_kernel(
 
     __syncthreads();
     if (thread == 0) {
-        for (unsigned index = 0; index < 11u; ++index) {
-            atomicAdd(&counters->di_shading_status[index],
-                      status_partial[index]);
+        if (collect_full) {
+            for (unsigned index = 0; index < 11u; ++index) {
+                atomicAdd(&counters->di_shading_status[index],
+                          status_partial[index]);
+            }
         }
-        atomicAdd(&counters->valid_reservoirs, valid_partial);
-        atomicAdd(&counters->reservoir_M_sum, M_partial);
-        atomicAdd(&counters->reservoir_age_sum, age_partial);
-        atomicAdd(&counters->reservoir_effective_M_sum,
-                  effective_M_partial);
-        atomicAdd(&counters->visibility_rays, visibility_partial);
-        atomicAdd(&counters->di_invalid_samples, invalid_partial);
-        atomicAdd(&counters->di_clamped_samples, clamped_partial);
+        if (collect_any) {
+            atomicAdd(&counters->valid_reservoirs, valid_partial);
+            atomicAdd(&counters->reservoir_M_sum, M_partial);
+            atomicAdd(&counters->reservoir_age_sum, age_partial);
+            atomicAdd(&counters->reservoir_effective_M_sum,
+                      effective_M_partial);
+            atomicAdd(&counters->visibility_rays, visibility_partial);
+            atomicAdd(&counters->di_invalid_samples, invalid_partial);
+            atomicAdd(&counters->di_clamped_samples, clamped_partial);
+        }
     }
 }
 
@@ -177,13 +205,14 @@ void launch_restir_initial_di_candidates(
     std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t candidate_count,
     restir::RestirDIReservoir *reservoirs,
-    DeviceRestirCounters *counters, std::uint32_t block_size) {
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
     generate_initial_di_candidates_kernel<<<grid, block_size>>>(
         scene, surfaces, width, height, iteration, seed, candidate_count,
-        reservoirs, counters);
+        reservoirs, counters, stats_level);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 
@@ -192,13 +221,14 @@ void launch_restir_initial_di_shading(
     const restir::RestirDIReservoir *reservoirs, std::uint32_t width,
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     float sample_clamp, CudaFilmPixel *film,
-    DeviceRestirCounters *counters, std::uint32_t block_size) {
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
     shade_initial_di_kernel<<<grid, block_size>>>(
         scene, surfaces, reservoirs, width, height, iteration, seed,
-        sample_clamp, film, counters);
+        sample_clamp, film, counters, stats_level);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 

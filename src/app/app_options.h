@@ -23,6 +23,9 @@ struct RenderOptions {
     unsigned cuda_block_size = 0;
     bool cuda_autotune_block_size = false;
     unsigned cuda_samples_per_launch = 0;
+    bool cuda_restir_fused_stages = true;
+    CudaRestirStatsLevel cuda_restir_stats_level =
+        CudaRestirStatsLevel::Summary;
     RestirSettings restir;
 };
 

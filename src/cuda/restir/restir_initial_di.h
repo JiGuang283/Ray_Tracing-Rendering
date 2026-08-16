@@ -17,14 +17,16 @@ void launch_restir_initial_di_candidates(
     std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t candidate_count,
     restir::RestirDIReservoir *reservoirs,
-    DeviceRestirCounters *counters, std::uint32_t block_size);
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 void launch_restir_initial_di_shading(
     DeviceSceneView scene, const restir::RestirSurface *surfaces,
     const restir::RestirDIReservoir *reservoirs, std::uint32_t width,
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     float sample_clamp, CudaFilmPixel *film,
-    DeviceRestirCounters *counters, std::uint32_t block_size);
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 } // namespace cuda_backend
 

@@ -157,6 +157,12 @@ void validate_render_request(const RenderRequest &request) {
     if (request.max_depth == 0) {
         throw std::invalid_argument("maximum path depth must be positive");
     }
+    const std::uint32_t restir_stats_level =
+        static_cast<std::uint32_t>(request.cuda_restir_stats_level);
+    if (restir_stats_level >
+        static_cast<std::uint32_t>(CudaRestirStatsLevel::Full)) {
+        throw std::invalid_argument("invalid CUDA ReSTIR stats level");
+    }
     if (!std::isfinite(request.sample_clamp) || request.sample_clamp < 0.0) {
         throw std::invalid_argument("sample clamp must be finite and non-negative");
     }

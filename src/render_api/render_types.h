@@ -12,6 +12,12 @@
 #include <memory>
 #include <string>
 
+enum class CudaRestirStatsLevel : std::uint32_t {
+    None = 0,
+    Summary = 1,
+    Full = 2,
+};
+
 struct ImageExtent {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
@@ -33,6 +39,9 @@ struct RenderRequest {
     std::uint32_t cuda_block_size = 0;
     bool cuda_autotune_block_size = false;
     std::uint32_t cuda_samples_per_launch = 0;
+    bool cuda_restir_fused_stages = true;
+    CudaRestirStatsLevel cuda_restir_stats_level =
+        CudaRestirStatsLevel::Summary;
     double sample_clamp = 0.0;
     ColorPipelineSettings color_pipeline;
     RestirSettings restir;

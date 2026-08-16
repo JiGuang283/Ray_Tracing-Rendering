@@ -1,6 +1,7 @@
 #include "restir_scheduler.h"
 
 #include "cuda_error.h"
+#include "restir_fused_stages.h"
 #include "restir_gbuffer.h"
 #include "restir_initial_di.h"
 #include "restir_gi_reservoir_core.h"
@@ -63,6 +64,13 @@ void validate_settings(const CudaRestirSkeletonSettings &settings) {
     if (settings.block_size == 0u || settings.block_size > 1024u) {
         throw std::invalid_argument(
             "ReSTIR block size must be in the range 1..1024");
+    }
+    const std::uint32_t stats_level =
+        static_cast<std::uint32_t>(settings.collect_stats);
+    if (stats_level > static_cast<std::uint32_t>(
+                         CudaRestirStatsLevel::Full)) {
+        throw std::invalid_argument(
+            "invalid ReSTIR statistics collection level");
     }
     if (settings.frame.render.restir.initial_light_candidates == 0u) {
         throw std::invalid_argument(
@@ -170,6 +178,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     SchedulerEvent begin;
     SchedulerEvent end;
     RT_CUDA_CHECK(cudaEventRecord(begin));
+    std::uint64_t kernel_launches = 0;
     std::uint64_t completed = 0;
     bool cancelled = false;
     auto cancel_at_pass_boundary = [&]() {
@@ -218,19 +227,36 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 ? restir::next_gi_reservoir_buffer(
                       buffers.frame_state.committed_gi_reservoir)
                 : preparation.write_gi_reservoir;
-        launch_restir_gbuffer(
-            scene, width, height, iteration, settings.frame.render.seed,
-            buffers.gbuffer[write_gbuffer].data(), buffers.counters.data(),
-            settings.block_size);
-        if (cancel_at_pass_boundary()) {
-            break;
+        if (settings.fused_stages) {
+            launch_restir_fused_gbuffer_initial_di(
+                scene, width, height, iteration,
+                settings.frame.render.seed,
+                settings.frame.render.restir.initial_light_candidates,
+                buffers.gbuffer[write_gbuffer].data(),
+                buffers.di_reservoir[write_reservoir].data(),
+                buffers.counters.data(), settings.block_size,
+                settings.collect_stats);
+            ++kernel_launches;
+        } else {
+            launch_restir_gbuffer(
+                scene, width, height, iteration,
+                settings.frame.render.seed,
+                buffers.gbuffer[write_gbuffer].data(),
+                buffers.counters.data(), settings.block_size,
+                settings.collect_stats);
+            ++kernel_launches;
+            if (cancel_at_pass_boundary()) {
+                break;
+            }
+            launch_restir_initial_di_candidates(
+                scene, buffers.gbuffer[write_gbuffer].data(), width, height,
+                iteration, settings.frame.render.seed,
+                settings.frame.render.restir.initial_light_candidates,
+                buffers.di_reservoir[write_reservoir].data(),
+                buffers.counters.data(), settings.block_size,
+                settings.collect_stats);
+            ++kernel_launches;
         }
-        launch_restir_initial_di_candidates(
-            scene, buffers.gbuffer[write_gbuffer].data(), width, height,
-            iteration, settings.frame.render.seed,
-            settings.frame.render.restir.initial_light_candidates,
-            buffers.di_reservoir[write_reservoir].data(),
-            buffers.counters.data(), settings.block_size);
         if (cancel_at_pass_boundary()) {
             break;
         }
@@ -261,7 +287,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 settings.frame.render.restir.depth_threshold,
                 settings.frame.render.restir.bias_correction ==
                     RestirBiasCorrection::Pairwise,
-                buffers.counters.data(), settings.block_size);
+                buffers.counters.data(), settings.block_size,
+                settings.collect_stats);
+            ++kernel_launches;
             final_reservoir = destination_reservoir;
             if (cancel_at_pass_boundary()) {
                 break;
@@ -286,7 +314,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                         settings.frame.render.restir.max_reservoir_candidates,
                         settings.frame.render.restir.normal_threshold,
                         settings.frame.render.restir.depth_threshold,
-                        buffers.counters.data(), settings.block_size);
+                        buffers.counters.data(), settings.block_size,
+                        settings.collect_stats);
+                    ++kernel_launches;
                 } else {
                     launch_restir_spatial_di_basic(
                         scene, buffers.gbuffer[write_gbuffer].data(),
@@ -298,7 +328,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                         settings.frame.render.restir.max_reservoir_candidates,
                         settings.frame.render.restir.normal_threshold,
                         settings.frame.render.restir.depth_threshold,
-                        buffers.counters.data(), settings.block_size);
+                        buffers.counters.data(), settings.block_size,
+                        settings.collect_stats);
+                    ++kernel_launches;
                 }
                 final_reservoir = destination_reservoir;
                 if (cancel_at_pass_boundary()) {
@@ -318,7 +350,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 settings.reference_transport,
                 buffers.gi_reservoir[write_gi_reservoir].data(),
                 buffers.indirect_film.data(),
-                buffers.counters.data(), settings.block_size);
+                buffers.counters.data(), settings.block_size, nullptr,
+                settings.collect_stats);
+            ++kernel_launches;
             if (cancel_at_pass_boundary()) {
                 break;
             }
@@ -351,7 +385,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                     settings.frame.render.restir.bias_correction ==
                         RestirBiasCorrection::Pairwise,
                     settings.reference_transport,
-                    buffers.counters.data(), settings.block_size);
+                    buffers.counters.data(), settings.block_size, nullptr,
+                    settings.collect_stats);
+                ++kernel_launches;
                 final_gi_reservoir = destination;
                 if (cancel_at_pass_boundary()) {
                     break;
@@ -376,7 +412,9 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                         settings.frame.render.restir.bias_correction ==
                             RestirBiasCorrection::Pairwise,
                         settings.reference_transport,
-                        buffers.counters.data(), settings.block_size);
+                        buffers.counters.data(), settings.block_size,
+                        nullptr, settings.collect_stats);
+                    ++kernel_launches;
                     final_gi_reservoir = destination;
                     if (cancel_at_pass_boundary()) {
                         break;
@@ -387,37 +425,104 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
                 break;
             }
         }
-        launch_restir_initial_di_shading(
-            scene, buffers.gbuffer[write_gbuffer].data(),
-            buffers.di_reservoir[final_reservoir].data(), width, height,
-            iteration, settings.frame.render.seed,
-            static_cast<float>(settings.frame.render.sample_clamp),
-            buffers.direct_film.data(), buffers.counters.data(),
-            settings.block_size);
-        if (gi_mode) {
-            launch_restir_initial_gi_shading(
+        if (settings.fused_stages) {
+            if (settings.generate_reference) {
+                launch_restir_initial_di_shading(
+                    scene, buffers.gbuffer[write_gbuffer].data(),
+                    buffers.di_reservoir[final_reservoir].data(), width,
+                    height, iteration, settings.frame.render.seed,
+                    static_cast<float>(settings.frame.render.sample_clamp),
+                    buffers.direct_film.data(), buffers.counters.data(),
+                    settings.block_size, settings.collect_stats);
+                ++kernel_launches;
+                if (gi_mode) {
+                    launch_restir_initial_gi_shading(
+                        scene, buffers.gbuffer[write_gbuffer].data(),
+                        buffers.gi_reservoir[final_gi_reservoir].data(),
+                        width, height, iteration,
+                        settings.frame.render.seed,
+                        settings.reference_transport,
+                        buffers.indirect_film.data(),
+                        buffers.counters.data(), settings.block_size,
+                        static_cast<float>(
+                            settings.frame.render.sample_clamp),
+                        nullptr, settings.frame.render.restir.final_gather,
+                        settings.collect_stats);
+                    ++kernel_launches;
+                }
+                launch_restir_fused_fallback_reference_shading(
+                    scene, settings.reference_transport,
+                    buffers.gbuffer[write_gbuffer].data(), width, height,
+                    iteration, settings.frame.render.seed,
+                    static_cast<float>(settings.frame.render.sample_clamp),
+                    buffers.direct_film.data(), buffers.film.data(),
+                    buffers.counters.data(), settings.block_size,
+                    settings.collect_stats);
+                ++kernel_launches;
+            } else {
+                launch_restir_fused_initial_di_fallback_shading(
+                    scene, settings.reference_transport,
+                    buffers.gbuffer[write_gbuffer].data(),
+                    buffers.di_reservoir[final_reservoir].data(), width,
+                    height, iteration, settings.frame.render.seed,
+                    static_cast<float>(settings.frame.render.sample_clamp),
+                    buffers.direct_film.data(), buffers.counters.data(),
+                    settings.block_size, settings.collect_stats);
+                ++kernel_launches;
+                if (gi_mode) {
+                    launch_restir_initial_gi_shading(
+                        scene, buffers.gbuffer[write_gbuffer].data(),
+                        buffers.gi_reservoir[final_gi_reservoir].data(),
+                        width, height, iteration,
+                        settings.frame.render.seed,
+                        settings.reference_transport,
+                        buffers.indirect_film.data(),
+                        buffers.counters.data(), settings.block_size,
+                        static_cast<float>(
+                            settings.frame.render.sample_clamp),
+                        nullptr, settings.frame.render.restir.final_gather,
+                        settings.collect_stats);
+                    ++kernel_launches;
+                }
+            }
+        } else {
+            launch_restir_initial_di_shading(
                 scene, buffers.gbuffer[write_gbuffer].data(),
-                buffers.gi_reservoir[final_gi_reservoir].data(), width,
-                height, iteration, settings.frame.render.seed,
-                settings.reference_transport,
-                buffers.indirect_film.data(), buffers.counters.data(),
-                settings.block_size,
-                static_cast<float>(settings.frame.render.sample_clamp),
-                nullptr, settings.frame.render.restir.final_gather);
-        }
-        launch_restir_fallback_shading(
-            scene, settings.reference_transport,
-            buffers.gbuffer[write_gbuffer].data(), width, height, iteration,
-            settings.frame.render.seed, buffers.direct_film.data(),
-            buffers.counters.data(), settings.block_size);
-
-        if (settings.generate_reference) {
-            launch_restir_reference_shading(
-                scene, settings.reference_transport, width, height,
+                buffers.di_reservoir[final_reservoir].data(), width, height,
                 iteration, settings.frame.render.seed,
                 static_cast<float>(settings.frame.render.sample_clamp),
-                buffers.film.data(), buffers.counters.data(),
-                settings.block_size);
+                buffers.direct_film.data(), buffers.counters.data(),
+                settings.block_size, settings.collect_stats);
+            ++kernel_launches;
+            if (gi_mode) {
+                launch_restir_initial_gi_shading(
+                    scene, buffers.gbuffer[write_gbuffer].data(),
+                    buffers.gi_reservoir[final_gi_reservoir].data(), width,
+                    height, iteration, settings.frame.render.seed,
+                    settings.reference_transport,
+                    buffers.indirect_film.data(), buffers.counters.data(),
+                    settings.block_size,
+                    static_cast<float>(settings.frame.render.sample_clamp),
+                    nullptr, settings.frame.render.restir.final_gather,
+                    settings.collect_stats);
+                ++kernel_launches;
+            }
+            launch_restir_fallback_shading(
+                scene, settings.reference_transport,
+                buffers.gbuffer[write_gbuffer].data(), width, height,
+                iteration, settings.frame.render.seed,
+                buffers.direct_film.data(), buffers.counters.data(),
+                settings.block_size, settings.collect_stats);
+            ++kernel_launches;
+            if (settings.generate_reference) {
+                launch_restir_reference_shading(
+                    scene, settings.reference_transport, width, height,
+                    iteration, settings.frame.render.seed,
+                    static_cast<float>(settings.frame.render.sample_clamp),
+                    buffers.film.data(), buffers.counters.data(),
+                    settings.block_size, settings.collect_stats);
+                ++kernel_launches;
+            }
         }
         // History commits only update host-side buffer indices. Kernels are
         // ordered by the default stream and every next iteration receives
@@ -492,6 +597,7 @@ CudaRestirSchedulerOutput render_restir_skeleton_cuda(
     const DeviceRestirCounters &counter = counters.front();
     RT_CUDA_CHECK(cudaEventElapsedTime(&output.stats.milliseconds, begin,
                                        end));
+    output.stats.kernel_launches = kernel_launches;
     output.stats.completed_iterations = completed;
     output.stats.sample_count =
         static_cast<std::uint64_t>(pixel_count) * completed;

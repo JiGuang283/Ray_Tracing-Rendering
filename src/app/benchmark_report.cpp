@@ -12,6 +12,7 @@ using json = nlohmann::json;
 json restir_stats_json(const RestirStats &stats) {
     json result;
     result["iterations"] = stats.iterations;
+    result["kernel_launches"] = stats.kernel_launches;
     result["initial_candidates"] = stats.initial_candidates;
     result["temporal_candidates"] = stats.temporal_candidates;
     result["temporal_accepted"] = stats.temporal_accepted;
@@ -99,6 +100,7 @@ RestirStats accumulate_restir(const std::vector<RenderStats> &runs) {
     for (const RenderStats &stats : runs) {
         const RestirStats &r = stats.restir;
         totals.iterations += r.iterations;
+        totals.kernel_launches += r.kernel_launches;
         totals.initial_candidates += r.initial_candidates;
         totals.temporal_candidates += r.temporal_candidates;
         totals.temporal_accepted += r.temporal_accepted;
@@ -169,6 +171,11 @@ void write_benchmark_json_report(const std::string &path,
          options.render.cuda_autotune_block_size},
         {"cuda_samples_per_launch",
          options.render.cuda_samples_per_launch},
+        {"cuda_restir_fused_stages",
+         options.render.cuda_restir_fused_stages},
+        {"cuda_restir_stats_level",
+         static_cast<unsigned>(
+             options.render.cuda_restir_stats_level)},
         {"benchmark_runs", options.benchmark.runs},
     };
     root["preparation"] = {

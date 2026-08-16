@@ -123,6 +123,10 @@ RenderRequest make_render_request(const CameraConfig &camera,
         options.render.cuda_autotune_block_size;
     request.cuda_samples_per_launch =
         options.render.cuda_samples_per_launch;
+    request.cuda_restir_fused_stages =
+        options.render.cuda_restir_fused_stages;
+    request.cuda_restir_stats_level =
+        options.render.cuda_restir_stats_level;
     request.sample_clamp = preset.sample_clamp;
     request.color_pipeline = preset.color_pipeline;
     request.restir = options.render.restir;
@@ -220,6 +224,7 @@ int run_benchmark(const AppOptions &options) {
         clamped_samples += last_stats.base.clamped_samples;
         invalid_samples += last_stats.base.invalid_samples;
         restir_totals.iterations += last_stats.restir.iterations;
+        restir_totals.kernel_launches += last_stats.restir.kernel_launches;
         restir_totals.initial_candidates +=
             last_stats.restir.initial_candidates;
         restir_totals.temporal_candidates +=
@@ -310,6 +315,8 @@ int run_benchmark(const AppOptions &options) {
                   << " clamped_samples=" << last_stats.base.clamped_samples
                   << " invalid_samples=" << last_stats.base.invalid_samples
                   << " restir_iterations=" << last_stats.restir.iterations
+                  << " restir_kernel_launches="
+                  << last_stats.restir.kernel_launches
                   << " restir_initial_candidates="
                   << last_stats.restir.initial_candidates
                   << " restir_temporal_candidates="
@@ -402,6 +409,8 @@ int run_benchmark(const AppOptions &options) {
               << " clamped_samples=" << clamped_samples
               << " invalid_samples=" << invalid_samples
               << " restir_iterations=" << restir_totals.iterations
+              << " restir_kernel_launches="
+              << restir_totals.kernel_launches
               << " restir_initial_candidates="
               << restir_totals.initial_candidates
               << " restir_temporal_candidates="

@@ -16,10 +16,12 @@
 #include "wavefront_renderer.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -43,6 +45,9 @@ struct Options {
     bool require_fallback = false;
     bool require_replay = false;
     bool final_gather = false;
+    bool fused_stages = true;
+    cuda_backend::CudaRestirStatsLevel stats_level =
+        cuda_backend::CudaRestirStatsLevel::Full;
 };
 
 Options parse_options(int argc, char **argv) {
@@ -90,6 +95,23 @@ Options parse_options(int argc, char **argv) {
             options.require_replay = true;
         } else if (argument == "--final-gather") {
             options.final_gather = true;
+        } else if (argument == "--no-fused-stages") {
+            options.fused_stages = false;
+        } else if (argument == "--stats-level") {
+            const std::string name = value();
+            if (name == "none") {
+                options.stats_level =
+                    cuda_backend::CudaRestirStatsLevel::None;
+            } else if (name == "summary") {
+                options.stats_level =
+                    cuda_backend::CudaRestirStatsLevel::Summary;
+            } else if (name == "full") {
+                options.stats_level =
+                    cuda_backend::CudaRestirStatsLevel::Full;
+            } else {
+                throw std::runtime_error(
+                    "invalid ReSTIR stats level: " + name);
+            }
         } else if (argument == "--help" || argument == "-h") {
             std::cout
                 << "Usage: cuda_restir_check "
@@ -98,7 +120,8 @@ Options parse_options(int argc, char **argv) {
                    "[--spp N] [--max-depth N] [--seed N] "
                    "[--bias basic|pairwise] [--spatial] [--temporal] "
                    "[--require-fallback] [--require-replay] "
-                   "[--final-gather]\n";
+                   "[--final-gather] [--no-fused-stages] "
+                   "[--stats-level none|summary|full]\n";
             std::exit(0);
         } else {
             throw std::runtime_error("unknown option: " + argument);
@@ -108,7 +131,8 @@ Options parse_options(int argc, char **argv) {
          options.mode != "gi" && options.mode != "gi-reuse" &&
          options.mode != "gi-statistics" &&
          options.mode != "spatial" && options.mode != "temporal" &&
-         options.mode != "statistics") ||
+         options.mode != "statistics" &&
+         options.mode != "stats-level") ||
         options.width < 2u || options.height < 2u || options.spp == 0u ||
         options.max_depth == 0u ||
         ((options.mode == "gbuffer" || options.mode == "gi" ||
@@ -1441,6 +1465,167 @@ bool check_temporal(const Options &options) {
     return passed;
 }
 
+bool bitwise_equal_film(const std::vector<cuda_backend::CudaFilmPixel> &lhs,
+                        const std::vector<cuda_backend::CudaFilmPixel> &rhs) {
+    return lhs.size() == rhs.size() &&
+           (lhs.empty() ||
+            std::memcmp(lhs.data(), rhs.data(),
+                        lhs.size() * sizeof(cuda_backend::CudaFilmPixel)) ==
+                0);
+}
+
+bool check_stats_level(const Options &options) {
+    const SceneIR ir = load_scene_ir_file(options.scene_file.string());
+    const CompiledScene compiled = compile_scene(ir);
+    cuda_backend::DeviceSceneStorage device_scene;
+    device_scene.upload(compiled);
+
+    auto make_settings = [&](cuda_backend::CudaRestirStatsLevel level,
+                              bool fused) {
+        cuda_backend::CudaRestirSkeletonSettings settings;
+        settings.fused_stages = fused;
+        settings.frame.render.extent =
+            make_image_extent(static_cast<int>(options.width),
+                              static_cast<int>(options.height));
+        settings.frame.render.integrator = IntegratorKind::ReSTIRDI;
+        settings.frame.render.samples_per_pixel = options.spp;
+        settings.frame.render.max_depth = options.max_depth;
+        settings.frame.render.seed = options.seed;
+        settings.frame.render.restir.history_mode =
+            RestirHistoryMode::Reset;
+        settings.frame.render.restir.initial_bsdf_candidates = 0u;
+        settings.frame.render.restir.temporal_reuse = false;
+        settings.frame.render.restir.spatial_reuse = false;
+        settings.frame.camera = ir.camera;
+        settings.reference_transport.policy =
+            integrator_policy(IntegratorKind::MISPath);
+        settings.reference_transport.max_depth = options.max_depth;
+        settings.generate_reference = true;
+        settings.collect_stats = level;
+        return settings;
+    };
+
+    cuda_backend::CudaRestirWorkspace workspace;
+    const cuda_backend::CudaRestirSchedulerOutput output =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(),
+            make_settings(options.stats_level, options.fused_stages),
+            workspace);
+    cuda_backend::CudaRestirWorkspace full_fused_workspace;
+    const cuda_backend::CudaRestirSchedulerOutput full_fused =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(),
+            make_settings(cuda_backend::CudaRestirStatsLevel::Full, true),
+            full_fused_workspace);
+    cuda_backend::CudaRestirWorkspace full_unfused_workspace;
+    const cuda_backend::CudaRestirSchedulerOutput full_unfused =
+        cuda_backend::render_restir_skeleton_cuda(
+            device_scene.view(),
+            make_settings(cuda_backend::CudaRestirStatsLevel::Full, false),
+            full_unfused_workspace);
+    const cuda_backend::CudaRestirSchedulerOutput &full = full_fused;
+
+    const bool fused_bitwise =
+        bitwise_equal_film(full_fused.film, full_unfused.film) &&
+        bitwise_equal_film(full_fused.direct_film,
+                           full_unfused.direct_film) &&
+        full_fused.gbuffer.size() == full_unfused.gbuffer.size() &&
+        (full_fused.gbuffer.empty() ||
+         std::memcmp(full_fused.gbuffer.data(),
+                     full_unfused.gbuffer.data(),
+                     full_fused.gbuffer.size() *
+                         sizeof(restir::RestirSurface)) == 0) &&
+        full_fused.di_reservoirs.size() ==
+            full_unfused.di_reservoirs.size() &&
+        (full_fused.di_reservoirs.empty() ||
+         std::memcmp(full_fused.di_reservoirs.data(),
+                     full_unfused.di_reservoirs.data(),
+                     full_fused.di_reservoirs.size() *
+                         sizeof(restir::RestirDIReservoir)) == 0);
+
+    const bool output_bitwise =
+        bitwise_equal_film(output.film, full.film) &&
+        bitwise_equal_film(output.direct_film, full.direct_film) &&
+        output.gbuffer.size() == full.gbuffer.size() &&
+        (output.gbuffer.empty() ||
+         std::memcmp(output.gbuffer.data(), full.gbuffer.data(),
+                     output.gbuffer.size() *
+                         sizeof(restir::RestirSurface)) == 0) &&
+        output.di_reservoirs.size() == full.di_reservoirs.size() &&
+        (output.di_reservoirs.empty() ||
+         std::memcmp(output.di_reservoirs.data(),
+                     full.di_reservoirs.data(),
+                     output.di_reservoirs.size() *
+                         sizeof(restir::RestirDIReservoir)) == 0);
+
+    bool stats_contract = true;
+    if (options.stats_level ==
+        cuda_backend::CudaRestirStatsLevel::None) {
+        const cuda_backend::CudaRestirSchedulerStats &s = output.stats;
+        stats_contract =
+            s.traversal_steps == 0u && s.shadow_rays == 0u &&
+            s.clamped_samples == 0u && s.invalid_samples == 0u &&
+            s.initial_candidates == 0u && s.visibility_rays == 0u &&
+            s.valid_reservoirs == 0u &&
+            s.gbuffer_status == std::array<std::uint64_t, 7>{} &&
+            s.transport_status == std::array<std::uint64_t, 8>{} &&
+            s.di_generation_status ==
+                std::array<std::uint64_t, 11>{} &&
+            s.di_shading_status ==
+                std::array<std::uint64_t, 11>{};
+    } else if (options.stats_level ==
+               cuda_backend::CudaRestirStatsLevel::Summary) {
+        const cuda_backend::CudaRestirSchedulerStats &s = output.stats;
+        const cuda_backend::CudaRestirSchedulerStats &f = full.stats;
+        const bool core_equal =
+            s.traversal_steps == f.traversal_steps &&
+            s.shadow_rays == f.shadow_rays &&
+            s.clamped_samples == f.clamped_samples &&
+            s.invalid_samples == f.invalid_samples &&
+            s.initial_candidates == f.initial_candidates &&
+            s.represented_candidates == f.represented_candidates &&
+            s.rejected_candidates == f.rejected_candidates &&
+            s.visibility_rays == f.visibility_rays &&
+            s.valid_reservoirs == f.valid_reservoirs &&
+            s.di_clamped_samples == f.di_clamped_samples &&
+            s.di_invalid_samples == f.di_invalid_samples &&
+            std::abs(s.average_represented_M -
+                     f.average_represented_M) < 1e-9 &&
+            std::abs(s.average_effective_M -
+                     f.average_effective_M) < 1e-9 &&
+            std::abs(s.average_age - f.average_age) < 1e-9;
+        const bool buckets_empty =
+            s.gbuffer_status == std::array<std::uint64_t, 7>{} &&
+            s.transport_status == std::array<std::uint64_t, 8>{} &&
+            s.di_generation_status ==
+                std::array<std::uint64_t, 11>{} &&
+            s.di_shading_status ==
+                std::array<std::uint64_t, 11>{};
+        stats_contract = core_equal && buckets_empty;
+    }
+
+    const bool passed = output_bitwise && stats_contract && fused_bitwise;
+    std::cout << "CUDA_RESTIR_CHECK"
+              << " mode=stats-level"
+              << " level="
+              << (options.stats_level ==
+                          cuda_backend::CudaRestirStatsLevel::None
+                      ? "none"
+                      : (options.stats_level ==
+                                 cuda_backend::CudaRestirStatsLevel::Summary
+                             ? "summary"
+                             : "full"))
+              << " pixels=" << options.width * options.height
+              << " spp=" << options.spp
+              << " output_bitwise=" << (output_bitwise ? 1 : 0)
+              << " fused_bitwise=" << (fused_bitwise ? 1 : 0)
+              << " stats_contract=" << (stats_contract ? 1 : 0)
+              << " full_visibility_rays=" << full.stats.visibility_rays
+              << " visibility_rays=" << output.stats.visibility_rays
+              << " result=" << (passed ? "pass" : "fail") << '\n';
+    return passed;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -1466,7 +1651,9 @@ int main(int argc, char **argv) {
                               ? check_spatial(options)
                               : (options.mode == "temporal"
                                      ? check_temporal(options)
-                                     : check_statistics(options)))))));
+                                     : (options.mode == "stats-level"
+                                            ? check_stats_level(options)
+                                            : check_statistics(options))))))));
         return passed
                    ? 0
                    : 1;

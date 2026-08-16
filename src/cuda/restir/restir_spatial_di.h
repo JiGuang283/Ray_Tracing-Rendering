@@ -18,7 +18,8 @@ void launch_restir_spatial_di_basic(
     std::uint32_t pass_index, std::uint32_t seed,
     std::uint32_t neighbor_count, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold,
-    DeviceRestirCounters *counters, std::uint32_t block_size);
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 void launch_restir_spatial_di_pairwise(
     DeviceSceneView scene, const restir::RestirSurface *surfaces,
@@ -28,7 +29,8 @@ void launch_restir_spatial_di_pairwise(
     std::uint32_t pass_index, std::uint32_t seed,
     std::uint32_t neighbor_count, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold,
-    DeviceRestirCounters *counters, std::uint32_t block_size);
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 } // namespace cuda_backend
 

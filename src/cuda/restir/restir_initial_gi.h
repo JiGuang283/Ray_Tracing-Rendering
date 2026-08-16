@@ -20,7 +20,8 @@ void launch_restir_initial_gi_candidates(
     restir::RestirGIReservoir *reservoirs,
     CudaFilmPixel *fallback_film,
     DeviceRestirCounters *counters, std::uint32_t block_size,
-    std::uint32_t *status_output = nullptr);
+    std::uint32_t *status_output = nullptr,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 void launch_restir_initial_gi_shading(
     DeviceSceneView scene, const restir::RestirSurface *surfaces,
@@ -31,7 +32,8 @@ void launch_restir_initial_gi_shading(
     CudaFilmPixel *film, DeviceRestirCounters *counters,
     std::uint32_t block_size, float sample_clamp = 0.0f,
     std::uint32_t *status_output = nullptr,
-    bool final_gather = false);
+    bool final_gather = false,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 } // namespace cuda_backend
 

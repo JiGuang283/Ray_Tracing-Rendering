@@ -45,6 +45,7 @@ constexpr std::size_t kRestirHistoryFailureBuckets = 16;
 
 struct RestirStats {
     std::uint64_t iterations = 0;
+    std::uint64_t kernel_launches = 0;
     std::uint64_t initial_candidates = 0;
     std::uint64_t temporal_candidates = 0;
     std::uint64_t temporal_accepted = 0;

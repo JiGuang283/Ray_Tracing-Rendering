@@ -230,6 +230,9 @@ class CudaRenderSession final : public IRenderSession {
             integrator_policy(IntegratorKind::MISPath);
         settings.reference_transport.max_depth = frame.render.max_depth;
         settings.generate_reference = false;
+        settings.fused_stages = frame.render.cuda_restir_fused_stages;
+        settings.collect_stats = static_cast<CudaRestirStatsLevel>(
+            frame.render.cuda_restir_stats_level);
         const CudaRestirSchedulerOutput output =
             render_restir_skeleton_cuda(
                 scene, settings, m_restir_workspace, cancel.native_flag());
@@ -307,6 +310,7 @@ class CudaRenderSession final : public IRenderSession {
                             output.stats.gi_visibility_rays +
                             output.stats.gi_suffix_shadow_rays;
         stats.restir.iterations = output.stats.completed_iterations;
+        stats.restir.kernel_launches = output.stats.kernel_launches;
         stats.restir.initial_candidates = output.stats.initial_candidates;
         stats.restir.temporal_candidates = output.stats.temporal_candidates;
         stats.restir.temporal_accepted = output.stats.temporal_accepted;

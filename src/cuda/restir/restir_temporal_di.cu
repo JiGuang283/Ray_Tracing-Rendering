@@ -25,13 +25,16 @@ __global__ void temporal_di_kernel(
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t max_history_length, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold, bool pairwise,
-    DeviceRestirCounters *counters) {
+    DeviceRestirCounters *counters,
+    CudaRestirStatsLevel stats_level) {
     __shared__ unsigned long long status_partial[11];
     __shared__ unsigned long long rejection_partial[16];
     __shared__ unsigned long long candidates_partial;
     __shared__ unsigned long long accepted_partial;
     __shared__ unsigned long long pairwise_partial;
 
+    const bool collect_any = restir_collects_any_stats(stats_level);
+    const bool collect_full = restir_collects_full_stats(stats_level);
     const unsigned thread = threadIdx.x;
     if (thread < 11u) {
         status_partial[thread] = 0;
@@ -72,32 +75,41 @@ __global__ void temporal_di_kernel(
                       pixel, iteration, seed, max_history_length,
                       max_candidates, normal_threshold, depth_threshold,
                       output[pixel], stats);
-        atomicAdd(&status_partial[temporal_status_index(status)], 1ull);
-        atomicAdd(&rejection_partial[
-                      static_cast<std::uint32_t>(stats.rejection)],
-                  1ull);
-        atomicAdd(&candidates_partial,
-                  static_cast<unsigned long long>(stats.candidates));
-        atomicAdd(&accepted_partial,
-                  static_cast<unsigned long long>(stats.accepted));
-        atomicAdd(&pairwise_partial,
-                  static_cast<unsigned long long>(stats.pairwise_fallbacks));
+        if (collect_full) {
+            atomicAdd(&status_partial[temporal_status_index(status)], 1ull);
+            atomicAdd(&rejection_partial[
+                          static_cast<std::uint32_t>(stats.rejection)],
+                      1ull);
+        }
+        if (collect_any) {
+            atomicAdd(&candidates_partial,
+                      static_cast<unsigned long long>(stats.candidates));
+            atomicAdd(&accepted_partial,
+                      static_cast<unsigned long long>(stats.accepted));
+            atomicAdd(&pairwise_partial,
+                      static_cast<unsigned long long>(
+                          stats.pairwise_fallbacks));
+        }
     }
 
     __syncthreads();
     if (thread == 0) {
-        for (unsigned index = 0; index < 11u; ++index) {
-            atomicAdd(&counters->di_temporal_status[index],
-                      status_partial[index]);
+        if (collect_full) {
+            for (unsigned index = 0; index < 11u; ++index) {
+                atomicAdd(&counters->di_temporal_status[index],
+                          status_partial[index]);
+            }
+            for (unsigned index = 0; index < 16u; ++index) {
+                atomicAdd(&counters->temporal_rejection[index],
+                          rejection_partial[index]);
+            }
         }
-        for (unsigned index = 0; index < 16u; ++index) {
-            atomicAdd(&counters->temporal_rejection[index],
-                      rejection_partial[index]);
+        if (collect_any) {
+            atomicAdd(&counters->temporal_candidates, candidates_partial);
+            atomicAdd(&counters->temporal_accepted, accepted_partial);
+            atomicAdd(&counters->temporal_pairwise_fallbacks,
+                      pairwise_partial);
         }
-        atomicAdd(&counters->temporal_candidates, candidates_partial);
-        atomicAdd(&counters->temporal_accepted, accepted_partial);
-        atomicAdd(&counters->temporal_pairwise_fallbacks,
-                  pairwise_partial);
     }
 }
 
@@ -113,7 +125,8 @@ void launch_restir_temporal_di(
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t max_history_length, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold, bool pairwise,
-    DeviceRestirCounters *counters, std::uint32_t block_size) {
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level) {
     const std::uint32_t pixel_count = width * height;
     const std::uint32_t grid =
         (pixel_count + block_size - 1u) / block_size;
@@ -121,7 +134,8 @@ void launch_restir_temporal_di(
         scene, current_surfaces, current_reservoirs, previous_surfaces,
         previous_reservoirs, previous_camera, history_available, output,
         width, height, iteration, seed, max_history_length, max_candidates,
-        normal_threshold, depth_threshold, pairwise, counters);
+        normal_threshold, depth_threshold, pairwise, counters,
+        stats_level);
     RT_CUDA_CHECK(cudaGetLastError());
 }
 

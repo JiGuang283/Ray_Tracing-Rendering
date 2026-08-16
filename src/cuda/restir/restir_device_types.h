@@ -1,9 +1,29 @@
 #ifndef CUDA_RESTIR_DEVICE_TYPES_H
 #define CUDA_RESTIR_DEVICE_TYPES_H
 
+#include "host_device.h"
+
+#include <cstdint>
 #include <type_traits>
 
 namespace cuda_backend {
+
+enum class CudaRestirStatsLevel : std::uint32_t {
+    None = 0,
+    Summary = 1,
+    Full = 2,
+};
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool
+restir_collects_any_stats(CudaRestirStatsLevel level) {
+    return level != CudaRestirStatsLevel::None;
+}
+
+RT_HOST_DEVICE RT_FORCE_INLINE bool
+restir_collects_full_stats(CudaRestirStatsLevel level) {
+    return level == CudaRestirStatsLevel::Full;
+}
+
 
 struct DeviceRestirCounters {
     unsigned long long gbuffer_status[7]{};

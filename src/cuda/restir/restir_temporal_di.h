@@ -20,7 +20,8 @@ void launch_restir_temporal_di(
     std::uint32_t height, std::uint32_t iteration, std::uint32_t seed,
     std::uint32_t max_history_length, std::uint32_t max_candidates,
     float normal_threshold, float depth_threshold, bool pairwise,
-    DeviceRestirCounters *counters, std::uint32_t block_size);
+    DeviceRestirCounters *counters, std::uint32_t block_size,
+    CudaRestirStatsLevel stats_level = CudaRestirStatsLevel::Full);
 
 } // namespace cuda_backend
 

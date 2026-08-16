@@ -1,6 +1,7 @@
 #ifndef CUDA_RESTIR_SCHEDULER_H
 #define CUDA_RESTIR_SCHEDULER_H
 
+#include "restir_device_types.h"
 #include "restir_workspace.h"
 #include "restir_di_types.h"
 #include "restir_gi_types.h"
@@ -17,10 +18,16 @@ struct CudaRestirSkeletonSettings {
     PackedTransportSettings reference_transport;
     std::uint32_t block_size = 128;
     bool generate_reference = true;
+    bool fused_stages = true;
+    // None disables all device counter updates. Summary keeps scalar
+    // sample/visibility/workload counters; Full additionally keeps every
+    // status/compatibility/rejection bucket used by diagnostics.
+    CudaRestirStatsLevel collect_stats = CudaRestirStatsLevel::Full;
 };
 
 struct CudaRestirSchedulerStats {
     float milliseconds = 0.0f;
+    std::uint64_t kernel_launches = 0;
     std::uint64_t completed_iterations = 0;
     std::uint64_t sample_count = 0;
     std::uint64_t traversal_steps = 0;
