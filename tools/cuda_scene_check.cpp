@@ -136,6 +136,7 @@ struct CheckResult {
     std::size_t errors = 0;
     std::size_t bytes = 0;
     float upload_ms = 0.0f;
+    float incremental_upload_ms = 0.0f;
     float kernel_ms = 0.0f;
 };
 
@@ -171,6 +172,8 @@ CheckResult check_packed_scene(
     cuda_backend::DeviceSceneStorage device_scene;
     const cuda_backend::DeviceSceneUploadStats upload =
         device_scene.upload(packed);
+    const cuda_backend::DeviceSceneUploadStats incremental_upload =
+        device_scene.upload(packed);
     cuda_backend::DeviceBuffer<PackedRay> device_rays;
     cuda_backend::DeviceBuffer<PackedHit> device_hits;
     cuda_backend::DeviceBuffer<PackedTraversalStatus> device_status;
@@ -197,6 +200,7 @@ CheckResult check_packed_scene(
     result.rays = ray_count;
     result.bytes = upload.bytes;
     result.upload_ms = upload.milliseconds;
+    result.incremental_upload_ms = incremental_upload.milliseconds;
     result.kernel_ms = kernel.milliseconds;
     std::size_t reported = 0;
     auto report = [&](std::size_t index, const std::string &message) {
@@ -325,6 +329,8 @@ int main(int argc, char **argv) {
                   << " errors=" << scale_result.errors
                   << " bytes=" << scale_result.bytes
                   << " upload_ms=" << scale_result.upload_ms
+                  << " incremental_upload_ms="
+                  << scale_result.incremental_upload_ms
                   << " kernel_ms=" << scale_result.kernel_ms << '\n';
         for (const nlohmann::json &entry : catalog.at("scenes")) {
             const int id = entry.at("id").get<int>();

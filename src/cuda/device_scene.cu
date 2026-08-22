@@ -48,6 +48,29 @@ std::size_t place_arena(PackedArrayView<T> &view,
     return offset + values.size() * sizeof(T);
 }
 
+template <typename T>
+void upload_scene_field_if_changed(const std::vector<T> &previous,
+                                   const std::vector<T> &next,
+                                   PackedArrayView<T> &device_view,
+                                   std::byte *base) {
+    if (previous.size() != next.size()) {
+        return;
+    }
+    if (next.empty()) {
+        return;
+    }
+    if (std::memcmp(previous.data(), next.data(),
+                    previous.size() * sizeof(T)) == 0) {
+        return;
+    }
+    const std::byte *device_ptr =
+        reinterpret_cast<const std::byte *>(device_view.data);
+    const std::size_t offset = static_cast<std::size_t>(device_ptr - base);
+    RT_CUDA_CHECK(cudaMemcpy(base + offset, next.data(),
+                             next.size() * sizeof(T),
+                             cudaMemcpyHostToDevice));
+}
+
 std::string validation_message(const ValidationReport &report) {
     std::ostringstream message;
     message << "cannot upload invalid compiled scene";
@@ -112,6 +135,92 @@ DeviceSceneUploadStats DeviceSceneStorage::upload(
                 << " device bytes, but only " << memory.free_bytes
                 << " bytes are free";
         throw std::runtime_error(message.str());
+    }
+
+    bool length_changed = false;
+#define SCENE_LENGTH_CHANGED(field)                                              if (scene.field.size() != m_host_scene.field.size()) {                          length_changed = true;                                                   }
+    SCENE_LENGTH_CHANGED(positions);
+    SCENE_LENGTH_CHANGED(normals);
+    SCENE_LENGTH_CHANGED(tangents);
+    SCENE_LENGTH_CHANGED(uv0);
+    SCENE_LENGTH_CHANGED(vertex_colors);
+    SCENE_LENGTH_CHANGED(triangles);
+    SCENE_LENGTH_CHANGED(meshes);
+    SCENE_LENGTH_CHANGED(spheres);
+    SCENE_LENGTH_CHANGED(moving_spheres);
+    SCENE_LENGTH_CHANGED(transforms);
+    SCENE_LENGTH_CHANGED(instances);
+    SCENE_LENGTH_CHANGED(material_bindings);
+    SCENE_LENGTH_CHANGED(emitter_bindings);
+    SCENE_LENGTH_CHANGED(aggregates);
+    SCENE_LENGTH_CHANGED(aggregate_instance_indices);
+    SCENE_LENGTH_CHANGED(bvh_nodes);
+    SCENE_LENGTH_CHANGED(media);
+    SCENE_LENGTH_CHANGED(materials);
+    SCENE_LENGTH_CHANGED(texture_nodes);
+    SCENE_LENGTH_CHANGED(images);
+    SCENE_LENGTH_CHANGED(image_texels);
+    SCENE_LENGTH_CHANGED(perlin_tables);
+    SCENE_LENGTH_CHANGED(perlin_gradients);
+    SCENE_LENGTH_CHANGED(perlin_permutations);
+    SCENE_LENGTH_CHANGED(lights);
+    SCENE_LENGTH_CHANGED(delta_light_indices);
+    SCENE_LENGTH_CHANGED(non_delta_light_indices);
+    SCENE_LENGTH_CHANGED(light_selection_probabilities);
+    SCENE_LENGTH_CHANGED(light_cdf);
+    SCENE_LENGTH_CHANGED(light_element_indices);
+    SCENE_LENGTH_CHANGED(light_distributions);
+#undef SCENE_LENGTH_CHANGED
+
+    if (m_storage.size() != 0u && !length_changed) {
+        const auto begin = std::chrono::steady_clock::now();
+        std::byte *base = m_storage.data();
+        m_view.camera = scene.camera;
+        m_view.background = scene.background;
+        m_view.scene_time0 = scene.scene_time0;
+        m_view.scene_time1 = scene.scene_time1;
+#define UPLOAD_CHANGED_FIELD(field)                                             upload_scene_field_if_changed(m_host_scene.field, scene.field,                                            m_view.field, base)
+        UPLOAD_CHANGED_FIELD(positions);
+        UPLOAD_CHANGED_FIELD(normals);
+        UPLOAD_CHANGED_FIELD(tangents);
+        UPLOAD_CHANGED_FIELD(uv0);
+        UPLOAD_CHANGED_FIELD(vertex_colors);
+        UPLOAD_CHANGED_FIELD(triangles);
+        UPLOAD_CHANGED_FIELD(meshes);
+        UPLOAD_CHANGED_FIELD(spheres);
+        UPLOAD_CHANGED_FIELD(moving_spheres);
+        UPLOAD_CHANGED_FIELD(transforms);
+        UPLOAD_CHANGED_FIELD(instances);
+        UPLOAD_CHANGED_FIELD(material_bindings);
+        UPLOAD_CHANGED_FIELD(emitter_bindings);
+        UPLOAD_CHANGED_FIELD(aggregates);
+        UPLOAD_CHANGED_FIELD(aggregate_instance_indices);
+        UPLOAD_CHANGED_FIELD(bvh_nodes);
+        UPLOAD_CHANGED_FIELD(media);
+        UPLOAD_CHANGED_FIELD(materials);
+        UPLOAD_CHANGED_FIELD(texture_nodes);
+        UPLOAD_CHANGED_FIELD(images);
+        UPLOAD_CHANGED_FIELD(image_texels);
+        UPLOAD_CHANGED_FIELD(perlin_tables);
+        UPLOAD_CHANGED_FIELD(perlin_gradients);
+        UPLOAD_CHANGED_FIELD(perlin_permutations);
+        UPLOAD_CHANGED_FIELD(lights);
+        UPLOAD_CHANGED_FIELD(delta_light_indices);
+        UPLOAD_CHANGED_FIELD(non_delta_light_indices);
+        UPLOAD_CHANGED_FIELD(light_selection_probabilities);
+        UPLOAD_CHANGED_FIELD(light_cdf);
+        UPLOAD_CHANGED_FIELD(light_element_indices);
+        UPLOAD_CHANGED_FIELD(light_distributions);
+#undef UPLOAD_CHANGED_FIELD
+        m_host_scene = scene;
+        const auto end = std::chrono::steady_clock::now();
+        DeviceSceneUploadStats result;
+        result.bytes = allocated_bytes();
+        result.free_bytes_before = memory.free_bytes;
+        result.milliseconds = std::chrono::duration<float, std::milli>(
+                                  end - begin)
+                                  .count();
+        return result;
     }
 
     const auto begin = std::chrono::steady_clock::now();
@@ -211,6 +320,7 @@ DeviceSceneUploadStats DeviceSceneStorage::upload(
         throw std::logic_error("CUDA scene upload byte count mismatch");
     }
     *this = std::move(staged);
+    m_host_scene = scene;
     const auto end = std::chrono::steady_clock::now();
     DeviceSceneUploadStats result;
     result.bytes = allocated_bytes();

@@ -432,6 +432,18 @@ iteration/seed/buffer 索引变化。
     共享路径状态约快 5%，workspace 也从约 11.5MB 降到约 1.4MB。
   - PFM 与 global 版本逐位一致；CUDA 37/37 全绿。
 
+- Phase E / S3：已完成。
+  - `DeviceSceneStorage` 现在保存上次上传的 host scene，按 buffer 做
+    memcmp 脏检查；等长变化只 `cudaMemcpy` 对应 arena 片段，任一 buffer
+    长度变化才重建完整 arena。
+  - 每次 `upload` 仍保持单个 device arena 和相同布局，view 指针在等长
+    增量路径下保持不变。
+  - `cuda_scene_check` 现在会在同一 storage 上连续上传两次，因此
+    CTest 实际覆盖增量路径。场景 1/23 第一次 upload 约 0.51ms，
+    第二次增量 upload 约 0.002ms；37/37 全绿。
+  - S1/S2 涉及 BVH 量化/纹理 mip 与采样格式变更，数值门禁风险更高，
+    尚未开始。
+
 ## 8. 工具与观测
 
 - `nsys profile` 生成 timeline，验证 launch 数量与 gap；

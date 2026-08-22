@@ -52,6 +52,7 @@ private:
     // cudaMalloc/cudaMemcpy pairs and keeps scene_bytes accounting exact.
     DeviceBuffer<std::byte> m_storage;
     CompiledSceneView m_view;
+    CompiledScene m_host_scene;
 };
 
 } // namespace cuda_backend
