@@ -408,6 +408,30 @@ iteration/seed/buffer 索引变化。
     37/37 全绿。
   - Phase B 的 S4 双流为可选项，本轮未实施，留待交互模式基准驱动。
 
+- Phase D / W2：已完成。
+  - 新增固定 persistent grid + 设备端 `work_counter` 原子 work stealing。
+    块从全局计数器领取 pixel chunk，块私有状态区按
+    `grid * chunk` 分配，不再依赖 host 按 batch 大小选择 grid。
+  - 默认 work chunk 实测采用等于 block size（当前 128），
+    CLI 可用 `--cuda-work-chunk-size` 覆盖；`--cuda-no-persistent-grid`
+    保留旧每 batch launch 路径。
+  - 场景 23、400x225、spp8、depth4 的 7 次 device 中位：
+    persistent+batch4096=0.00971s，persistent+batch65536=0.00971s
+    （差距 1.00，满足 <1.5x）；旧路径 batch4096=0.01935s、
+    batch65536=0.00905s。
+  - PFM 与旧逐 batch 路径逐位一致。
+
+- Phase D / W3 Stage A：已完成。
+  - 活动路径的 `PackedPathState` 放入 dynamic shared memory，
+    不再每 bounce 从 global 读回/写回；work-stealing 和旧 batch 路径
+    都可启用该模式。
+  - `--cuda-no-shared-path-state` 保留原 global round-trip 回滚；
+    workspace 在 shared 模式不再保留全局路径状态缓冲。
+  - 场景 23、400x225、spp8、depth4 的 7 次 device 中位：
+    persistent+shared=0.00977s，persistent+global=0.01026s；
+    共享路径状态约快 5%，workspace 也从约 11.5MB 降到约 1.4MB。
+  - PFM 与 global 版本逐位一致；CUDA 37/37 全绿。
+
 ## 8. 工具与观测
 
 - `nsys profile` 生成 timeline，验证 launch 数量与 gap；

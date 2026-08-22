@@ -89,6 +89,9 @@ json render_stats_json(const RenderStats &stats) {
     result["batch_count"] = stats.cuda.batch_count;
     result["samples_per_launch"] = stats.cuda.samples_per_launch;
     result["block_size"] = stats.cuda.block_size;
+    result["work_chunk_size"] = stats.cuda.work_chunk_size;
+    result["persistent_blocks"] = stats.cuda.persistent_blocks;
+    result["persistent_grid"] = stats.cuda.persistent_grid;
     result["status_counts"] = stats.cuda.status_counts;
     result["cancelled"] = stats.base.cancelled;
     result["restir"] = restir_stats_json(stats.restir);
@@ -171,6 +174,12 @@ void write_benchmark_json_report(const std::string &path,
          options.render.cuda_autotune_block_size},
         {"cuda_samples_per_launch",
          options.render.cuda_samples_per_launch},
+        {"cuda_persistent_grid",
+         options.render.cuda_persistent_grid},
+        {"cuda_work_chunk_size",
+         options.render.cuda_work_chunk_size},
+        {"cuda_shared_path_state",
+         options.render.cuda_shared_path_state},
         {"cuda_restir_fused_stages",
          options.render.cuda_restir_fused_stages},
         {"cuda_restir_stats_level",

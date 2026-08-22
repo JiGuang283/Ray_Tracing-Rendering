@@ -29,6 +29,13 @@ struct CudaRenderSettings {
     std::uint32_t samples_per_launch = 0; // 0 selects a default
     std::uint32_t seed = 1337;
     std::uint32_t batch_size = 0;
+    // When enabled, a fixed grid of persistent blocks work-steals pixel
+    // chunks from a device atomic counter. work_chunk_size=0 selects 64.
+    bool persistent_grid = true;
+    std::uint32_t work_chunk_size = 0;
+    // Keep active PackedPathState in dynamic shared memory. The fallback
+    // path keeps the original global round-trip for A/B experiments.
+    bool shared_path_state = true;
     // 0 selects an occupancy-based default. When autotune_block_size is
     // enabled, the first matching render measures the candidate block sizes
     // on a small representative image and caches the result in the
@@ -51,6 +58,9 @@ struct CudaRenderStats {
     std::uint32_t batch_count = 0;
     std::uint32_t samples_per_launch = 0;
     std::uint32_t block_size = 0;
+    std::uint32_t work_chunk_size = 0;
+    std::uint32_t persistent_blocks = 0;
+    bool persistent_grid = false;
     std::size_t workspace_bytes = 0;
     std::uint64_t workspace_generation = 0;
     std::uint32_t workspace_pixel_capacity = 0;

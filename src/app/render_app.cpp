@@ -123,6 +123,12 @@ RenderRequest make_render_request(const CameraConfig &camera,
         options.render.cuda_autotune_block_size;
     request.cuda_samples_per_launch =
         options.render.cuda_samples_per_launch;
+    request.cuda_persistent_grid =
+        options.render.cuda_persistent_grid;
+    request.cuda_work_chunk_size =
+        options.render.cuda_work_chunk_size;
+    request.cuda_shared_path_state =
+        options.render.cuda_shared_path_state;
     request.cuda_restir_fused_stages =
         options.render.cuda_restir_fused_stages;
     request.cuda_restir_stats_level =

@@ -60,6 +60,12 @@ void print_usage() {
         << "  --sample-clamp N     Clamp camera-sample luminance (0 disables)\n"
         << "  --cuda-batch-size N  Override CUDA active-path batch size\n"
         << "  --cuda-samples-per-launch N  Samples processed per wavefront launch\n"
+        << "  --cuda-no-persistent-grid\n"
+        << "                         Use per-batch wavefront launches instead of work stealing\n"
+        << "  --cuda-work-chunk-size N\n"
+        << "                         Pixel chunk size for persistent-grid work stealing\n"
+        << "  --cuda-no-shared-path-state\n"
+        << "                         Disable shared-memory PackedPathState storage\n"
         << "  --cuda-block-size N     CUDA wavefront block size (0 = auto)\n"
         << "  --cuda-autotune-block-size\n"
         << "                         Measure 128..512 on a small image and cache the best\n"
@@ -216,6 +222,19 @@ AppOptions parse_options(int argc, char *args[]) {
                 fail("--restir-stats-level expects none, summary, or full.");
                 break;
             }
+        } else if (arg == "--cuda-no-persistent-grid") {
+            options.render.cuda_persistent_grid = false;
+        } else if (arg == "--cuda-no-shared-path-state") {
+            options.render.cuda_shared_path_state = false;
+        } else if (arg == "--cuda-work-chunk-size" && i + 1 < argc) {
+            int value = 0;
+            if (!parse_int_arg(args[++i], value) || value <= 0 ||
+                value > 4096) {
+                fail("--cuda-work-chunk-size expects an integer in 1..4096.");
+                break;
+            }
+            options.render.cuda_work_chunk_size =
+                static_cast<unsigned>(value);
         } else if (arg == "--cuda-samples-per-launch" && i + 1 < argc) {
             int value = 0;
             if (!parse_int_arg(args[++i], value) || value <= 0) {

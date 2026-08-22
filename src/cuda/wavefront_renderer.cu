@@ -64,49 +64,46 @@ RT_HOST_DEVICE RT_FORCE_INLINE float luminance(Float3 value) {
     return 0.2126f * value.x + 0.7152f * value.y + 0.0722f * value.z;
 }
 
-__global__ void render_paths_kernel(
+__device__ RT_FORCE_INLINE PackedPathState *
+wavefront_shared_path_states(unsigned char *dynamic_shared,
+                             std::uint32_t block_size) {
+    constexpr std::size_t alignment = alignof(PackedPathState);
+    const std::size_t queues =
+        2u * static_cast<std::size_t>(block_size) * sizeof(std::uint32_t);
+    const std::size_t offset =
+        (queues + alignment - 1u) / alignment * alignment;
+    return reinterpret_cast<PackedPathState *>(dynamic_shared + offset);
+}
+
+struct WavefrontBlockScratch {
+    unsigned *queues;
+    std::uint32_t *counts;
+    unsigned long long *status_partials;
+    unsigned long long *traversal_partial;
+    unsigned long long *shadow_partial;
+    unsigned long long *invalid_partial;
+    unsigned long long *clamped_partial;
+    unsigned long long *depth_steps_partial;
+    unsigned long long *active_path_partial;
+};
+
+__device__ RT_FORCE_INLINE void process_wavefront_chunk(
     DeviceSceneView scene, PackedTransportSettings transport,
     std::uint32_t width, std::uint32_t height,
     std::uint32_t pixel_offset, std::uint32_t path_count,
+    std::uint32_t local_base, std::uint32_t state_index_base,
     std::uint32_t sample_begin, std::uint32_t sample_end,
     std::uint32_t seed, PackedPathState *states, float sample_clamp,
-    CudaFilmPixel *film, DeviceRenderCounters *counters) {
-    extern __shared__ unsigned char dynamic_shared[];
-    unsigned *queues = reinterpret_cast<unsigned *>(dynamic_shared);
-
-    __shared__ std::uint32_t counts[2];
-    __shared__ unsigned long long status_partials[8];
-    __shared__ unsigned long long traversal_partial;
-    __shared__ unsigned long long shadow_partial;
-    __shared__ unsigned long long invalid_partial;
-    __shared__ unsigned long long clamped_partial;
-    __shared__ unsigned long long depth_steps_partial;
-    __shared__ unsigned long long active_path_partial;
-
+    CudaFilmPixel *film, WavefrontBlockScratch scratch) {
     const unsigned thread = threadIdx.x;
-    if (thread < 8) {
-        status_partials[thread] = 0;
-    }
-    if (thread == 0) {
-        counts[0] = 0;
-        counts[1] = 0;
-        traversal_partial = 0;
-        shadow_partial = 0;
-        invalid_partial = 0;
-        clamped_partial = 0;
-        depth_steps_partial = 0;
-        active_path_partial = 0;
-    }
-    __syncthreads();
-
-    const std::uint32_t local_index =
-        blockIdx.x * blockDim.x + threadIdx.x;
+    const std::uint32_t local_index = local_base + thread;
+    const std::uint32_t state_slot = state_index_base + thread;
     const bool valid = local_index < path_count;
     const std::uint32_t pixel_index = pixel_offset + local_index;
     const std::uint32_t pixel_x = pixel_index % width;
     const std::uint32_t pixel_y = pixel_index / width;
 
-    // One launch advances a contiguous sample range for every path slot.
+    // One chunk advances a contiguous sample range for every path slot.
     // Per-sample block-wide barriers preserve the original wavefront order,
     // so film updates remain race-free and bit-identical to one launch per
     // sample.
@@ -123,20 +120,22 @@ __global__ void render_paths_kernel(
                     rng);
             packed_transport::initialize_packed_path_state(
                 scene.scene, ray, transport, rng.state, pixel_index,
-                sample, states[local_index]);
-            if (states[local_index].active()) {
-                const std::uint32_t slot = atomicAdd(&counts[0], 1u);
-                queues[slot] = local_index;
+                sample, states[state_slot]);
+            if (states[state_slot].active()) {
+                const std::uint32_t slot = atomicAdd(&scratch.counts[0], 1u);
+                scratch.queues[slot] = state_slot;
             }
         }
         __syncthreads();
 
-        std::uint32_t active = counts[0];
+        std::uint32_t active = scratch.counts[0];
         std::uint32_t parity = 0;
         while (active != 0u) {
             const std::uint32_t next_parity = parity ^ 1u;
-            const unsigned *source_queue = queues + parity * blockDim.x;
-            unsigned *next_queue = queues + next_parity * blockDim.x;
+            const unsigned *source_queue =
+                scratch.queues + parity * blockDim.x;
+            unsigned *next_queue =
+                scratch.queues + next_parity * blockDim.x;
             if (thread < active) {
                 const std::uint32_t path_index = source_queue[thread];
                 PackedPathState state = states[path_index];
@@ -145,17 +144,17 @@ __global__ void render_paths_kernel(
                 states[path_index] = state;
                 if (state.active()) {
                     const std::uint32_t output_index =
-                        atomicAdd(&counts[next_parity], 1u);
+                        atomicAdd(&scratch.counts[next_parity], 1u);
                     next_queue[output_index] = path_index;
                 }
             }
             __syncthreads();
-            active = counts[next_parity];
+            active = scratch.counts[next_parity];
             __syncthreads();
             if (thread == 0) {
-                depth_steps_partial += 1u;
-                active_path_partial += active;
-                counts[next_parity] = 0;
+                *scratch.depth_steps_partial += 1u;
+                *scratch.active_path_partial += active;
+                scratch.counts[next_parity] = 0;
             }
             __syncthreads();
             parity = next_parity;
@@ -163,7 +162,7 @@ __global__ void render_paths_kernel(
         __syncthreads();
 
         if (valid) {
-            const PackedPathState &state = states[local_index];
+            const PackedPathState &state = states[state_slot];
             Float3 radiance = state.radiance;
             std::uint32_t status_index =
                 static_cast<std::uint32_t>(state.status);
@@ -172,23 +171,23 @@ __global__ void render_paths_kernel(
                     PackedTransportStatus::InvalidInput);
             }
 
-            atomicAdd(&status_partials[status_index], 1ull);
-            atomicAdd(&traversal_partial,
+            atomicAdd(&scratch.status_partials[status_index], 1ull);
+            atomicAdd(scratch.traversal_partial,
                       static_cast<unsigned long long>(state.traversal_steps));
-            atomicAdd(&shadow_partial,
+            atomicAdd(scratch.shadow_partial,
                       static_cast<unsigned long long>(state.shadow_rays));
 
             if (state.status != PackedTransportStatus::Success ||
                 !packed_transport::math::finite(radiance)) {
                 radiance = {};
-                atomicAdd(&invalid_partial, 1ull);
+                atomicAdd(scratch.invalid_partial, 1ull);
             } else if (sample_clamp > 0.0f) {
                 const float sample_luminance = luminance(radiance);
                 if (sample_luminance > sample_clamp) {
                     const float scale = sample_clamp / sample_luminance;
                     radiance =
                         packed_transport::math::multiply(radiance, scale);
-                    atomicAdd(&clamped_partial, 1ull);
+                    atomicAdd(scratch.clamped_partial, 1ull);
                 }
             }
 
@@ -199,45 +198,193 @@ __global__ void render_paths_kernel(
         }
         __syncthreads();
         if (thread == 0) {
-            counts[0] = 0;
-            counts[1] = 0;
+            scratch.counts[0] = 0;
+            scratch.counts[1] = 0;
         }
         __syncthreads();
     }
+}
 
-    __syncthreads();
+__device__ RT_FORCE_INLINE WavefrontBlockScratch
+make_wavefront_block_scratch(unsigned *queues, std::uint32_t *counts,
+                             unsigned long long *status_partials,
+                             unsigned long long *traversal_partial,
+                             unsigned long long *shadow_partial,
+                             unsigned long long *invalid_partial,
+                             unsigned long long *clamped_partial,
+                             unsigned long long *depth_steps_partial,
+                             unsigned long long *active_path_partial) {
+    return {queues,
+            counts,
+            status_partials,
+            traversal_partial,
+            shadow_partial,
+            invalid_partial,
+            clamped_partial,
+            depth_steps_partial,
+            active_path_partial};
+}
+
+__device__ RT_FORCE_INLINE void initialize_wavefront_block_scratch(
+    WavefrontBlockScratch scratch) {
+    const unsigned thread = threadIdx.x;
+    if (thread < 8) {
+        scratch.status_partials[thread] = 0;
+    }
     if (thread == 0) {
+        scratch.counts[0] = 0;
+        scratch.counts[1] = 0;
+        *scratch.traversal_partial = 0;
+        *scratch.shadow_partial = 0;
+        *scratch.invalid_partial = 0;
+        *scratch.clamped_partial = 0;
+        *scratch.depth_steps_partial = 0;
+        *scratch.active_path_partial = 0;
+    }
+    __syncthreads();
+}
+
+__device__ RT_FORCE_INLINE void flush_wavefront_block_scratch(
+    WavefrontBlockScratch scratch, DeviceRenderCounters *counters) {
+    __syncthreads();
+    if (threadIdx.x == 0) {
         for (unsigned index = 0; index < 8; ++index) {
             atomicAdd(&counters->status_counts[index],
-                      status_partials[index]);
+                      scratch.status_partials[index]);
         }
-        atomicAdd(&counters->traversal_steps, traversal_partial);
-        atomicAdd(&counters->shadow_rays, shadow_partial);
-        atomicAdd(&counters->invalid_samples, invalid_partial);
-        atomicAdd(&counters->clamped_samples, clamped_partial);
-        atomicAdd(&counters->depth_steps, depth_steps_partial);
-        atomicAdd(&counters->active_path_steps, active_path_partial);
+        atomicAdd(&counters->traversal_steps, *scratch.traversal_partial);
+        atomicAdd(&counters->shadow_rays, *scratch.shadow_partial);
+        atomicAdd(&counters->invalid_samples, *scratch.invalid_partial);
+        atomicAdd(&counters->clamped_samples, *scratch.clamped_partial);
+        atomicAdd(&counters->depth_steps, *scratch.depth_steps_partial);
+        atomicAdd(&counters->active_path_steps,
+                  *scratch.active_path_partial);
     }
 }
 
-std::size_t wavefront_shared_bytes(std::uint32_t block_size) {
+__global__ void render_paths_kernel(
+    DeviceSceneView scene, PackedTransportSettings transport,
+    std::uint32_t width, std::uint32_t height,
+    std::uint32_t pixel_offset, std::uint32_t path_count,
+    std::uint32_t sample_begin, std::uint32_t sample_end,
+    std::uint32_t seed, PackedPathState *states, bool shared_path_state,
+    float sample_clamp, CudaFilmPixel *film,
+    DeviceRenderCounters *counters) {
+    extern __shared__ unsigned char dynamic_shared[];
+    unsigned *queues = reinterpret_cast<unsigned *>(dynamic_shared);
+
+    __shared__ std::uint32_t counts[2];
+    __shared__ unsigned long long status_partials[8];
+    __shared__ unsigned long long traversal_partial;
+    __shared__ unsigned long long shadow_partial;
+    __shared__ unsigned long long invalid_partial;
+    __shared__ unsigned long long clamped_partial;
+    __shared__ unsigned long long depth_steps_partial;
+    __shared__ unsigned long long active_path_partial;
+
+    const WavefrontBlockScratch scratch = make_wavefront_block_scratch(
+        queues, counts, status_partials, &traversal_partial,
+        &shadow_partial, &invalid_partial, &clamped_partial,
+        &depth_steps_partial, &active_path_partial);
+    initialize_wavefront_block_scratch(scratch);
+
+    PackedPathState *path_states =
+        shared_path_state
+            ? wavefront_shared_path_states(dynamic_shared, blockDim.x)
+            : states;
+    process_wavefront_chunk(
+        scene, transport, width, height, pixel_offset, path_count,
+        blockIdx.x * blockDim.x,
+        shared_path_state ? 0u : blockIdx.x * blockDim.x, sample_begin,
+        sample_end, seed, path_states, sample_clamp, film, scratch);
+    flush_wavefront_block_scratch(scratch, counters);
+}
+
+__global__ void render_paths_persistent_kernel(
+    DeviceSceneView scene, PackedTransportSettings transport,
+    std::uint32_t width, std::uint32_t height,
+    std::uint32_t pixel_count, std::uint32_t chunk_size,
+    std::uint32_t sample_begin, std::uint32_t sample_end,
+    std::uint32_t seed, PackedPathState *states, bool shared_path_state,
+    float sample_clamp, CudaFilmPixel *film,
+    DeviceRenderCounters *counters, std::uint32_t *work_counter) {
+    extern __shared__ unsigned char dynamic_shared[];
+    unsigned *queues = reinterpret_cast<unsigned *>(dynamic_shared);
+
+    __shared__ std::uint32_t counts[2];
+    __shared__ std::uint32_t next_chunk;
+    __shared__ unsigned long long status_partials[8];
+    __shared__ unsigned long long traversal_partial;
+    __shared__ unsigned long long shadow_partial;
+    __shared__ unsigned long long invalid_partial;
+    __shared__ unsigned long long clamped_partial;
+    __shared__ unsigned long long depth_steps_partial;
+    __shared__ unsigned long long active_path_partial;
+
+    const WavefrontBlockScratch scratch = make_wavefront_block_scratch(
+        queues, counts, status_partials, &traversal_partial,
+        &shadow_partial, &invalid_partial, &clamped_partial,
+        &depth_steps_partial, &active_path_partial);
+    initialize_wavefront_block_scratch(scratch);
+
+    PackedPathState *block_states =
+        shared_path_state
+            ? wavefront_shared_path_states(dynamic_shared, blockDim.x)
+            : states + blockIdx.x * chunk_size;
+    for (;;) {
+        if (threadIdx.x == 0) {
+            next_chunk = atomicAdd(work_counter, 1u);
+        }
+        __syncthreads();
+        const std::uint32_t chunk = next_chunk;
+        const std::uint32_t pixel_offset = chunk * chunk_size;
+        if (pixel_offset >= pixel_count) {
+            break;
+        }
+        const std::uint32_t count =
+            min(pixel_count - pixel_offset, chunk_size);
+        process_wavefront_chunk(
+            scene, transport, width, height, pixel_offset, count, 0, 0,
+            sample_begin, sample_end, seed, block_states, sample_clamp, film,
+            scratch);
+    }
+    flush_wavefront_block_scratch(scratch, counters);
+}
+
+
+std::size_t wavefront_queue_bytes(std::uint32_t block_size) {
     return 2u * static_cast<std::size_t>(block_size) * sizeof(std::uint32_t);
 }
 
-int wavefront_active_blocks_per_sm(std::uint32_t block_size) {
+std::size_t wavefront_shared_bytes(std::uint32_t block_size,
+                                   bool shared_path_state) {
+    if (!shared_path_state) {
+        return wavefront_queue_bytes(block_size);
+    }
+    constexpr std::size_t alignment = alignof(PackedPathState);
+    const std::size_t queues = wavefront_queue_bytes(block_size);
+    const std::size_t offset = (queues + alignment - 1u) / alignment * alignment;
+    return offset +
+           static_cast<std::size_t>(block_size) * sizeof(PackedPathState);
+}
+
+int wavefront_active_blocks_per_sm(std::uint32_t block_size,
+                                   bool shared_path_state) {
     int active_blocks = 0;
     const cudaError_t status =
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(
             &active_blocks, render_paths_kernel,
-            static_cast<int>(block_size), wavefront_shared_bytes(block_size));
+            static_cast<int>(block_size),
+            wavefront_shared_bytes(block_size, shared_path_state));
     if (status != cudaSuccess || active_blocks == 0) {
         return -1;
     }
     return active_blocks;
 }
 
-bool wavefront_block_size_launchable(std::uint32_t block_size) {
-    return wavefront_active_blocks_per_sm(block_size) > 0;
+bool wavefront_block_size_launchable(std::uint32_t block_size,
+                                     bool shared_path_state) {
+    return wavefront_active_blocks_per_sm(block_size, shared_path_state) > 0;
 }
 
 void validate_settings(const CudaRenderSettings &settings) {
@@ -278,11 +425,47 @@ std::uint32_t choose_batch_size(const CudaRenderSettings &settings,
     return std::max(1u, std::min(requested, pixel_count));
 }
 
-std::uint32_t choose_block_size_heuristic() {
+std::uint32_t choose_work_chunk_size(const CudaRenderSettings &settings,
+                                       std::uint32_t block_size) {
+    // A chunk equal to the block size keeps every thread usefully
+    // occupied. The 32/64 pixel variants from the plan are available
+    // through --cuda-work-chunk-size, but the full block variant measured
+    // fastest on the 4060.
+    const std::uint32_t requested = settings.work_chunk_size == 0u
+                                        ? block_size
+                                        : settings.work_chunk_size;
+    return std::max(1u, std::min(requested, block_size));
+}
+
+std::uint32_t choose_persistent_grid(std::uint32_t block_size,
+                                     std::uint32_t pixel_count,
+                                     std::uint32_t chunk_size,
+                                     bool shared_path_state) {
+    const int active_blocks =
+        wavefront_active_blocks_per_sm(block_size, shared_path_state);
+    if (active_blocks <= 0) {
+        throw std::runtime_error(
+            "CUDA persistent grid cannot determine blocks per SM");
+    }
+    int device = 0;
+    RT_CUDA_CHECK(cudaGetDevice(&device));
+    int multiprocessor_count = 0;
+    RT_CUDA_CHECK(cudaDeviceGetAttribute(
+        &multiprocessor_count, cudaDevAttrMultiProcessorCount, device));
+    const std::uint32_t ideal =
+        static_cast<std::uint32_t>(active_blocks) *
+        static_cast<std::uint32_t>(multiprocessor_count);
+    const std::uint32_t needed =
+        (pixel_count + chunk_size - 1u) / chunk_size;
+    return std::max(1u, std::min(ideal, needed));
+}
+
+std::uint32_t choose_block_size_heuristic(bool shared_path_state) {
     std::uint32_t best = kBlockSizeFallback;
     int best_occupancy = 0;
     for (const std::uint32_t candidate : kBlockSizeCandidates) {
-        const int active_blocks = wavefront_active_blocks_per_sm(candidate);
+        const int active_blocks = wavefront_active_blocks_per_sm(
+            candidate, shared_path_state);
         if (active_blocks <= 0) {
             continue;
         }
@@ -310,8 +493,10 @@ WavefrontLaunchResult launch_wavefront_kernels(
     DeviceSceneView scene, const CudaRenderSettings &settings,
     const std::atomic<bool> *cancel, std::uint32_t block_size,
     std::uint32_t pixel_count, std::uint32_t batch_size,
-    std::uint32_t samples_per_launch, CudaFilmPixel *film,
-    PackedPathState *states, DeviceRenderCounters *counters) {
+    std::uint32_t samples_per_launch, bool persistent_grid,
+    std::uint32_t chunk_size, std::uint32_t grid_size,
+    CudaFilmPixel *film, PackedPathState *states,
+    DeviceRenderCounters *counters, std::uint32_t *work_counter) {
     RT_CUDA_CHECK(cudaMemset(film, 0,
                              static_cast<std::size_t>(pixel_count) *
                                  sizeof(CudaFilmPixel)));
@@ -323,32 +508,62 @@ WavefrontLaunchResult launch_wavefront_kernels(
     RT_CUDA_CHECK(cudaEventRecord(begin));
 
     WavefrontLaunchResult result;
-    const std::size_t shared_bytes = wavefront_shared_bytes(block_size);
-    for (std::uint32_t sample = 0;
-         sample < settings.samples_per_pixel && !result.cancelled;
-         sample += samples_per_launch) {
-        const std::uint32_t sample_end =
-            std::min(sample + samples_per_launch,
-                     settings.samples_per_pixel);
-        for (std::uint32_t offset = 0; offset < pixel_count;
-             offset += batch_size) {
+    const std::size_t shared_bytes = wavefront_shared_bytes(
+        block_size, settings.shared_path_state);
+    if (persistent_grid) {
+        const std::uint32_t chunks_per_sample_group =
+            (pixel_count + chunk_size - 1u) / chunk_size;
+        for (std::uint32_t sample = 0;
+             sample < settings.samples_per_pixel && !result.cancelled;
+             sample += samples_per_launch) {
             if (cancel != nullptr && cancel->load()) {
                 result.cancelled = true;
                 break;
             }
-            ++result.batch_count;
-            const std::uint32_t count =
-                std::min(batch_size, pixel_count - offset);
-            const std::uint32_t grid =
-                (count + block_size - 1) / block_size;
-            render_paths_kernel<<<grid, block_size, shared_bytes>>>(
+            const std::uint32_t sample_end =
+                std::min(sample + samples_per_launch,
+                         settings.samples_per_pixel);
+            RT_CUDA_CHECK(cudaMemset(work_counter, 0,
+                                     sizeof(std::uint32_t)));
+            render_paths_persistent_kernel<<<grid_size, block_size,
+                                              shared_bytes>>>(
                 scene, settings.transport, settings.width, settings.height,
-                offset, count, sample, sample_end, settings.seed, states,
-                static_cast<float>(settings.sample_clamp), film, counters);
+                pixel_count, chunk_size, sample, sample_end, settings.seed,
+                states, settings.shared_path_state,
+                static_cast<float>(settings.sample_clamp), film, counters,
+                work_counter);
             RT_CUDA_CHECK(cudaGetLastError());
-            // One kernel owns a complete pixel batch and sample group. The
-            // default stream orders all batches, so the final event sync is
-            // the only required host synchronization point.
+            result.batch_count += chunks_per_sample_group;
+        }
+    } else {
+        for (std::uint32_t sample = 0;
+             sample < settings.samples_per_pixel && !result.cancelled;
+             sample += samples_per_launch) {
+            const std::uint32_t sample_end =
+                std::min(sample + samples_per_launch,
+                         settings.samples_per_pixel);
+            for (std::uint32_t offset = 0; offset < pixel_count;
+                 offset += batch_size) {
+                if (cancel != nullptr && cancel->load()) {
+                    result.cancelled = true;
+                    break;
+                }
+                ++result.batch_count;
+                const std::uint32_t count =
+                    std::min(batch_size, pixel_count - offset);
+                const std::uint32_t grid =
+                    (count + block_size - 1) / block_size;
+                render_paths_kernel<<<grid, block_size, shared_bytes>>>(
+                    scene, settings.transport, settings.width,
+                    settings.height, offset, count, sample, sample_end,
+                    settings.seed, states, settings.shared_path_state,
+                    static_cast<float>(settings.sample_clamp), film,
+                    counters);
+                RT_CUDA_CHECK(cudaGetLastError());
+                // One kernel owns a complete pixel batch and sample group.
+                // The default stream orders all batches, so the final event
+                // sync is the only required host synchronization point.
+            }
         }
     }
     RT_CUDA_CHECK(cudaEventRecord(end));
@@ -356,6 +571,7 @@ WavefrontLaunchResult launch_wavefront_kernels(
     RT_CUDA_CHECK(cudaEventElapsedTime(&result.milliseconds, begin, end));
     return result;
 }
+
 
 std::uint32_t float_bits(float value) {
     std::uint32_t bits = 0;
@@ -459,6 +675,7 @@ std::uint32_t autotune_block_size(
     tune_settings.batch_size = tune_batch_size;
     tune_settings.block_size = kBlockSizeFallback;
     tune_settings.autotune_block_size = false;
+    tune_settings.persistent_grid = false;
 
     const std::size_t required =
         workspace_bytes(tune_pixel_count, tune_batch_size);
@@ -474,8 +691,8 @@ std::uint32_t autotune_block_size(
     auto run_candidate = [&](std::uint32_t candidate) {
         return launch_wavefront_kernels(
             scene, tune_settings, cancel, candidate, tune_pixel_count,
-            tune_batch_size, 1, tune_film.data(), tune_states.data(),
-            tune_counters.data());
+            tune_batch_size, 1, false, 0u, 0u, tune_film.data(),
+            tune_states.data(), tune_counters.data(), nullptr);
     };
 
     auto is_cancelled = [&]() {
@@ -485,7 +702,8 @@ std::uint32_t autotune_block_size(
     // Warm every launchable candidate before timing so the first
     // candidate does not pay the GPU clock/frequency ramp cost.
     for (const std::uint32_t candidate : kBlockSizeCandidates) {
-        if (!wavefront_block_size_launchable(candidate)) {
+        if (!wavefront_block_size_launchable(
+                candidate, tune_settings.shared_path_state)) {
             continue;
         }
         if (is_cancelled()) {
@@ -497,7 +715,8 @@ std::uint32_t autotune_block_size(
     std::uint32_t best_block_size = kBlockSizeFallback;
     float best_milliseconds = std::numeric_limits<float>::infinity();
     for (const std::uint32_t candidate : kBlockSizeCandidates) {
-        if (!wavefront_block_size_launchable(candidate)) {
+        if (!wavefront_block_size_launchable(
+                candidate, tune_settings.shared_path_state)) {
             continue;
         }
         float candidate_milliseconds =
@@ -533,7 +752,7 @@ std::size_t workspace_bytes(std::uint32_t pixel_count,
                             std::uint32_t batch_size) {
     return static_cast<std::size_t>(pixel_count) * sizeof(CudaFilmPixel) +
            static_cast<std::size_t>(batch_size) * sizeof(PackedPathState) +
-           sizeof(DeviceRenderCounters);
+           sizeof(DeviceRenderCounters) + sizeof(std::uint32_t);
 }
 
 } // namespace
@@ -542,6 +761,7 @@ struct CudaRenderWorkspace::Impl {
     DeviceBuffer<CudaFilmPixel> film;
     DeviceBuffer<PackedPathState> states;
     DeviceBuffer<DeviceRenderCounters> counters;
+    DeviceBuffer<std::uint32_t> work_counter;
     std::uint64_t generation = 0;
 
     struct BlockSizeTuning {
@@ -551,7 +771,8 @@ struct CudaRenderWorkspace::Impl {
     BlockSizeTuning block_size_tuning;
 
     std::size_t allocated_bytes() const noexcept {
-        return film.bytes() + states.bytes() + counters.bytes();
+        return film.bytes() + states.bytes() + counters.bytes() +
+               work_counter.bytes();
     }
 
     void ensure_capacity(std::uint32_t pixel_count,
@@ -572,6 +793,7 @@ struct CudaRenderWorkspace::Impl {
         changed |= film.ensure_capacity_discard(pixel_count);
         changed |= states.ensure_capacity_discard(batch_size);
         changed |= counters.ensure_capacity_discard(1);
+        changed |= work_counter.ensure_capacity_discard(1);
         if (changed) {
             ++generation;
         }
@@ -636,7 +858,8 @@ CudaRenderOutput render_wavefront_cuda(
                 block_size = buffers.block_size_tuning.block_size;
             } else {
                 block_size = autotune_block_size(scene, settings, cancel);
-                if (!wavefront_block_size_launchable(block_size)) {
+                if (!wavefront_block_size_launchable(
+                        block_size, settings.shared_path_state)) {
                     throw std::runtime_error(
                         "CUDA block-size autotune found no launchable "
                         "wavefront block size");
@@ -644,21 +867,37 @@ CudaRenderOutput render_wavefront_cuda(
                 buffers.block_size_tuning = {key, block_size};
             }
         } else {
-            block_size = choose_block_size_heuristic();
+            block_size =
+                choose_block_size_heuristic(settings.shared_path_state);
         }
     }
-    if (!wavefront_block_size_launchable(block_size)) {
+    if (!wavefront_block_size_launchable(block_size,
+                                         settings.shared_path_state)) {
         throw std::invalid_argument(
             "CUDA render block size " + std::to_string(block_size) +
             " cannot launch with the current wavefront kernel");
     }
 
-    workspace.m_impl->ensure_capacity(pixel_count, batch_size);
+    const bool persistent_grid = settings.persistent_grid;
+    const std::uint32_t chunk_size =
+        persistent_grid ? choose_work_chunk_size(settings, block_size) : 0u;
+    const std::uint32_t grid_size =
+        persistent_grid
+            ? choose_persistent_grid(block_size, pixel_count, chunk_size,
+                                     settings.shared_path_state)
+            : 0u;
+    const std::uint32_t path_capacity =
+        settings.shared_path_state
+            ? 0u
+            : (persistent_grid ? grid_size * chunk_size : batch_size);
+
+    workspace.m_impl->ensure_capacity(pixel_count, path_capacity);
 
     const WavefrontLaunchResult launch = launch_wavefront_kernels(
         scene, settings, cancel, block_size, pixel_count, batch_size,
-        samples_per_launch, buffers.film.data(), buffers.states.data(),
-        buffers.counters.data());
+        samples_per_launch, persistent_grid, chunk_size, grid_size,
+        buffers.film.data(), buffers.states.data(), buffers.counters.data(),
+        buffers.work_counter.data());
 
     CudaRenderOutput output;
     buffers.film.download_prefix(output.film, pixel_count);
@@ -674,6 +913,9 @@ CudaRenderOutput render_wavefront_cuda(
     output.stats.batch_count = launch.batch_count;
     output.stats.samples_per_launch = samples_per_launch;
     output.stats.block_size = block_size;
+    output.stats.work_chunk_size = chunk_size;
+    output.stats.persistent_blocks = grid_size;
+    output.stats.persistent_grid = persistent_grid;
     output.stats.advance_launches = counter.depth_steps;
     output.stats.active_path_steps = counter.active_path_steps;
     const CudaWorkspaceInfo workspace_info = workspace.info();

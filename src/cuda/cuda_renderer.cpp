@@ -122,6 +122,12 @@ class CudaRenderSession final : public IRenderSession {
             request.cuda_autotune_block_size;
         transport_settings.samples_per_launch =
             request.cuda_samples_per_launch;
+        transport_settings.persistent_grid =
+            request.cuda_persistent_grid;
+        transport_settings.work_chunk_size =
+            request.cuda_work_chunk_size;
+        transport_settings.shared_path_state =
+            request.cuda_shared_path_state;
         transport_settings.sample_clamp =
             static_cast<float>(request.sample_clamp);
         const CudaRenderOutput output = render_wavefront_cuda(
@@ -189,6 +195,11 @@ class CudaRenderSession final : public IRenderSession {
         stats.cuda.batch_count = static_cast<int>(output.stats.batch_count);
         stats.cuda.samples_per_launch = output.stats.samples_per_launch;
         stats.cuda.block_size = static_cast<int>(output.stats.block_size);
+        stats.cuda.work_chunk_size =
+            static_cast<int>(output.stats.work_chunk_size);
+        stats.cuda.persistent_blocks =
+            static_cast<int>(output.stats.persistent_blocks);
+        stats.cuda.persistent_grid = output.stats.persistent_grid;
         stats.cuda.status_counts = output.stats.status_counts;
         stats.base.cancelled = output.stats.cancelled ||
                           stats.base.completed_samples < stats.base.requested_samples;

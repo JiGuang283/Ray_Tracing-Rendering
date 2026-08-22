@@ -39,6 +39,9 @@ struct RenderRequest {
     std::uint32_t cuda_block_size = 0;
     bool cuda_autotune_block_size = false;
     std::uint32_t cuda_samples_per_launch = 0;
+    bool cuda_persistent_grid = true;
+    std::uint32_t cuda_work_chunk_size = 0;
+    bool cuda_shared_path_state = true;
     bool cuda_restir_fused_stages = true;
     CudaRestirStatsLevel cuda_restir_stats_level =
         CudaRestirStatsLevel::Summary;
@@ -95,6 +98,9 @@ struct CudaRenderStats {
     std::uint64_t wavefront_active_path_steps = 0;
     std::uint32_t samples_per_launch = 0;
     int block_size = 0;
+    int work_chunk_size = 0;
+    int persistent_blocks = 0;
+    bool persistent_grid = false;
     std::array<std::uint64_t, 8> status_counts{};
 };
 
